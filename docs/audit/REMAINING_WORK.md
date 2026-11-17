@@ -17,8 +17,8 @@ State as of 2026-11-17 (deploy, release, alert and required-check rows re-checke
 | UI/UX audit of 2026-11-11 (NL-01 to NL-12) | Fixed, merged in #463 to #473. Its unfinished verification is listed in [`docs/audits/2026-11-11/FIXES.md`](../audits/2026-11-11/FIXES.md) |
 | Code audit of 2026-11-17 (AUD-G01 to G04) | Fixed, merged in [#486](https://github.com/shareef01/notelikeus/pull/486); see [`docs/audits/2026-11-17/FIXES.md`](../audits/2026-11-17/FIXES.md) |
 | Supabase migrations | **Deployed** through `20261115000000` (manual run 43678236436 from `50eb484f`, 2026-11-15; its `deploy` job succeeded). No migration has merged since. A push to `main` only tests migrations; deploying is a manual dispatch of `supabase.yml` |
-| Attachments Worker | **Deployed** from `809cfe51` (manual run 41796111261, 2026-11-04). **One change is not deployed**: [#433](https://github.com/shareef01/notelikeus/pull/433) (`d9dd614b`, 2026-11-05) changed `workers/attachments/src/index.ts` after that run, and pushes to `main` only run the Worker's `verify` job. The only later change to the Worker's source, #450, strips byte-order marks. The deployed Worker works with migration `20261115000000` unchanged |
-| Web app (Cloudflare Pages) | **Deployed** from `82d4956d` (run 44001001478, 2026-11-17), which is the head of `main` and includes #486. The deploy of each later commit on `main` waits for production approval in turn |
+| Attachments Worker | **Deployed** from `aebe6291` (manual run 44010948769, 2026-11-17), which includes [#433](https://github.com/shareef01/notelikeus/pull/433). Nothing is waiting. Pushes to `main` only run the Worker's `verify` job; deploying is a manual dispatch of `attachments-worker.yml`. The run confirmed every migration is applied, uploaded the service-role secret and enabled the orphan sweep; the live Worker was not called afterwards. The bucket it binds is named `notelikeus-attachments-dev`, as in every deploy since 2026-10-21: that is where production attachments are, despite the name |
+| Web app (Cloudflare Pages) | **Deployed** from `aebe6291` (run 44009987376, 2026-11-17), which includes #486. The deploy of each later commit on `main` waits for production approval in turn |
 | Android / Windows | Latest release **v2.6.2** (2026-11-05). **55 commits on `main` are unreleased** at `82d4956d`, and 24 of them touch native code or the Gradle build: among them the NL-01 tray and single-instance work, NL-02, NL-03 sign-out sealing (Room schema 12), NL-11 and NL-12, the account-isolation fixes of #482, and the Kotlin 2.4 and Compose Multiplatform 1.12 upgrades |
 | Dependabot alerts | None open (re-checked 2026-11-17). The 11 build-classpath alerts were dismissed on 2026-10-31 (not used in shipped apps; the Kotlin Gradle plugin one as tolerable risk) |
 
@@ -30,7 +30,7 @@ State as of 2026-11-17 (deploy, release, alert and required-check rows re-checke
 Each push to `main` queues a Pages deploy that waits for manual production approval in GitHub Actions. After one goes live, the service worker keeps serving the previous build until a reload.
 
 ### 1.2 Deploy the Attachments Worker
-#433 changed the Worker after its last deploy (see the table). Dispatch `attachments-worker.yml` from `main` to ship it.
+Done on 2026-11-17 (see the table). For the next one: dispatch `attachments-worker.yml` from `main` and type the bucket the previous deploy used. A different bucket name leaves the existing attachments behind.
 
 ### 1.3 Release Android and Windows
 Native changes are waiting (see the table). This would be the first release built with Kotlin 2.4 and Compose Multiplatform 1.12, and the first to migrate the local database to schema 12. Android: push a `v*` tag; the APK and AAB are attached to the GitHub release, which is the only distribution channel (the app is not on Google Play). Windows: dispatch `desktop.yml` from `main`. Devices older than v2.5.0 do not know the `NL003` "account deleted" answer: after their account is deleted elsewhere their syncs fail and the local copy stays until they update.
@@ -73,6 +73,6 @@ Done on 2026-11-10: rewritten from the current workflows as a description of the
 
 ## 4. Suggested order
 
-1. Deploy the Attachments Worker (§1.2) and delete a throwaway account (§1.4). No web deploy is waiting.
+1. Delete a throwaway account (§1.4). No Worker or web deploy is waiting.
 2. Release Android and Windows (§1.3): native changes are waiting.
 3. Device verification (§3) as scheduled work.
