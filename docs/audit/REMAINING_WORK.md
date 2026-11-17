@@ -18,8 +18,8 @@ State as of 2026-11-17 (deploy, release, alert and required-check rows re-checke
 | Code audit of 2026-11-17 (AUD-G01 to G04) | Fixed, merged in [#486](https://github.com/shareef01/notelikeus/pull/486); see [`docs/audits/2026-11-17/FIXES.md`](../audits/2026-11-17/FIXES.md) |
 | Supabase migrations | **Deployed** through `20261115000000` (manual run 43678236436 from `50eb484f`, 2026-11-15; its `deploy` job succeeded). No migration has merged since. A push to `main` only tests migrations; deploying is a manual dispatch of `supabase.yml` |
 | Attachments Worker | **Deployed** from `aebe6291` (manual run 44010948769, 2026-11-17), which includes [#433](https://github.com/shareef01/notelikeus/pull/433). Nothing is waiting. Pushes to `main` only run the Worker's `verify` job; deploying is a manual dispatch of `attachments-worker.yml`. The run confirmed every migration is applied, uploaded the service-role secret and enabled the orphan sweep; the live Worker was not called afterwards. The bucket it binds is named `notelikeus-attachments-dev`, as in every deploy since 2026-10-21: that is where production attachments are, despite the name |
-| Web app (Cloudflare Pages) | **Deployed** from `aebe6291` (run 44009987376, 2026-11-17), which includes #486. The deploy of each later commit on `main` waits for production approval in turn |
-| Android / Windows | Latest release **v2.6.2** (2026-11-05). **55 commits on `main` are unreleased** at `82d4956d`, and 24 of them touch native code or the Gradle build: among them the NL-01 tray and single-instance work, NL-02, NL-03 sign-out sealing (Room schema 12), NL-11 and NL-12, the account-isolation fixes of #482, and the Kotlin 2.4 and Compose Multiplatform 1.12 upgrades |
+| Web app (Cloudflare Pages) | **Deployed** from `aebe6291` (run 44009987376, 2026-11-17), which includes #486. The deploy of the release commit `8ca83383` is waiting for production approval; it changes only the version number the web app reports. The deploy of each later commit on `main` waits for production approval in turn |
+| Android / Windows | Latest release **[v2.7.0](https://github.com/shareef01/notelikeus/releases/tag/v2.7.0)** (2026-11-17), from `8ca83383` ([#489](https://github.com/shareef01/notelikeus/pull/489)), with the signed APK and AAB and the Windows MSI. First release built with Kotlin 2.4 and Compose Multiplatform 1.12, and the first to migrate the local database to schema 12. **Not yet checked on a device**: see §1.3 |
 | Dependabot alerts | None open (re-checked 2026-11-17). The 11 build-classpath alerts were dismissed on 2026-10-31 (not used in shipped apps; the Kotlin Gradle plugin one as tolerable risk) |
 
 ---
@@ -33,7 +33,9 @@ Each push to `main` queues a Pages deploy that waits for manual production appro
 Done on 2026-11-17 (see the table). For the next one: dispatch `attachments-worker.yml` from `main` and type the bucket the previous deploy used. A different bucket name leaves the existing attachments behind.
 
 ### 1.3 Release Android and Windows
-Native changes are waiting (see the table). This would be the first release built with Kotlin 2.4 and Compose Multiplatform 1.12, and the first to migrate the local database to schema 12. Android: push a `v*` tag; the APK and AAB are attached to the GitHub release, which is the only distribution channel (the app is not on Google Play). Windows: dispatch `desktop.yml` from `main`. Devices older than v2.5.0 do not know the `NL003` "account deleted" answer: after their account is deleted elsewhere their syncs fail and the local copy stays until they update.
+v2.7.0 was released on 2026-11-17 (see the table). Still to do for it, from the runbook: install the APK over 2.6.2 on a device and confirm notes are still there and a sync completes, and the same with the MSI on Windows. CI built and tested both, but no build of this release has migrated a real 2.6.2 database.
+
+For the next release, Android: push a `v*` tag; the APK and AAB are attached to the GitHub release, which is the only distribution channel (the app is not on Google Play). Windows: dispatch `desktop.yml` from `main`. Devices older than v2.5.0 do not know the `NL003` "account deleted" answer: after their account is deleted elsewhere their syncs fail and the local copy stays until they update.
 
 ### 1.4 First deletion in production
 Delete a throwaway account on each client. It is also the first proof that the Worker's `SUPABASE_SERVICE_ROLE_KEY` is the current `sb_secret_` key: with a wrong key the deletion answers pending and the cron sweep cannot finish it.
@@ -74,5 +76,5 @@ Done on 2026-11-10: rewritten from the current workflows as a description of the
 ## 4. Suggested order
 
 1. Delete a throwaway account (§1.4). No Worker or web deploy is waiting.
-2. Release Android and Windows (§1.3): native changes are waiting.
+2. Install v2.7.0 over 2.6.2 on an Android device and on Windows (§1.3).
 3. Device verification (§3) as scheduled work.
