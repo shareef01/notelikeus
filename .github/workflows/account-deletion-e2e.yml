@@ -61,8 +61,8 @@ jobs:
           fi
 
   e2e:
-    # Named so the required check is not confused with the web e2e jobs.
-    name: Account deletion e2e
+    # `Account deletion e2e` itself is the name of the gate job at the end of this file.
+    name: Account deletion e2e (run)
     needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
@@ -121,3 +121,30 @@ jobs:
       - name: Stop local Supabase stack
         if: always()
         run: npm run supabase:stop
+
+  # The required check (AUD-G04). Named so it is not confused with the web e2e jobs. The job above is skipped when `changes` says nothing
+  # relevant moved, and a skipped job satisfies a required check. It is also skipped when `changes`
+  # itself fails, which let a pull request merge without these tests. This job always runs and
+  # passes only when the tests passed, or `changes` succeeded and said they were not needed.
+  e2e-gate:
+    name: Account deletion e2e
+    needs: [changes, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Require the checks to have passed or been correctly skipped
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          SHOULD_RUN: ${{ needs.changes.outputs.run }}
+          CHECK_RESULT: ${{ needs.e2e.result }}
+        run: |
+          echo "changes: $CHANGES_RESULT (run=$SHOULD_RUN), checks: $CHECK_RESULT"
+          test "$CHANGES_RESULT" = success
+          if [ "$SHOULD_RUN" = "true" ]; then
+            test "$CHECK_RESULT" = success
+          else
+            test "$SHOULD_RUN" = "false"
+            test "$CHECK_RESULT" = skipped
+          fi

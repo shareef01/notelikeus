@@ -305,7 +305,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
     // Trashing from a card offers Undo; trashing from the editor has to as well, or the same
     // action is reversible in one place and not the other.
     const trashed = useNotesStore.getState().notes.find((note) => note.id === state.id);
-    if (trashed) {
+    // Say it only when it is so: a save that reported nothing to write must not read as a move.
+    if (trashed?.isTrashed) {
       showUndoToast({
         message: 'Note moved to trash',
         revert: () => saveNote({ ...trashed, isTrashed: false }),

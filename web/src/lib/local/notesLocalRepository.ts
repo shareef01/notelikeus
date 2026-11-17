@@ -352,8 +352,11 @@ export async function putLocalEdit(ownerId: string, note: Note, removed: import(
     };
     const removals = { ...meta.pendingAttachmentRemovals };
     const retained = new Set(note.attachments.map(a => a.id));
-    removals[note.id] = [...new Map([...(removals[note.id] ?? []), ...removed]
+    const waiting = [...new Map([...(removals[note.id] ?? []), ...removed]
       .filter(a => !retained.has(a.id)).map(a => [a.id, a])).values()];
+    // No empty entries: most edits remove nothing, and a key per edited note never went away.
+    if (waiting.length > 0) removals[note.id] = waiting;
+    else delete removals[note.id];
     return { ...meta, pendingPushes: pending, pendingAttachmentRemovals: removals };
   });
 }
@@ -479,7 +482,12 @@ export async function resolveConflictedPush(
     if (currentRecord) notes.put(currentRecord);
     else notes.delete([ownerId, noteId]);
     result.resolved = true;
-    return { ...meta, pendingPushes: pending };
+    // The refused edit's image removals go with it (AUD-G01). The note is now the cloud's
+    // version, which still uses those images; left listed, the cleanup would delete them from
+    // under it, because "no pending push and not in the local note" is also true after a refusal.
+    const removals = { ...meta.pendingAttachmentRemovals };
+    delete removals[noteId];
+    return { ...meta, pendingPushes: pending, pendingAttachmentRemovals: removals };
   });
   return result.resolved;
 }

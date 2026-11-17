@@ -655,6 +655,10 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       setState((prev) => ({ ...prev, saveFailed: false }));
     },
     trashNote: async (): Promise<LocalSaveResult> => {
+      // A change like any other: without the new revision, a save already in flight takes its own
+      // older snapshot for the latest state when it finishes and writes it back over this flag, and
+      // the save queued below then finds nothing to do (AUD-G02).
+      draftRevision.current += 1;
       const updated = { ...stateRef.current, isTrashed: true };
       stateRef.current = updated;
       setState(updated);

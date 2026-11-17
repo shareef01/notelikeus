@@ -111,3 +111,31 @@ it('AUD-E11 saves an intentionally emptied existing note', async () => {
 
   act(() => root.unmount());
 });
+
+it('AUD-G02 saves the trash flag when an autosave is already in flight', async () => {
+  vi.useFakeTimers();
+  useNotesStore.getState().setNotes([createEmptyNote({ id: '1', localId: 1, content: 'initial' })]);
+  let finish!: () => void;
+  vi.mocked(saveNote).mockReset()
+    .mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }))
+    .mockResolvedValue(undefined);
+  let editor!: ReturnType<typeof useNoteEditor>;
+  function Probe() { editor = useNoteEditor('1'); return null; }
+  const root = createRoot(document.createElement('div'));
+  act(() => root.render(createElement(Probe)));
+  try {
+    act(() => editor.setContent('edited'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(saveNote).toHaveBeenCalledTimes(1);
+    let result: Awaited<ReturnType<typeof editor.trashNote>> | undefined;
+    await act(async () => {
+      const trashing = editor.trashNote();
+      finish();
+      result = await trashing;
+    });
+    expect(result).toEqual({ status: 'saved', noteId: '1' });
+    expect(saveNote).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(saveNote).mock.calls[1][0]).toMatchObject({ content: 'edited', isTrashed: true });
+    expect(editor.state.isTrashed).toBe(true);
+  } finally { act(() => root.unmount()); }
+});
