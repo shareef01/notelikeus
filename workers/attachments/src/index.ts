@@ -2,6 +2,7 @@ import { resolveAuthenticatedUserId, UpstreamServiceError, type WorkerEnv } from
 import { ATTACHMENT_ALLOWED_METHODS, withAttachmentCors } from './cors';
 import {
   accountDeletionAvailable,
+  failureReason,
   finishAccountDeletion,
   REAUTHENTICATION_REQUIRED,
   reauthenticationRequired,
@@ -529,8 +530,9 @@ async function deleteAccount(request: Request, env: WorkerEnv): Promise<Response
     if (await finishAccountDeletion(env, userId)) {
       return Response.json({ status: 'deleted' });
     }
-  } catch {
-    console.error('[Worker] Account deletion left for the sweep');
+  } catch (error) {
+    // Says which step failed, so a pending answer can be told apart from a wrong key in the log.
+    console.error(`[Worker] Account deletion left for the sweep: ${failureReason(error)}`);
   }
   return Response.json({ status: 'pending' }, { status: 202 });
 }

@@ -23,11 +23,20 @@ const SWEEP_LIMIT = 100;
 export function serviceRoleHeaders(env: WorkerEnv): HeadersInit | null {
   const key = env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   if (!key) return null;
+  // A secret API key (`sb_secret_…`) is not a JWT and goes on `apikey` only; Supabase's gateway turns
+  // it into the service role for the service behind it. Sent as a bearer token too, it reached
+  // PostgREST but Auth tried to verify it as a JWT and refused, so an account deletion could start
+  // but never delete the user. Only the legacy service_role JWT also goes on Authorization.
+  if (!isJwt(key)) return { apikey: key, 'Content-Type': 'application/json' };
   return {
     apikey: key,
     Authorization: `Bearer ${key}`,
     'Content-Type': 'application/json',
   };
+}
+
+function isJwt(key: string): boolean {
+  return key.startsWith('eyJ') && key.split('.').length === 3;
 }
 
 export async function rpc<T>(

@@ -1482,7 +1482,7 @@ describe('PUT against a terminally deleted attachment identity', () => {
 describe('DELETE confirms through the service role', () => {
   const SERVICE_KEY = 'service-role-key';
   const key = `owners/${USER_A}/notes/1/att1`;
-  let confirmCalls: Array<{ authorization: string; body: Record<string, unknown> }>;
+  let confirmCalls: Array<{ apikey: string; authorization: string; body: Record<string, unknown> }>;
 
   function serviceRoleMock(answer: () => Response = () => Response.json({ status: 'applied' })) {
     confirmCalls = [];
@@ -1490,6 +1490,7 @@ describe('DELETE confirms through the service role', () => {
       if (!url.includes('/rest/v1/rpc/confirm_attachment_object_deleted')) return undefined;
       const headers = init?.headers as Record<string, string>;
       confirmCalls.push({
+        apikey: headers.apikey ?? '',
         authorization: headers.Authorization ?? '',
         body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
       });
@@ -1510,7 +1511,9 @@ describe('DELETE confirms through the service role', () => {
     expect(await response.json()).toMatchObject({ deleted: true, confirmed: true });
     expect(bucket.objects.has(key)).toBe(false);
     expect(confirmCalls).toHaveLength(1);
-    expect(confirmCalls[0]!.authorization).toBe(`Bearer ${SERVICE_KEY}`);
+    // The service key, not the user's token. A non-JWT key goes on apikey only.
+    expect(confirmCalls[0]!.apikey).toBe(SERVICE_KEY);
+    expect(confirmCalls[0]!.authorization).toBe('');
     expect(confirmCalls[0]!.body).toEqual({ p_owner_id: USER_A, p_note_id: '1', p_attachment_id: 'att1' });
     // The user-token finalize can no longer confirm anything, so it is not asked to.
     expect(rpcNames()).not.toContain('finalize_note_attachment_delete');
