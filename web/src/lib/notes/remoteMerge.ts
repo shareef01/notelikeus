@@ -2,9 +2,13 @@ import { keepingLocalOnlyAttachments } from '@/lib/attachments/attachmentPaths';
 import type { Note } from '@/types/note';
 
 /**
- * Last-write-wins merge helper shared by the Supabase remote adapter.
- * Prefers server-assigned `serverUpdatedAt`; a confirmed remote beats an unconfirmed local
- * (e.g. backup import) regardless of client `timestamp`.
+ * Which copy a reconcile shows and tries to push. Prefers the server-assigned `serverUpdatedAt`.
+ *
+ * One exception differs from Kotlin's `NoteSyncEngine` (where a confirmed side always wins): an
+ * unconfirmed local note whose client `timestamp` is later than the cloud's stamp is still offered
+ * for upload (NEW-03, from before the pending-push queue). It only ever decides what is *tried*:
+ * the reconcile pushes such a note with no base revision, so the server refuses it against any
+ * confirmed row and both versions are kept (see `unconfirmedLocalOverwrite.test.ts`).
  */
 export function shouldUploadOverRemote(note: Note, remote: Note | undefined): boolean {
   if (!remote) return true;

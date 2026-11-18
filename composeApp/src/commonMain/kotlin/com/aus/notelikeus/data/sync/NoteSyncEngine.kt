@@ -1565,8 +1565,8 @@ class NoteSyncEngine(
         // revision the server has already stamped is what the serverUpdatedAt field exists to
         // prevent. Reachable on a normal upgrade: MIGRATION_5_6 adds the column with no backfill, so
         // every note predating schema v6 reads null locally until its next upload, while the cloud
-        // copy written by any current client has one. Mirrors the web client's
-        // `shouldUploadOverRemote`, which has resolved it this way since the field was introduced.
+        // copy written by any current client has one. The web client's `shouldUploadOverRemote` still
+        // lets a later local clock offer an unconfirmed note, but pushes it with no base revision.
         if (remoteServerUpdatedAt != null) return true
         if (localServerUpdatedAt != null) return false
 

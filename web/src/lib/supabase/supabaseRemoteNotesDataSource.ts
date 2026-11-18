@@ -16,8 +16,10 @@ import {
   applyNoteChange,
   ensureSupabaseAuthenticated,
   fetchSnapshotNotes,
+  NoteConflictError,
   pullIncrementalChanges,
 } from "@/lib/supabase/supabaseSyncEngine";
+import { conflictedCopyOf } from "@/lib/notes/conflictResolution";
 import {
   asWipeRefusal,
   observeRemoteWipeGeneration,
@@ -48,7 +50,7 @@ import { useNotesStore } from "@/store/notesStore";
 import { unexplainedMissingCloudIds } from "@/lib/notes/unexplainedMissingCloudIds";
 import { useTombstoneStore } from "@/store/tombstoneStore";
 import type { Note } from "@/types/note";
-import { isCloudSyncEligible } from "@/types/note";
+import { isCloudSyncEligible, nextLocalNoteIdAfter } from "@/types/note";
 import {
   hydrateNotesWithAttachments,
   retryPendingAttachmentGc,
@@ -507,8 +509,13 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
         if (!isCloudSyncEligible(localNote)) continue;
         const remote = remoteById.get(localNote.id);
         if (shouldUploadOverRemote(localNote, remote)) {
-          const state = await loadRevisionState(userId);
-          const baseRevision = getNoteBaseRevision(state, localNote.id);
+          // A note the server never stamped was not made on any revision this browser knows, so it
+          // must not borrow one: a refused push records the cloud's revision, and the next sync
+          // would present it and overwrite a confirmed edit on the strength of a client clock.
+          const unconfirmed = localNote.serverUpdatedAt == null && remote?.serverUpdatedAt != null;
+          const baseRevision = unconfirmed
+            ? null
+            : getNoteBaseRevision(await loadRevisionState(userId), localNote.id);
           try {
             const updated = await applyNoteChange(
               userId,
@@ -519,8 +526,22 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
               note.id === localNote.id ? updated : note,
             );
             changes++;
-          } catch {
-            // Conflict — keep merged remote winner from mergeRemoteNotes.
+          } catch (error) {
+            // Offline or a server error: the local note stays as it is and the next sync retries.
+            if (!(error instanceof NoteConflictError) || !error.current) continue;
+            // Refused: the cloud's version stays on the note and the local words become their own
+            // note, as a refused queued edit does (pendingPushes.keepBothVersions).
+            const current = keepingLocalOnlyAttachments(error.current, localNote);
+            const maxLocalId = merged.reduce((max, note) => Math.max(max, note.localId), 0);
+            let copy = conflictedCopyOf(localNote, nextLocalNoteIdAfter(maxLocalId));
+            try {
+              copy = await applyNoteChange(userId, copy, null);
+            } catch {
+              // Kept locally; a never-synced note is uploaded by the next sync.
+            }
+            merged = merged.map((note) => (note.id === localNote.id ? current : note));
+            merged.push(copy);
+            changes++;
           }
         }
         continue;
