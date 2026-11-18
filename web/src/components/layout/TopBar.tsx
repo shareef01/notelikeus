@@ -29,6 +29,8 @@ interface TopBarProps {
   selectedColors: readonly number[];
   onColorToggle: (argb: number) => void;
   onColorsClear: () => void;
+  /** See FilterRow: the colours notes use. */
+  usedColors?: readonly number[];
   labels: Label[];
   selectedLabelNames: readonly string[];
   onLabelToggle: (name: string) => void;
@@ -84,6 +86,7 @@ export function TopBar({
   selectedColors,
   onColorToggle,
   onColorsClear,
+  usedColors,
   labels,
   selectedLabelNames,
   onLabelToggle,
@@ -311,6 +314,7 @@ export function TopBar({
             selectedColors={selectedColors}
             onColorToggle={onColorToggle}
             onColorsClear={onColorsClear}
+            usedColors={usedColors}
             labels={labels}
             selectedLabelNames={selectedLabelNames}
             onLabelToggle={onLabelToggle}

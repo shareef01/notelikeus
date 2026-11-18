@@ -155,12 +155,8 @@ test('a reminder survives a reload the way guest notes do', async ({ browser }) 
 
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(2_500);
-  const signIn = page.getByRole('button', { name: 'Continue without an account' });
-  await expect(signIn).toBeVisible({ timeout: 20_000 });
-  await signIn.click();
-  await page.waitForTimeout(1_800);
-
-  // Guest notes persist even though the session does not (F10); the reminder should come with it.
+  // Guest mode is remembered across the reload, and the reminder comes back with the note (F10).
+  await expect(page.getByRole('button', { name: 'Continue without an account' })).toHaveCount(0);
   await expect(page.getByText('REMINDER note').first()).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: 'REMINDER note' }).first().click();
   await page.waitForTimeout(1_800);

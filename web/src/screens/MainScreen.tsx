@@ -34,22 +34,13 @@ import {
 } from '@/lib/notes/noteOrder';
 import { TrashBanner } from '@/components/notes/TrashBanner';
 
-
-
-
 import { useAuthListener } from '@/hooks/useAuth';
 
 import { useCloudSync } from '@/hooks/useCloudSync';
 
 import { useNotes } from '@/hooks/useNotes';
 
-
-
-
-
-
 import { useSettingsStore } from '@/store/settingsStore';
-
 
 import { useUiStore } from '@/store/uiStore';
 
@@ -86,15 +77,8 @@ const DiagnosticsDialog = lazy(() =>
   })),
 );
 
-
-
-
-
-
-
 export function MainScreen() {
   useEditorHistory();
-
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,8 +92,6 @@ export function MainScreen() {
     (patch: Partial<MainDialogState>) => setDialogs((current) => ({ ...current, ...patch })),
     [],
   );
-
-
 
   const drawerOpen = useUiStore((s) => s.drawerOpen);
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
@@ -152,49 +134,31 @@ export function MainScreen() {
 
   const cloud = useCloudSync();
 
-
-
   const {
-
     notes,
-
     filteredNotes,
-
     listFilters,
-
     isFuzzyResult,
-
     searchText,
-
     unknownOperators,
-
     labels,
-
     filters,
-
     setSearchQuery,
-
     updateFilters,
-
     showLabel,
-
     setNoteFilter,
-
     setSortOrder,
-
     clearFilters,
-
     isLoading,
-
     error,
-
     syncError,
-
     unreadableNoteIds,
-
   } = useNotes();
 
-
+  const usedColors = useMemo(
+    () => [...new Set(notes.filter((note) => note.color !== 0).map((note) => note.color))],
+    [notes],
+  );
 
   const navCounts = useMemo(
     () => ({
@@ -204,8 +168,6 @@ export function MainScreen() {
     }),
     [notes],
   );
-
-
 
   // Kotlin `NoteQuery.hasActiveFilters`: scope, sort, date field and label match do not count.
   const hasActiveFilters = filtersNarrow(filters);
@@ -295,8 +257,6 @@ export function MainScreen() {
     }
   };
 
-
-
   useEffect(() => {
     // The document owns list scrolling. An unconstrained overflow container here
     // cannot scroll, and overscroll containment traps native touch gestures in it.
@@ -306,11 +266,7 @@ export function MainScreen() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [setListScrolled]);
 
-
-
   const openSortSheet = () => openDialogs({ sortSheet: true });
-
-
 
   const {
     archiveNote,
@@ -430,36 +386,21 @@ export function MainScreen() {
         onClose={() => setDrawerOpen(false)}
         onToggleCollapse={toggleSidebarCollapsed}
         onNavigate={handleNavigateFilter}
-
         userEmail={user?.email ?? null}
-
         onSignIn={() => openAuthScreen('signin')}
-
         onSignOut={() => openDialogs({ signOutConfirm: true })}
-
         onEditLabels={() => setLabelsOpen(true)}
-
         navCounts={navCounts}
-
         currentSmartView={currentSmartView}
-
         onSmartView={handleSmartView}
-
         smartViewCounts={viewCounts}
-
         savedFilters={savedFilters}
-
         currentSavedFilter={currentSavedFilter}
-
         onApplySavedFilter={handleApplySavedFilter}
-
         onDeleteSavedFilter={deleteSavedFilter}
-
         onOpenSettings={() => openDialogs({ profile: true })}
 
       />
-
-
 
       <div className="flex min-h-screen min-w-0 flex-1">
         <div
@@ -474,41 +415,24 @@ export function MainScreen() {
             rankedByRelevance={searchText.length > 0}
             showFilterRow={showFilterRow}
             narrow={Boolean(dockedEditor)}
-
           onSearchQueryChange={setSearchQuery}
-
           currentFilter={filters.filter}
-
           listScrolled={listScrolled}
-
           sortOrder={filters.sortOrder ?? 'manual'}
-
           onSortOrderClick={openSortSheet}
-
           selectedColors={filters.colors ?? []}
-
           onColorToggle={(argb) => updateFilters({ colors: toggleColor(filters.colors ?? [], argb) })}
-
           onColorsClear={() => updateFilters({ colors: [] })}
-
+          usedColors={usedColors}
           labels={labels}
-
           selectedLabelNames={filters.labelNames ?? []}
-
           onLabelToggle={(name) => updateFilters({ labelNames: toggleValue(filters.labelNames ?? [], name) })}
-
           onLabelsClear={() => updateFilters({ labelNames: [] })}
-
           onOpenFilters={() => setFiltersSheetOpen(true)}
-
           filterCount={sheetFilterCount(filters)}
-
           hasActiveFilters={hasActiveFilters}
-
           onClearFilters={clearFilters}
-
           onMenuClick={() => setDrawerOpen(true)}
-
           onProfileClick={() => openDialogs({ profile: true })}
           userEmail={user?.email ?? null}
           viewColumns={viewColumns}
@@ -537,8 +461,6 @@ export function MainScreen() {
           searchInputRef={searchInputRef}
         />
 
-
-
         <SyncStatusBanner />
 
         <InstallPrompt />
@@ -548,8 +470,6 @@ export function MainScreen() {
         {filters.filter === 'trashed' && filteredNotes.length > 0 ? (
           <TrashBanner onEmptyTrash={() => openDialogs({ emptyTrashConfirm: true })} />
         ) : null}
-
-
 
         <main
 
@@ -708,8 +628,6 @@ export function MainScreen() {
 
         </main>
 
-
-
         {filters.filter === 'active' && !selectionMode ? (
           <button
             type="button"
@@ -763,8 +681,6 @@ export function MainScreen() {
           </ErrorBoundary>
         ) : null}
       </div>
-
-
 
       {/* Mounted per opening, so the sheet starts fresh: no half-typed name, no label search. */}
       {filtersSheetOpen ? <FiltersSheet
@@ -829,18 +745,12 @@ export function MainScreen() {
 
       <ToastHost />
 
-
-
       <input
 
         ref={backupInputRef}
-
         type="file"
-
         accept="application/json,.json,.nlkbak,application/zip"
-
         className="hidden"
-
         onChange={(event) => {
 
           const file = event.target.files?.[0];

@@ -13,8 +13,12 @@ async function enterNotes(page: Page, width = 390): Promise<void> {
   await page.setViewportSize({ width, height: 844 });
   await page.goto('/');
   await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
-  await page.getByRole('button', { name: 'Continue without an account' }).click();
-  await expect(page.getByRole('button', { name: 'New note' }).first()).toBeVisible({ timeout: 20_000 });
+  // Guest mode is remembered, so only the first visit in a page shows the gate.
+  const gate = page.getByRole('button', { name: 'Continue without an account' });
+  const ready = page.getByRole('button', { name: /^(New note|Add note)$/ }).first();
+  await expect(gate.or(ready)).toBeVisible({ timeout: 20_000 });
+  if (await gate.isVisible()) await gate.click();
+  await expect(ready).toBeVisible({ timeout: 20_000 });
 }
 
 const sortChip = (page: Page) => page.getByRole('button', { name: /^Sort/ });
