@@ -39,7 +39,8 @@ test('a formatted guest note survives a reload', async ({ page }) => {
   await expect(page.getByRole('textbox', { name: 'Note title' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Persistence check', exact: true })).toBeVisible();
   await page.reload();
-  await page.getByRole('button', { name: 'Continue without an account' }).click();
+  // Guest mode is remembered: the reload opens the guest's notes, not the sign-in gate.
+  await expect(page.getByRole('button', { name: 'Continue without an account' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Persistence check', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Note body' }).locator('strong')).toHaveText('this');
 });

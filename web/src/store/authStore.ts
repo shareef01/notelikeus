@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { AuthUser } from '@/lib/auth/authUser';
 import { clearLocalUserData, clearPendingDeletions } from '@/lib/bootstrap';
 import { clearGuestAdoptionIntent } from '@/lib/local/guestAdoptionIntent';
+import { forgetGuestMode, rememberGuestMode, wasGuestLastLoad } from '@/lib/auth/sessionHint';
 import { loadLastMergedUserId } from '@/lib/notes/lastMergedUser';
 
 interface AuthState {
@@ -9,7 +10,8 @@ interface AuthState {
   isReady: boolean;
   /**
    * Try-out mode: the app runs without an account. Guest notes are not throwaway — they persist
-   * in IndexedDB under their own owner namespace, so they survive a reload like any other note.
+   * in IndexedDB under their own owner namespace, so they survive a reload like any other note,
+   * and the mode itself is remembered (`rememberGuestMode`) so a reload opens them directly.
    */
   guestMode: boolean;
   setUser: (user: AuthUser | null) => void;
@@ -22,7 +24,9 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isReady: false,
-  guestMode: false,
+  // Restored without enterGuestMode's clean-up: that ran when the guest first chose this mode, and
+  // re-running it on every reload would wipe the guest's own labels and tombstones.
+  guestMode: wasGuestLastLoad(),
   setUser: (user) =>
     set((state) => {
       if (state.user?.uid === user?.uid) return state;
@@ -43,11 +47,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     // the user into it — and guest deletes never record tombstones to begin with. They are put
     // aside under the account they belong to, not dropped (AUDIT-004).
     clearPendingDeletions(loadLastMergedUserId());
+    rememberGuestMode();
     set({ guestMode: true });
   },
-  exitGuestMode: () => set((state) => (state.guestMode ? { guestMode: false } : state)),
+  exitGuestMode: () => {
+    forgetGuestMode();
+    set((state) => (state.guestMode ? { guestMode: false } : state));
+  },
   reset: () => {
     clearGuestAdoptionIntent();
+    forgetGuestMode();
     set({ user: null, isReady: false, guestMode: false });
   },
 }));

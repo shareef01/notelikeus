@@ -80,10 +80,9 @@ test.describe('Web Rapid Image Capture E2E', () => {
     const card = page.getByRole('button', { name: new RegExp(title) }).first();
     await expect(card).toBeVisible({ timeout: 20_000 });
 
-    // Reload page and resume guest mode to verify local IndexedDB durability across sessions
+    // Reload: guest mode is remembered, so the notes come straight back from IndexedDB
     await page.reload();
     await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
-    await page.getByRole('button', { name: 'Continue without an account' }).click();
 
     const reloadedCard = page.getByRole('button', { name: new RegExp(title) }).first();
     await expect(reloadedCard).toBeVisible({ timeout: 20_000 });
