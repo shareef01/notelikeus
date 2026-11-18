@@ -52,11 +52,21 @@ async function swatchesIn(page: Page, theme: (typeof THEMES)[keyof typeof THEMES
   await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
   await page.getByRole('button', { name: 'Continue without an account' }).click();
   await expect(page.getByRole('button', { name: 'New note' }).first()).toBeVisible({ timeout: 20_000 });
-  // The colour filter is part of the filter row, which appears once the view holds a note (U-08).
+  // The filter row offers only colours notes use, so the full palette is measured where it always
+  // is: the Filters sheet, reachable once the view holds a note (U-08). One swatch is switched on so
+  // the selected outline is measured too.
   await createNoteWithTitle(page, 'Palette seed');
+  await page.getByRole('button', { name: 'Open filters' }).click();
+  // A swatch eases into its selected outline; measuring mid-transition reads the idle border.
+  await page.addStyleTag({
+    content: '*,*::before,*::after{animation:none !important;transition:none !important}',
+  });
+  const sheetColors = page.getByRole('group', { name: 'Colors' });
+  await sheetColors.getByRole('button', { name: 'Red' }).click();
+  await expect(sheetColors.getByRole('button', { name: 'Red' })).toHaveAttribute('aria-pressed', 'true');
 
   return page.evaluate(() => {
-    const group = document.querySelector('[role="group"][aria-label="Color filter"]');
+    const group = document.querySelector('[role="group"][aria-label="Colors"]');
     const rows = [...(group?.querySelectorAll('button') ?? [])];
     return {
       page: getComputedStyle(document.body).backgroundColor,

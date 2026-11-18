@@ -99,6 +99,12 @@ interface FilterRowProps {
   /** A swatch was pressed: toggle that colour. */
   onColorToggle: (argb: number) => void;
   onColorsClear: () => void;
+  /**
+   * The colours notes actually use. When given, the row offers only those (plus any selected), and
+   * no colour control at all while every note is uncoloured; the Filters sheet keeps the full
+   * palette. Nine swatches for a library with no colours pushed the row into a scroller on phones.
+   */
+  usedColors?: readonly number[];
   labels: Label[];
   selectedLabelNames: readonly string[];
   onLabelToggle: (name: string) => void;
@@ -118,6 +124,7 @@ export function FilterRow({
   selectedColors,
   onColorToggle,
   onColorsClear,
+  usedColors,
   labels,
   selectedLabelNames,
   onLabelToggle,
@@ -130,6 +137,8 @@ export function FilterRow({
   const sortLabel = sortDisabled ? 'Relevance' : SORT_LABELS[sortOrder];
   const colorRow = useOverflowHint<HTMLDivElement>();
   const labelRow = useOverflowHint<HTMLDivElement>();
+  const offeredColors = usedColors ? [...usedColors, ...selectedColors] : undefined;
+  const showColors = !offeredColors || offeredColors.length > 0;
 
   return (
     <div className="flex flex-col gap-1.5 pb-2">
@@ -183,21 +192,24 @@ export function FilterRow({
             <FilterChip compact label="Clear" selected onClick={onClearFilters} />
           ) : null}
 
-          <div
-            className="flex min-h-9 min-w-0 items-center"
-            role="group"
-            aria-label="Color filter"
-          >
-            <ColorSwatchRow
-              selectedColor={null}
-              selectedColors={selectedColors}
-              onSelect={(argb) => {
-                if (argb != null) onColorToggle(argb);
-              }}
-              allSelected={selectedColors.length === 0}
-              onSelectAll={onColorsClear}
-            />
-          </div>
+          {showColors ? (
+            <div
+              className="flex min-h-9 min-w-0 items-center"
+              role="group"
+              aria-label="Color filter"
+            >
+              <ColorSwatchRow
+                selectedColor={null}
+                selectedColors={selectedColors}
+                onSelect={(argb) => {
+                  if (argb != null) onColorToggle(argb);
+                }}
+                allSelected={selectedColors.length === 0}
+                onSelectAll={onColorsClear}
+                only={offeredColors}
+              />
+            </div>
+          ) : null}
         </div>
         <ScrollCue target={colorRow.ref} visible={colorRow.canScrollRight} />
       </div>

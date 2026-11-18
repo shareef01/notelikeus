@@ -59,6 +59,8 @@ interface ColorSwatchRowProps {
    * marked and a press reports the swatch's colour for the caller to toggle.
    */
   selectedColors?: readonly number[];
+  /** When given, only the swatches matching one of these note colours are shown. */
+  only?: readonly number[];
 }
 
 export function ColorSwatchRow({
@@ -68,9 +70,14 @@ export function ColorSwatchRow({
   onSelectAll,
   wrap = false,
   selectedColors,
+  only,
 }: ColorSwatchRowProps) {
   const isDark = useNotePaletteDark();
-  const colors = noteColorsForTheme(isDark).filter((argb) => !(onSelectAll && argb === 0));
+  // Names follow the palette's own order, so they are attached before anything is filtered out.
+  const colors = noteColorsForTheme(isDark)
+    .map((argb, paletteIndex) => ({ argb, name: NOTE_COLOR_NAMES[paletteIndex] }))
+    .filter(({ argb }) => !(onSelectAll && argb === 0))
+    .filter(({ argb }) => !only || only.some((color) => noteColorsMatch(color, argb)));
 
   return (
     <div className={`flex items-center gap-3 ${wrap ? 'flex-wrap' : ''}`}>
@@ -88,13 +95,12 @@ export function ColorSwatchRow({
           {allSelected ? <CheckIcon size={12} /> : <PaletteIcon size={14} />}
         </button>
       ) : null}
-      {colors.map((argb, index) => {
-        const nameIndex = onSelectAll ? index + 1 : index;
+      {colors.map(({ argb, name }) => {
         return (
           <ColorSwatch
             key={argb}
             argb={argb}
-            label={NOTE_COLOR_NAMES[nameIndex] ?? undefined}
+            label={name ?? undefined}
             selected={
               selectedColors
                 ? selectedColors.some((value) => noteColorsMatch(value, argb))
