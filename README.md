@@ -1,187 +1,131 @@
 # Notelikeus
 
-A local-first, cross-platform notes application for Android, Windows, and the Web. Built with Kotlin Multiplatform, Compose, and React, featuring encrypted storage at rest, optimistic offline-first sync, and serverless media authorization.
+**A local-first notes app for the web, Android and Windows: it works fully offline without an
+account, and syncs across devices when you sign in without ever silently overwriting an edit.**
 
-- **Live Web App:** <https://notelikeus.pages.dev>
-- **Latest Release:** [v2.7.0](https://github.com/shareef01/notelikeus/releases/tag/v2.7.0) (Android APK & Windows MSI)
-- **Architecture Documentation:** [docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md)
-- **Decisions Record:** [docs/DECISIONS.md](docs/DECISIONS.md)
+[**Open the web app**](https://notelikeus.pages.dev) · [Download for Android and Windows](https://github.com/shareef01/notelikeus/releases/latest) · [Architecture](docs/BACKEND_ARCHITECTURE.md) · [Design decisions](docs/DECISIONS.md)
 
----
+| Web, desktop | Web, phone | Editor |
+|---|---|---|
+| <img src="screenshots/web-notes.png" alt="Notes list in the web app, dark theme" width="420" /> | <img src="screenshots/web-mobile.png" alt="Notes list on a phone-sized screen" width="160" /> | <img src="screenshots/web-editor.png" alt="Editing a note in the web app" width="420" /> |
 
-## Previews
-
-### Desktop & Web
-
-| Windows (Compose Multiplatform) | Web PWA (React & Tailwind) |
+| Windows | Android |
 |---|---|
-| <img src="screenshots/windows-notes.png" alt="Notelikeus Windows application preview" width="480" /> | <img src="screenshots/web-notes.png" alt="Notelikeus Web note grid" width="480" /> |
+| <img src="screenshots/windows-notes.png" alt="Windows app" width="420" /> | <img src="screenshots/android-notes.png" alt="Android notes list" width="150" /> <img src="screenshots/android-editor.png" alt="Android editor" width="150" /> |
 
-### Mobile (Android)
+## What it does
 
-<p align="center">
-  <img src="screenshots/android-notes.png" width="22%" alt="Android Notes List" />
-  <img src="screenshots/android-editor.png" width="22%" alt="Android Note Editor" />
-  <img src="screenshots/android-drawer.png" width="22%" alt="Android Navigation Drawer" />
-  <img src="screenshots/android-settings.png" width="22%" alt="Android Settings" />
-</p>
+- **Notes, checklists and labels** with pinning, colours, archive and trash, plus search with operators (`label:`, `is:pinned`, `before:`) and saved filters.
+- **Rich text** (bold, italic, links, lists) and **images**, stored on the device first and uploaded later.
+- **Reminders** through system alarms on Android, the tray on Windows and the service worker on the web.
+- **Offline without an account.** "Continue without an account" keeps everything in the browser or on the device. Signing in later adds sync.
+- **Encrypted storage on the device**: SQLCipher (key in the Android Keystore or Windows DPAPI), WebCrypto AES-GCM in IndexedDB on the web.
+- **Backups** you can move between platforms: a `.nlkbak` archive with images, or plain JSON.
+- **Account deletion** from every client, which also removes the account's images from storage.
 
----
+What each platform adds (biometric lock and widget on Android, tray reminders on Windows): [features by platform](docs/PLATFORM_FEATURES.md).
 
-## Key Features
+## How sync works, in plain English
 
-| Capability | Android | Windows | Web PWA |
-|---|:---:|:---:|:---:|
-| **Local-First Core** (usable offline without an account) | ✓ | ✓ | ✓ |
-| **Encrypted Local Storage** | SQLCipher (Keystore) | SQLCipher (DPAPI) | WebCrypto AES-GCM |
-| **Rich Text, Checklists & Labels** | ✓ | ✓ | ✓ |
-| **Image Attachments** (staged locally, deferred upload) | ✓ | ✓ | ✓ |
-| **Conflict Handling** (side-by-side branch review) | ✓ | ✓ | ✓ |
-| **Scheduled Reminders** | System Alarms | System Tray | Service Worker |
-| **Biometric App Lock** | BiometricPrompt | — | — |
-| **Home-screen Glance Widget** | Android Glance | — | — |
-| **Cross-Platform Sync** (Supabase Postgres + Realtime) | Optional | Optional | Optional |
-| **Automated Bot Abuse Deterrence** | In-app Turnstile | Browser Handshake | Turnstile Widget |
-| **Lossless Backup Import/Export** (`.json` & `.nlkbak` ZIPs) | ✓ | ✓ | ✓ |
+1. **Your device is the source of truth for what you just typed.** Every edit is saved locally first and queued. Losing the connection just means the queue waits.
+2. **The server numbers every change.** Each note has a revision. When a device uploads an edit, it says which revision it started from.
+3. **Stale edits are never applied blindly.** If another device changed the note in the meantime, the server refuses the upload. The device then keeps **both** versions: the cloud's on the original note and yours as a "(conflicted copy)". You can compare them side by side.
+4. **Deletions stick.** A deleted note leaves a tombstone, so a device that was offline cannot bring it back.
+5. **"Delete cloud data" means it.** A wipe raises a server-side generation number that every later upload must present, so an old device that reconnects cannot re-upload what you deleted.
+6. **Accounts stay separate.** Local data is stored per account, and requests in flight during a sign-out or account switch cannot write into the next account.
 
----
+A device's clock never overrides a revision the server has confirmed: the revision check decides.
 
-## Technical Architecture
+## Architecture
 
 ```
-┌────────────────────────┐      ┌────────────────────────┐      ┌────────────────────────┐
-│      Android App       │      │      Windows App       │      │        Web PWA         │
-│  (Kotlin Compose Multi)│      │  (Kotlin Compose Multi)│      │  (React 19 + TypeScript│
-│ Room + SQLCipher (Key) │      │ Room + SQLCipher(DPAPI)│      │ IndexedDB + WebCrypto) │
-└───────────┬────────────┘      └───────────┬────────────┘      └───────────┬────────────┘
-            │                               │                               │
-            └───────────────────────┬───────┴───────────────────────────────┘
-                                    │
-                                    ▼
-                     ┌─────────────────────────────┐
-                     │     Supabase / Postgres     │
-                     │  • Sequence-based OCC       │
-                     │  • Row-Level Security (RLS) │
-                     │  • Idempotent sync RPCs     │
-                     │  • Wipe-generation fence    │
-                     └──────────────┬──────────────┘
-                                    │
-                                    ▼
-                     ┌─────────────────────────────┐
-                     │ Cloudflare Worker + R2 Edge │
-                     │  • Bearer JWT verification  │
-                     │  • Owner-isolated keys      │
-                     │  • Provisional claim sweep  │
-                     └─────────────────────────────┘
+ Web PWA (React, IndexedDB)    Android (Compose, Room)    Windows (Compose Desktop, Room)
+            │                          │                             │
+            └──────────── revision-checked RPCs over HTTPS ──────────┘
+                                       │
+                 Supabase: Postgres + row-level security + Auth + Realtime
+                                       │
+                 Cloudflare Worker ─── R2 (images, keyed by owner and note)
 ```
 
-### Local-First & Synchronization Design
-1. **Decoupled Local Persistence:** Local databases are completely authoritative for unsaved and offline work. Network outages or cloud synchronization failures are treated as pending sync queues rather than application errors.
-2. **Deterministic Sequence-Based Concurrency:** Cloud synchronization avoids flawed client-clock comparisons. Mutations acquire optimistic locks against a server-managed global sequence (`p_base_revision`). Conflicting concurrent writes preserve both edits by generating explicit conflict branches with a side-by-side review workflow.
-3. **Tombstone Convergence:** Deletions propagate via tombstones. Unconfirmed deletes reconcile on subsequent pulls, ensuring deleted items are permanently removed across all connected devices.
-4. **Wipe-Generation Fencing:** Server-side wipe generations ensure that a stale or newly reconnected device cannot replay obsolete local records over an intentional account wipe.
-5. **Two-Phase Deferred Attachment Protocol:** Images are AES-GCM sealed locally and uploaded via a Cloudflare Worker (`/v2/attachments`) with a provisional status. The storage row only transitions to confirmed when an authorized note mutation explicitly references it. Unreferenced or orphaned uploads are reclaimed automatically via background sweeper tasks.
+- **Supabase** stores notes and enforces ownership with row-level security. Writes go through RPCs that check the revision, the wipe generation and storage quota in one transaction.
+- **The attachments Worker** verifies the user's token and builds every storage key itself (`owners/{owner}/notes/{note}/attachments/{id}`), so one account can never name another's file. An upload stays provisional until a note revision references it; a sweep reclaims anything orphaned.
+- **Shared contracts** in [`contracts/`](contracts/) (note colours, query parser vectors, backup fixtures) are tested by both the Kotlin and TypeScript clients, so the platforms agree on the data model.
 
-### Security & Privacy Highlights
-- **Storage Encryption at Rest:** Mobile keys are sealed inside hardware-backed Android Keystore; desktop keys are protected via Windows DPAPI; web client bodies, titles, and checklist payloads are sealed in IndexedDB via WebCrypto AES-GCM.
-- **Strict Authorization Boundary:** Database queries execute via `SECURITY INVOKER` functions relying strictly on `auth.uid()`. Cloudflare Workers reconstruct canonical R2 paths exclusively from the verified token (`owners/{owner_id}/notes/{note_id}/attachments/{id}`), preventing cross-tenant access.
-- **Bot & Resource Abuse Mitigation:** Automated Cloudflare Turnstile verification guards email one-time code requests across all platforms.
-- **Zero Tracking:** No analytics SDKs, trackers, or telemetry exist in any client.
+More detail: [backend architecture](docs/BACKEND_ARCHITECTURE.md), [local encryption at rest](docs/LOCAL_ENCRYPTION_AT_REST.md), [decision record](docs/DECISIONS.md), [deployment runbook](docs/DEPLOYMENT_RUNBOOK.md).
 
----
+## Stack
 
-## Technology Stack
+| Part | Built with |
+|---|---|
+| Web | React 19, TypeScript, TipTap 3, Zustand 5, Tailwind CSS 4, Vite, Workbox |
+| Android and Windows | Kotlin 2.4 Multiplatform, Compose Multiplatform 1.12, Room 2.8 with SQLCipher, Koin, Glance widget |
+| Backend | Supabase (Postgres, PostgREST, Auth, Realtime), pgTAP tests |
+| Storage | Cloudflare Workers and R2 |
+| Quality | Vitest, Playwright with axe accessibility checks, Detekt, GitHub Actions |
 
-- **Mobile & Desktop Core:** Kotlin Multiplatform 2.1, Jetpack Compose Multiplatform 1.8, Room 2.8 with SQLCipher, AndroidX Glance, Koin Dependency Injection, Kotlinx Coroutines & Serialization.
-- **Web PWA:** React 19, TypeScript, Tailwind CSS, Vite, Zustand, Workbox Service Worker.
-- **Cloud Backend:** Supabase (PostgreSQL 15, PostgREST, Realtime, Row-Level Security, pgTAP test suite).
-- **Edge Storage:** Cloudflare Workers (TypeScript) with Cloudflare R2 bucket storage.
-- **CI/CD & Tooling:** GitHub Actions, Detekt, Vitest, Playwright, Node.js test runner.
+## Quick start
 
----
-
-## Getting Started
-
-### Prerequisites
-- JDK 21 (for Gradle daemon) and JDK 17 (build target).
-- Node.js 24+.
-- Docker (optional, required for local Supabase test emulator).
-
-### Local Setup
+Requirements: Node.js 24+, JDK 21 for Gradle, and Docker if you want the local Supabase stack.
 
 ```bash
-# Clone the repository
 git clone https://github.com/shareef01/notelikeus.git
-cd notelikeus
-
-# Install root dependencies
+cd notelikeus/web
 npm install
+npm run dev            # http://localhost:5173, choose "Continue without an account"
+```
 
-# Start local Supabase development stack (requires Docker)
+The web app works in guest mode without any backend. To try sync locally:
+
+```bash
+npm install            # from the repo root
 npm run supabase:start
 npm run supabase:reset
 ```
 
-### Running the Applications
+Desktop and Android:
 
-#### Web Client
 ```bash
-cd web
-npm install
-npm run dev
+./gradlew :composeApp:run                # Windows/desktop
+npm run kotlin:staging-properties && ./gradlew :androidApp:assembleDebug
 ```
 
-#### Windows Desktop
-```bash
-./gradlew :composeApp:run
-```
+## Tests and builds
 
-#### Android Debug Build
-```bash
-npm run kotlin:staging-properties
-./gradlew :androidApp:assembleDebug
-```
+| What | Command |
+|---|---|
+| Web lint, types, unit tests | `cd web && npm run lint && npm run typecheck && npm test` |
+| Web end-to-end (needs local Supabase) | `cd web && npm run test:e2e` |
+| Web accessibility and reflow matrix (no backend) | `cd web && npm run test:audit-ui` |
+| Web production build (needs a hosted Supabase URL) | `cd web && npm run build` |
+| Attachments Worker | `npm --prefix workers/attachments test` |
+| Database (pgTAP, needs Docker) | `npm run supabase:test` |
+| Kotlin unit tests | `./gradlew :composeApp:desktopTest :composeApp:testDebugUnitTest :androidApp:testDebugUnitTest` |
+| Kotlin static analysis | `./gradlew detekt` |
 
----
+CI runs all of these. Twelve of them are required checks on `main`.
 
-## Testing & Quality Assurance
+## Security and privacy: what it does and does not do
 
-The codebase is backed by rigorous automated test suites, cross-platform fixtures, and static analysis:
+- **Encryption at rest, not end-to-end encryption.** Notes are encrypted on each device, but the server can read synced notes. Access is controlled by Supabase Auth and row-level security, not by keys only you hold.
+- The web app keeps its Supabase session in `localStorage`, guarded by a strict Content Security Policy. A script injected into the page could still read it.
+- Sign-in uses email one-time codes with Cloudflare Turnstile. There are no analytics or trackers in any client.
+- Android ships only as a signed APK on GitHub Releases; it is not on Google Play.
 
-| Test Suite | Scope & Coverage | Command |
-|---|---|---|
-| **Kotlin Static Analysis** | Detekt code quality gates against baseline | `./gradlew detekt` |
-| **Multiplatform Unit Tests** | Sync engine, crypto migrators, Room, conflict resolution | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest :androidApp:testDebugUnitTest` |
-| **Web Unit Tests** | Merge logic, backup parsing, reactive stores, contrast | `npm test --prefix web` |
-| **Attachment Worker Tests** | JWT authentication, object key isolation, rate limits, sweep | `npm test --prefix workers/attachments` |
-| **Cross-Client Contracts** | Canonical JSON fixtures asserted across Kotlin and TypeScript | Part of Kotlin and Web test runs |
-| **Deployment & Secret Scans** | Artifact verification, CSP pinning, leak prevention | `npm run test:pages-bundle-secrets` |
+See [SECURITY.md](SECURITY.md) and the [privacy policy](PRIVACY_POLICY.md).
 
----
-
-## Project Structure
+## Repository layout
 
 ```
-├── androidApp/          # Android-specific entry point, Glance widget, and AppFunctions
-├── composeApp/          # Shared Kotlin Multiplatform domain, Room DB, Compose UI, Desktop target
-├── web/                 # React 19 PWA client (TypeScript, Zustand, Tailwind)
-├── supabase/            # PostgreSQL migrations, schema definitions, and pgTAP suites
-├── workers/attachments/ # Cloudflare Worker authorizing R2 attachment transactions
-├── cloudflare/          # Edge security headers and verification scripts
-├── contracts/           # Cross-client JSON schemas and interoperability fixtures
-├── docs/                # Architecture specifications, ADRs (DECISIONS.md), and runbooks
-└── scripts/             # Operational automation, release packagers, and secret validators
+web/                  React PWA
+composeApp/           Shared Kotlin: domain, sync engine, Room, Compose UI, desktop target
+androidApp/           Android entry point, widget, App Functions
+supabase/             Migrations and pgTAP tests
+workers/attachments/  Cloudflare Worker for images in R2
+contracts/            Cross-client fixtures and schemas
+docs/                 Architecture, decisions, audits, runbooks
 ```
-
----
-
-## Limitations
-
-- **Not End-to-End Encrypted in Transit:** Cloud sync relies on server-enforced access controls (Row Level Security and authenticated RPCs). Data is encrypted locally at rest, but decrypted on the server during database storage and transaction evaluation.
-- **Desktop System Tray:** Reminder alerts on Windows are active while the background application is running.
-
----
 
 ## License
 
-All rights reserved. Copyright &copy; 2026.
+All rights reserved. Copyright © 2026.
