@@ -105,6 +105,11 @@ const PURGE_PAGE_SIZE = 1000;
 /** Accounts per cron run: at the page budget above, one run stays inside the subrequest limit. */
 const PENDING_LIMIT = 25;
 
+/** What went wrong, for the log: the error's message only, which never carries a key or a token. */
+export function failureReason(error: unknown): string {
+  return error instanceof Error ? error.message : 'unknown failure';
+}
+
 /** Whether this deployment can delete auth users at all. Checked before anything is destroyed. */
 export function accountDeletionAvailable(env: WorkerEnv): boolean {
   return serviceRoleHeaders(env) !== null;
@@ -139,6 +144,7 @@ async function deleteAuthUser(env: WorkerEnv, ownerId: string): Promise<void> {
     { method: 'DELETE', headers, signal: AbortSignal.timeout(10_000) },
   );
   if (!response.ok && response.status !== 404) {
+    // The status only: the body can echo request details, and this goes to the Worker's log.
     throw new Error(`Auth admin delete failed (${response.status})`);
   }
 }
@@ -196,9 +202,9 @@ export async function sweepPendingAccountDeletions(env: WorkerEnv): Promise<Swee
       } else {
         skipped += 1;
       }
-    } catch {
+    } catch (error) {
       // One account's failure must not stop the others. The row stays, so the next run retries it.
-      console.error('[Sweep] Account deletion left pending');
+      console.error(`[Sweep] Account deletion left pending: ${failureReason(error)}`);
       skipped += 1;
     }
   }

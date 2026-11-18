@@ -251,7 +251,8 @@ describe('DELETE /v1/account needs a recent sign-in', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(responses.requestAuthorization).toBe('Bearer service-role-key');
+    // The test key is not a JWT, so like an sb_secret_ key it goes on apikey only.
+    expect(responses.requestAuthorization).toBeUndefined();
     expect(responses.requestBody).toEqual({
       p_owner_id: OWNER,
       p_signed_in_at: new Date(at.timestamp * 1000).toISOString(),
