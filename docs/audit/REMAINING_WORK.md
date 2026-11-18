@@ -17,7 +17,7 @@ State as of 2026-11-17 (deploy, release, alert and required-check rows re-checke
 | UI/UX audit of 2026-11-11 (NL-01 to NL-12) | Fixed, merged in #463 to #473. Its unfinished verification is listed in [`docs/audits/2026-11-11/FIXES.md`](../audits/2026-11-11/FIXES.md) |
 | Code audit of 2026-11-17 (AUD-G01 to G04) | Fixed, merged in [#486](https://github.com/shareef01/notelikeus/pull/486); see [`docs/audits/2026-11-17/FIXES.md`](../audits/2026-11-17/FIXES.md) |
 | Supabase migrations | **Deployed** through `20261115000000` (manual run 43678236436 from `50eb484f`, 2026-11-15; its `deploy` job succeeded). No migration has merged since. A push to `main` only tests migrations; deploying is a manual dispatch of `supabase.yml` |
-| Attachments Worker | **Deployed** from `aebe6291` (manual run 44010948769, 2026-11-17), which includes [#433](https://github.com/shareef01/notelikeus/pull/433). Nothing is waiting. Pushes to `main` only run the Worker's `verify` job; deploying is a manual dispatch of `attachments-worker.yml`. The run confirmed every migration is applied, uploaded the service-role secret and enabled the orphan sweep; the live Worker was not called afterwards. The bucket it binds is named `notelikeus-attachments-dev`, as in every deploy since 2026-10-21: that is where production attachments are, despite the name |
+| Attachments Worker | **Deployed** from `8000a368` (manual run 44207720652, 2026-11-18), which includes [#433](https://github.com/shareef01/notelikeus/pull/433) and [#492](https://github.com/shareef01/notelikeus/pull/492). Nothing is waiting. Pushes to `main` only run the Worker's `verify` job; deploying is a manual dispatch of `attachments-worker.yml`, and since 2026-11-18 its `deploy` job waits for approval on the `production` environment. The run confirmed every migration is applied, uploaded the service-role secret and enabled the orphan sweep. Account deletion through the live Worker was proven afterwards (§1.4). The bucket it binds is named `notelikeus-attachments-dev`, as in every deploy since 2026-10-21: that is where production attachments are, despite the name |
 | Web app (Cloudflare Pages) | **Deployed** from `aebe6291` (run 44009987376, 2026-11-17), which includes #486. The deploy of the release commit `8ca83383` is waiting for production approval; it changes only the version number the web app reports. The deploy of each later commit on `main` waits for production approval in turn |
 | Android / Windows | Latest release **[v2.7.0](https://github.com/shareef01/notelikeus/releases/tag/v2.7.0)** (2026-11-17), from `8ca83383` ([#489](https://github.com/shareef01/notelikeus/pull/489)), with the signed APK and AAB and the Windows MSI. First release built with Kotlin 2.4 and Compose Multiplatform 1.12, and the first to migrate the local database to schema 12. Upgrade from 2.6.2 **checked on an Android emulator** (local data only); sync after the upgrade and the Windows upgrade are **not yet checked**: see §1.3 |
 | Dependabot alerts | None open (re-checked 2026-11-17). The 11 build-classpath alerts were dismissed on 2026-10-31 (not used in shipped apps; the Kotlin Gradle plugin one as tolerable risk) |
@@ -30,7 +30,7 @@ State as of 2026-11-17 (deploy, release, alert and required-check rows re-checke
 Each push to `main` queues a Pages deploy that waits for manual production approval in GitHub Actions. After one goes live, the service worker keeps serving the previous build until a reload.
 
 ### 1.2 Deploy the Attachments Worker
-Done on 2026-11-17 (see the table). For the next one: dispatch `attachments-worker.yml` from `main` and type the bucket the previous deploy used. A different bucket name leaves the existing attachments behind.
+Done on 2026-11-17 and again on 2026-11-18 for #492 (see the table). For the next one: dispatch `attachments-worker.yml` from `main` and type the bucket the previous deploy used. A different bucket name leaves the existing attachments behind.
 
 ### 1.3 Release Android and Windows
 v2.7.0 was released on 2026-11-17 (see the table).
@@ -42,7 +42,9 @@ Still to do from the runbook: the same upgrade **signed in** on a real device, c
 For the next release, Android: push a `v*` tag; the APK and AAB are attached to the GitHub release, which is the only distribution channel (the app is not on Google Play). Windows: dispatch `desktop.yml` from `main`. Devices older than v2.5.0 do not know the `NL003` "account deleted" answer: after their account is deleted elsewhere their syncs fail and the local copy stays until they update.
 
 ### 1.4 First deletion in production
-Delete a throwaway account on each client. It is also the first proof that the Worker's `SUPABASE_SERVICE_ROLE_KEY` is the current `sb_secret_` key: with a wrong key the deletion answers pending and the cron sweep cannot finish it.
+**Done on the web on 2026-11-18, after a fix.** The first attempt deleted the throwaway account's notes but not its sign-in user: signing in again with the same address landed in the deleted account, which refused to sync. The web app reports a finished and a pending deletion the same way, so only that second sign-in showed it. Cause: the Worker sent its `sb_secret_` key as `Authorization: Bearer` as well as `apikey`. PostgREST accepted that, so the request and the purge ran, but Supabase Auth verifies a bearer token as a JWT and refused the admin delete, and the sweep's retries failed the same way. Every in-app deletion since the key changed on 2026-10-21 would have ended like this. [#492](https://github.com/shareef01/notelikeus/pull/492) sends a non-JWT key on `apikey` only and logs which step leaves a deletion pending. After deploying it, deleting the same account again removed the sign-in user: signing in with the address created a new, empty account whose note synced.
+
+Left: the same check from Android and Windows, each with a throwaway address, and deleting the fresh test account the web check created. Production sign-in has a Turnstile check, which only a person can complete.
 
 ### 1.5 Required checks
 Done on 2026-11-10. Twelve checks block a merge: `Web build`, `Web e2e`, `Android build`, `instrumented (30)`, `instrumented (36)`, `Desktop build`, `package`, `windows-crypto`, `Analyze (java-kotlin)`, `database-tests`, `Worker verify` and `Account deletion e2e`. The last three come from workflows that now start on every pull request and skip their work when nothing under their paths changed ([#451](https://github.com/shareef01/notelikeus/pull/451)). Since [#486](https://github.com/shareef01/notelikeus/pull/486) those three names belong to gate jobs that always run and fail if the `changes` job failed; the jobs that do the work are named `… (run)`.
@@ -79,6 +81,6 @@ Done on 2026-11-10: rewritten from the current workflows as a description of the
 
 ## 4. Suggested order
 
-1. Delete a throwaway account (§1.4). No Worker or web deploy is waiting.
+1. Delete a throwaway account from Android and Windows (§1.4); the web is done. No Worker or web deploy is waiting.
 2. Install v2.7.0 over 2.6.2 signed in on an Android device, check a sync completes, and do the same on Windows (§1.3). The local migration is already checked on an emulator.
 3. Device verification (§3) as scheduled work.
