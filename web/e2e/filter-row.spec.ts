@@ -11,6 +11,9 @@ import { createNoteWithTitle } from './helpers/newNote';
  */
 const FILTERS = '[role="group"][aria-label="Filters"]';
 const CUE = 'Scroll filters right';
+// The eight note colours (light palette; a dark theme matches them through their counterparts).
+const COLOURED_NOTES = [0xffffcdd2, 0xffffe0b2, 0xfffff59d, 0xffc8e6c9, 0xffb2dfdb, 0xffbbdefb, 0xffe1bee7, 0xfff8bbd0]
+  .map((argb, index) => ({ title: `Colour ${index + 1}`, content: '', color: argb | 0, timestamp: 1_725_000_000 + index }));
 
 async function enterNotes(page: Page, width = 390): Promise<void> {
   await page.setViewportSize({ width, height: 844 });
@@ -18,8 +21,18 @@ async function enterNotes(page: Page, width = 390): Promise<void> {
   await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
   await page.getByRole('button', { name: 'Continue without an account' }).click();
   await expect(page.getByRole('button', { name: 'New note' }).first()).toBeVisible({ timeout: 20_000 });
-  // The filter row only appears once the view holds a note (U-08).
+  // The filter row only appears once the view holds a note (U-08), and offers only the colours
+  // notes use, so the seed is a backup with one note in each colour: that is what overflows.
   await createNoteWithTitle(page, 'Filter row seed');
+  await page.locator('input[type="file"][accept*="json"]').setInputFiles({
+    name: 'colours.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ version: 3, notes: COLOURED_NOTES })),
+  });
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await expect(page.locator('[role="group"][aria-label="Color filter"] button')).toHaveCount(9, {
+    timeout: 15_000,
+  });
 }
 
 async function scrollFiltersTo(page: Page, position: 'start' | 'end'): Promise<void> {
