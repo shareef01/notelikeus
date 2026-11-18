@@ -134,10 +134,8 @@ test('a pin survives a reload', async ({ browser }) => {
 
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(2_500);
-  const signIn = page.getByRole('button', { name: 'Continue without an account' });
-  await expect(signIn).toBeVisible({ timeout: 20_000 });
-  await signIn.click();
-  await page.waitForTimeout(1_800);
+  // Guest mode is remembered: the reload opens the notes, not the sign-in gate.
+  await expect(page.getByRole('button', { name: 'Continue without an account' })).toHaveCount(0);
 
   expect(await cardTitles(page), 'both notes should be back').toEqual(['ALPHA note', 'BETA note']);
   // The marker a phone user actually sees. "Unpin note" exists in the DOM but is part of the desktop
