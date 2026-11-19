@@ -16,11 +16,11 @@ State as of 2026-11-17 (deploy, release, alert and required-check rows re-checke
 | Expanded repository audit of 2026-11-05 (AUD-E01 to E13) | Its report records all thirteen as fixed, and the fixes are on `main` (`e9e85932`, `9c3dcc33`); not re-checked item by item here. See [`docs/audits/2026-11-05/REPORT.md`](../audits/2026-11-05/REPORT.md) |
 | UI/UX audit of 2026-11-11 (NL-01 to NL-12) | Fixed, merged in #463 to #473. Its unfinished verification is listed in [`docs/audits/2026-11-11/FIXES.md`](../audits/2026-11-11/FIXES.md) |
 | Code audit of 2026-11-17 (AUD-G01 to G04) | Fixed, merged in [#486](https://github.com/shareef01/notelikeus/pull/486); see [`docs/audits/2026-11-17/FIXES.md`](../audits/2026-11-17/FIXES.md) |
-| Audit and polish pass of 2026-11-18 (AUD-H01 to H05) | Fixed, merged in [#494](https://github.com/shareef01/notelikeus/pull/494) on 2026-11-18: a sync fix (an unconfirmed local note could overwrite a confirmed cloud edit), guest mode remembered across reloads, a lighter filter row and a new README. Its web deploy waits for production approval like any other. See [`docs/audits/2026-11-18/REPORT.md`](../audits/2026-11-18/REPORT.md) |
+| Audit and polish pass of 2026-11-18 (AUD-H01 to H05) | Fixed, merged in [#494](https://github.com/shareef01/notelikeus/pull/494) on 2026-11-18: a sync fix (an unconfirmed local note could overwrite a confirmed cloud edit), guest mode remembered across reloads, a lighter filter row and a new README. Live on the web since 2026-11-18 (run 44240381450). See [`docs/audits/2026-11-18/REPORT.md`](../audits/2026-11-18/REPORT.md) |
 | Supabase migrations | **Deployed** through `20261115000000` (manual run 43678236436 from `50eb484f`, 2026-11-15; its `deploy` job succeeded). No migration has merged since. A push to `main` only tests migrations; deploying is a manual dispatch of `supabase.yml` |
 | Attachments Worker | **Deployed** from `8000a368` (manual run 44207720652, 2026-11-18), which includes [#433](https://github.com/shareef01/notelikeus/pull/433) and [#492](https://github.com/shareef01/notelikeus/pull/492). Nothing is waiting. Pushes to `main` only run the Worker's `verify` job; deploying is a manual dispatch of `attachments-worker.yml`, and since 2026-11-18 its `deploy` job waits for approval on the `production` environment. The run confirmed every migration is applied, uploaded the service-role secret and enabled the orphan sweep. Account deletion through the live Worker was proven afterwards (§1.4). The bucket it binds is named `notelikeus-attachments-dev`, as in every deploy since 2026-10-21: that is where production attachments are, despite the name |
-| Web app (Cloudflare Pages) | **Deployed** from `aebe6291` (run 44009987376, 2026-11-17), which includes #486. The deploy of the release commit `8ca83383` is waiting for production approval; it changes only the version number the web app reports. The deploy of each later commit on `main` waits for production approval in turn |
-| Android / Windows | Latest release **[v2.7.0](https://github.com/shareef01/notelikeus/releases/tag/v2.7.0)** (2026-11-17), from `8ca83383` ([#489](https://github.com/shareef01/notelikeus/pull/489)), with the signed APK and AAB and the Windows MSI. First release built with Kotlin 2.4 and Compose Multiplatform 1.12, and the first to migrate the local database to schema 12. Upgrade from 2.6.2 **checked on an Android emulator** (local data only); a signed-in upgrade on a Pixel 7 **syncs** afterwards (2026-11-19); the Windows upgrade is **not yet checked**: see §1.3 |
+| Web app (Cloudflare Pages) | **Deployed** from `4f4e340f` (run 44441603153, 2026-11-19); #494 went live on 2026-11-18. Nothing is waiting. The deploy of each later commit on `main` waits for production approval |
+| Android / Windows | Latest release **[v2.7.0](https://github.com/shareef01/notelikeus/releases/tag/v2.7.0)** (2026-11-17), from `8ca83383` ([#489](https://github.com/shareef01/notelikeus/pull/489)), with the signed APK and AAB and the Windows MSI. First release built with Kotlin 2.4 and Compose Multiplatform 1.12, and the first to migrate the local database to schema 12. Upgrade from 2.6.2 **checked on an Android emulator** (local data only); a signed-in upgrade on a Pixel 7 **syncs** afterwards (2026-11-19); the Windows MSI over 2.6.2 **keeps the notes and syncs** (2026-11-19): see §1.3 |
 | Dependabot alerts | None open (re-checked 2026-11-17). The 11 build-classpath alerts were dismissed on 2026-10-31 (not used in shipped apps; the Kotlin Gradle plugin one as tolerable risk) |
 
 ---
@@ -40,7 +40,9 @@ v2.7.0 was released on 2026-11-17 (see the table).
 
 **Checked on 2026-11-19 on a Pixel 7** (real data, signed in): v2.7.0 had been installed over the earlier release on 2026-11-18 without clearing data (first install 2026-11-05). The installed APK is byte-identical to the release APK (versionCode 21). The account was still signed in, the notes were all present, and a manual **Sync to cloud** finished "Up to date" with the account row showing "Up to date · 7 notes". Which release it upgraded from is not recorded on the device.
 
-Still to do from the runbook: the MSI over 2.6.2 on Windows.
+**Checked on 2026-11-19 on Windows 11** (real data, signed in): the release `Notelikeus-2.7.0.msi` (SHA-256 matching the release asset's digest) was installed over the installed 2.6.2 with `msiexec /i … /passive`. Windows Installer reported success (status 0) and its `RemoveExistingProducts` step removed 2.6.2, so only 2.7.0 is registered afterwards: an in-place upgrade, not a second install. After launching 2.7.0 the notes were all present and a sync completed.
+
+Nothing is left from the runbook for v2.7.0.
 
 For the next release, Android: push a `v*` tag; the APK and AAB are attached to the GitHub release, which is the only distribution channel (the app is not on Google Play). Windows: dispatch `desktop.yml` from `main`. Devices older than v2.5.0 do not know the `NL003` "account deleted" answer: after their account is deleted elsewhere their syncs fail and the local copy stays until they update.
 
@@ -85,5 +87,6 @@ Done on 2026-11-10: rewritten from the current workflows as a description of the
 ## 4. Suggested order
 
 1. Delete a throwaway account from Android and Windows (§1.4); the web is done. No Worker or web deploy is waiting.
-2. Install the v2.7.0 MSI over 2.6.2 on Windows and check a sync completes (§1.3). Android is done: the local migration on an emulator, a signed-in upgrade and sync on a Pixel 7.
-3. Device verification (§3) as scheduled work.
+2. Device verification (§3) as scheduled work.
+
+The v2.7.0 upgrade checks are done (§1.3): the local migration on an Android emulator, a signed-in upgrade and sync on a Pixel 7, and the MSI over 2.6.2 on Windows.
