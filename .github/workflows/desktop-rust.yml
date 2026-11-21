@@ -23,7 +23,8 @@ jobs:
   test:
     name: Rust core (windows)
     runs-on: windows-latest
-    timeout-minutes: 20
+    # The Tauri shell's dependency tree makes the first build several minutes long.
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
@@ -49,3 +50,24 @@ jobs:
       # Includes the real DPAPI round trip and the contract fixtures shared with Kotlin and web.
       - name: Test
         run: cargo test --workspace --all-features --locked
+
+      # The driver needs Node 22+ for the built-in WebSocket.
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      # Launches the real Tauri app (debug build, throwaway data folder) and drives its WebView2 window:
+      # typing, pin, delete and Undo, restart persistence, the save on close, the narrow layout.
+      - name: Desktop end-to-end
+        run: |
+          cargo build -p nlk-tauri --locked
+          node crates/nlk-tauri/e2e/drive.mjs "$RUNNER_TEMP/tauri-shots"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tauri-e2e-screenshots
+          path: ${{ runner.temp }}/tauri-shots
+          if-no-files-found: ignore

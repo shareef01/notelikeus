@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notelikeus (Rust experiment)</title>
+    <link rel="stylesheet" href="app.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app" id="app" data-view="list">
+      <aside class="sidebar" aria-label="Notes">
+        <header class="sidebar-head">
+          <h1 class="brand">Notelikeus <span class="badge" title="Experimental Rust client, guest mode">Rust · guest</span></h1>
+          <button type="button" class="primary" id="new-note" title="New note (Ctrl+N)">New note</button>
+        </header>
+        <label class="visually-hidden" for="search">Search notes</label>
+        <input id="search" class="search" type="search" placeholder="Search notes (Ctrl+F)" autocomplete="off" />
+        <ul id="note-list" class="note-list" aria-label="Your notes"></ul>
+        <p id="empty-list" class="empty" hidden>No notes yet. Press <kbd>Ctrl</kbd>+<kbd>N</kbd> to write one.</p>
+        <p id="no-matches" class="empty" hidden>No notes match your search.</p>
+      </aside>
+
+      <main class="editor" aria-label="Editor">
+        <div id="editor-empty" class="editor-empty">
+          <p>Select a note, or create a new one.</p>
+        </div>
+        <form id="editor-form" class="editor-form" hidden autocomplete="off">
+          <div class="editor-bar">
+            <button type="button" id="back" class="ghost back" aria-label="Back to notes">← Notes</button>
+            <span class="spacer"></span>
+            <button type="button" id="pin" class="ghost" aria-pressed="false">Pin</button>
+            <button type="button" id="delete" class="ghost danger">Delete</button>
+          </div>
+          <label class="visually-hidden" for="title">Title</label>
+          <input id="title" class="title" type="text" placeholder="Title" maxlength="2000" />
+          <label class="visually-hidden" for="content">Note</label>
+          <textarea id="content" class="content" placeholder="Write a note…" maxlength="100000"></textarea>
+        </form>
+        <footer class="status">
+          <span id="status" role="status" aria-live="polite">Saved on this device. Guest mode never syncs.</span>
+        </footer>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="alert" hidden>
+      <span id="toast-text"></span>
+      <button type="button" id="toast-action" class="ghost" hidden>Undo</button>
+    </div>
+  </body>
+</html>

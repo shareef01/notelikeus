@@ -30,7 +30,24 @@ performance win waits for that measurement.
 desktop-rust/
   crates/notelikeus-core/   model, conflict rules, crypto, store, sync engine, Supabase transport (feature "http")
   crates/nlk-cli/           nlk-rust: guest-mode notes in the encrypted store (new / list / edit / delete / where)
+  crates/nlk-tauri/         notelikeus-rust.exe: Tauri 2 window over the core, guest mode
+    src/service.rs          what the window's commands do (unit-tested without Tauri)
+    ui/                     the interface: plain HTML, CSS and JS, no bundler
+    e2e/drive.mjs           drives the real app over WebView2's DevTools protocol
 ```
+
+- **Tauri 2 app** (guest mode): a notes list with search, an editor that autosaves, pin, delete with Undo,
+  keyboard shortcuts (Ctrl+N new, Ctrl+F search, Ctrl+S save now), light and dark themes from
+  `docs/design/tokens.json`, and a one-pane layout below 720 px. Every save goes through the core's encrypted store
+  under `%APPDATA%\NotelikeusRustExperimental` (override: `NLK_RUST_DATA_DIR`).
+  - Saves are queued in order and each one captures its note when requested. Switching notes never sends a pending
+    save to the wrong note, and keystrokes are never dropped while a save is running.
+  - Closing the window waits for the last autosave (`onCloseRequested`).
+  - A store that cannot be opened stops the app with a dialog that says why, never an empty library.
+  - Security: a strict CSP, note text written only as text (never HTML), and capabilities limited to `core:default`
+    plus `core:window:allow-destroy`. No filesystem, shell or HTTP plugins.
+  - Debug builds only: `NLK_RUST_DEVTOOLS_PORT` opens WebView2's DevTools protocol on loopback for the
+    end-to-end driver. Release builds ignore it (checked).
 
 - **Model and wire format**: `CloudNoteRow`, `CloudChange`, `ApplyNoteChangeArgs`, checked against
   `contracts/cloud/*.json`.
@@ -54,10 +71,18 @@ DPAPI round trip and tamper rejection), 5 reply parsing. `cargo clippy -- -D war
 clean. The CLI was smoke-tested end to end with a temporary data folder. No note text is in plaintext on disk, and
 `--data-dir ~/.notelikeus` is refused.
 
+**Tauri app (2026-11-21, MSVC toolchain):** 6 service unit tests, plus `node crates/nlk-tauri/e2e/drive.mjs` with 18
+checks against the real window, passing four runs in a row. The checks cover typing and saving, newest first,
+search and its empty state, pin order, delete and Undo, persistence across a restart, an edit typed just before
+closing surviving the close, markup staying text, no plaintext on disk, and the narrow layout. The release build is
+an 8.1 MB exe. Idle memory was 4.6 MB for the app process plus about 147 MB across WebView2's six processes (one
+measurement; the Kotlin app was not measured alongside it).
+
 ## Not done: parity gates before replacing Kotlin
 
-1. **UI.** The Tauri 2 shell isn't written. It needs the MSVC Build Tools and the Windows SDK, which this machine
-   doesn't have, so it was not built here.
+1. **UI parity.** The Tauri app is guest mode only: no sign-in screen, sync status, labels, colours, checklists,
+   images, reminders, archive or trash, or settings. Its interface is new and small. It does not yet reuse the web
+   app's React components; that's the next step if the experiment continues.
 2. **Sign-in**: emailed one-time code (`/auth/v1/otp`, `/auth/v1/verify`), Turnstile, token refresh, session in DPAPI.
 3. **First download**: `fetch_snapshot_page` with the unexplained-missing-ids guard. The engine only pulls with
    `pull_changes`, which is safe for an empty device but has no snapshot consistency check.
@@ -71,12 +96,20 @@ clean. The CLI was smoke-tested end to end with a temporary data folder. No note
 
 ## Build
 
-The core is pure Rust, so it builds without a C compiler. On a machine without the MSVC Build Tools, use the
-self-contained GNU toolchain:
+With the MSVC Build Tools and Windows SDK installed (the Tauri app needs them; WebView2 ships with Windows 11):
+
+```
+cargo test --workspace --all-features
+cargo run -p nlk-tauri                      # the app, guest mode
+cargo build -p nlk-tauri && node crates/nlk-tauri/e2e/drive.mjs [screenshot-dir]
+```
+
+The core and CLI are pure Rust, so they build without a C compiler. On a machine without the Build Tools, use the
+self-contained GNU toolchain (the Tauri crate will not build there):
 
 ```
 rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
-cargo +stable-x86_64-pc-windows-gnu test --workspace --all-features
+cargo +stable-x86_64-pc-windows-gnu test -p notelikeus-core -p nlk-cli --all-features
 ```
 
 CI (`.github/workflows/desktop-rust.yml`, not a required check) uses the default MSVC toolchain on `windows-latest`.
