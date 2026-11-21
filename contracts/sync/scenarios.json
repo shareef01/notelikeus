@@ -1,6 +1,7 @@
 {
-  "description": "End states every sync engine must reach. One device and the cloud start in agreement on one note (`synced`). The device then acts offline (`local`) while another device changes the cloud (`elsewhere`), and the device syncs. `expected` lists the notes on the device and in the cloud afterwards, as \"title: content\", sorted. Engines that can download and upload separately (web, Rust) run every case in each of `orders` and must reach the same end state both ways: AUD-I01 was exactly an outcome that depended on the order. Kotlin syncs in one call and runs each case once. Nothing may be lost: a conflict ends with both versions somewhere.",
-  "synced": { "title": "Groceries", "content": "milk" },
+  "description": "End states every sync engine must reach. The device and the cloud start in agreement on the notes in `synced` (a case may give its own). The device then changes things offline (`local`) while another device changes the cloud (`elsewhere`), and the device syncs. `expected` lists the notes on the device and in the cloud afterwards, sorted, each written as `title: content`, then ` #label` for each label in name order, then ` [x] text` or ` [ ] text` for each checklist item in position order. Engines that can download and upload separately (web, Rust) run every case in each of `orders` and must reach the same end state both ways: AUD-I01 was exactly an outcome that depended on the order. Kotlin syncs in one call and runs each case once. Nothing may be lost: a conflict ends with both versions somewhere.",
+  "changes": "A change is null (nothing), the string \"delete\" (delete note 1), an object, or a list of objects. An object acts on note `note` (1-based index into synced, default 1) and may carry `delete: true`, `edit` (new content), `labels` (the note's new label names), `check` (the text of a checklist item to tick), or `create` ({title, content}: a new note, ignoring `note`).",
+  "synced": [{ "title": "Groceries", "content": "milk" }],
   "copySuffix": " (conflicted copy)",
   "orders": ["push-first", "pull-first"],
   "cases": [
@@ -69,6 +70,62 @@
       "local": { "create": { "title": "Trip", "content": "pack" } },
       "elsewhere": null,
       "expected": { "device": ["Groceries: milk", "Trip: pack"], "cloud": ["Groceries: milk", "Trip: pack"] }
+    },
+    {
+      "name": "a label added elsewhere is downloaded",
+      "local": null,
+      "elsewhere": { "labels": ["shopping"] },
+      "expected": { "device": ["Groceries: milk #shopping"], "cloud": ["Groceries: milk #shopping"] }
+    },
+    {
+      "name": "labels are part of the words: a label change elsewhere and an edit here keep both",
+      "local": { "edit": "milk, bread" },
+      "elsewhere": { "labels": ["shopping"] },
+      "expected": {
+        "device": ["Groceries (conflicted copy): milk, bread", "Groceries: milk #shopping"],
+        "cloud": ["Groceries (conflicted copy): milk, bread", "Groceries: milk #shopping"]
+      }
+    },
+    {
+      "name": "a checklist item ticked elsewhere is downloaded",
+      "synced": [{ "title": "Groceries", "content": "milk", "checklist": [{ "text": "eggs", "isChecked": false }, { "text": "bread", "isChecked": false }] }],
+      "local": null,
+      "elsewhere": { "check": "eggs" },
+      "expected": { "device": ["Groceries: milk [x] eggs [ ] bread"], "cloud": ["Groceries: milk [x] eggs [ ] bread"] }
+    },
+    {
+      "name": "the same item ticked on both devices is not duplicated",
+      "synced": [{ "title": "Groceries", "content": "milk", "checklist": [{ "text": "eggs", "isChecked": false }, { "text": "bread", "isChecked": false }] }],
+      "local": { "check": "eggs" },
+      "elsewhere": { "check": "eggs" },
+      "expected": { "device": ["Groceries: milk [x] eggs [ ] bread"], "cloud": ["Groceries: milk [x] eggs [ ] bread"] }
+    },
+    {
+      "name": "different items ticked on each device keep both versions",
+      "synced": [{ "title": "Groceries", "content": "milk", "checklist": [{ "text": "eggs", "isChecked": false }, { "text": "bread", "isChecked": false }] }],
+      "local": { "check": "eggs" },
+      "elsewhere": { "check": "bread" },
+      "expected": {
+        "device": ["Groceries (conflicted copy): milk [x] eggs [ ] bread", "Groceries: milk [ ] eggs [x] bread"],
+        "cloud": ["Groceries (conflicted copy): milk [x] eggs [ ] bread", "Groceries: milk [ ] eggs [x] bread"]
+      }
+    },
+    {
+      "name": "two notes: the one edited here is uploaded, the one deleted elsewhere goes",
+      "synced": [{ "title": "Groceries", "content": "milk" }, { "title": "Trip", "content": "pack" }],
+      "local": { "note": 1, "edit": "milk, bread" },
+      "elsewhere": { "note": 2, "delete": true },
+      "expected": { "device": ["Groceries: milk, bread"], "cloud": ["Groceries: milk, bread"] }
+    },
+    {
+      "name": "two notes edited on different devices both keep their edits, with no copies",
+      "synced": [{ "title": "Groceries", "content": "milk" }, { "title": "Trip", "content": "pack" }],
+      "local": { "note": 1, "edit": "milk, bread" },
+      "elsewhere": { "note": 2, "edit": "pack, passport" },
+      "expected": {
+        "device": ["Groceries: milk, bread", "Trip: pack, passport"],
+        "cloud": ["Groceries: milk, bread", "Trip: pack, passport"]
+      }
     }
   ]
 }
