@@ -140,3 +140,29 @@ kbd { border: 1px solid var(--outline); border-radius: 4px; padding: 0 4px; font
 @media (prefers-reduced-motion: no-preference) {
   .note-item { transition: border-color 120ms ease; }
 }
+
+/* Account and sync. */
+.account { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--outline); border-radius: var(--radius-sm); }
+.account-line { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sync-line { margin: 0; font-size: 12px; color: var(--muted); }
+.sync-line.error { color: var(--danger); }
+.account-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.account-actions button { padding: 4px 10px; font-size: 13px; }
+
+.sign-in {
+  border: 1px solid var(--outline); border-radius: var(--radius-note); padding: 20px 24px;
+  background: var(--surface); color: var(--on-surface); width: min(420px, calc(100vw - 32px));
+}
+.sign-in::backdrop { background: rgb(0 0 0 / 45%); }
+.sign-in h2 { margin: 0 0 8px; font-size: 18px; letter-spacing: -0.02em; }
+.sign-in p { margin: 0 0 12px; color: var(--on-surface-secondary); font-size: 14px; }
+.sign-in label { display: block; font-size: 13px; margin-bottom: 4px; }
+.sign-in input {
+  width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--outline);
+  background: var(--surface-variant);
+}
+.sign-in #code { letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.sign-in-error { color: var(--danger) !important; min-height: 1em; margin-top: 8px !important; }
+.sign-in-note { font-size: 12px !important; color: var(--muted) !important; margin: 0 !important; }
+textarea[readonly], input[readonly] { opacity: 0.75; }

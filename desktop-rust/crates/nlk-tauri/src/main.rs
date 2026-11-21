@@ -1,54 +1,91 @@
-//! Tauri 2 shell for the experimental Rust core. Guest mode only: notes live in the encrypted store
-//! under `%APPDATA%\NotelikeusRustExperimental` and never leave the device. The Kotlin app's data is
-//! never opened (the store refuses `~/.notelikeus`).
+//! Tauri 2 shell for the experimental Rust core. Notes live in the encrypted store under
+//! `%APPDATA%\NotelikeusRustExperimental`: guest notes stay on the device; signed-in notes sync with
+//! the Supabase project in `NLK_SUPABASE_URL` / `NLK_SUPABASE_KEY` (none set: no sync). The Kotlin
+//! app's data is never opened (the store refuses `~/.notelikeus`).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod service;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-use service::{AppInfo, NoteView, NotesService, SystemIds};
+use service::{AccountView, AppInfo, NoteView, NotesService, SyncConfig, SyncSummary, SystemIds};
 use tauri::State;
 
-struct App(Mutex<NotesService>);
+#[derive(Clone)]
+struct App(Arc<Mutex<NotesService>>);
 
-fn with<T>(app: &State<App>, f: impl FnOnce(&mut NotesService) -> Result<T, String>) -> Result<T, String> {
-    let mut service = app.0.lock().map_err(|_| "The notes store is unavailable; restart the app.".to_string())?;
-    f(&mut service)
+/// Runs `f` on a blocking-pool thread: sign-in and sync wait on the network, and a command that ran
+/// on the main thread would freeze the window meanwhile.
+async fn with<T: Send + 'static>(
+    app: State<'_, App>,
+    f: impl FnOnce(&mut NotesService) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let shared = app.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut service = shared.lock().map_err(|_| "The notes store is unavailable; restart the app.".to_string())?;
+        f(&mut service)
+    })
+    .await
+    .map_err(|e| format!("The command stopped unexpectedly: {e}"))?
 }
 
 #[tauri::command]
-fn list_notes(app: State<App>) -> Result<Vec<NoteView>, String> {
-    with(&app, |s| Ok(s.list()))
+async fn list_notes(app: State<'_, App>) -> Result<Vec<NoteView>, String> {
+    with(app, |s| Ok(s.list())).await
 }
 
 #[tauri::command]
-fn create_note(app: State<App>, title: String, content: String) -> Result<NoteView, String> {
-    with(&app, |s| s.create(&title, &content))
+async fn create_note(app: State<'_, App>, title: String, content: String) -> Result<NoteView, String> {
+    with(app, move |s| s.create(&title, &content)).await
 }
 
 #[tauri::command]
-fn update_note(app: State<App>, id: String, title: String, content: String) -> Result<NoteView, String> {
-    with(&app, |s| s.update(&id, &title, &content))
+async fn update_note(app: State<'_, App>, id: String, title: String, content: String) -> Result<NoteView, String> {
+    with(app, move |s| s.update(&id, &title, &content)).await
 }
 
 #[tauri::command]
-fn set_pinned(app: State<App>, id: String, pinned: bool) -> Result<NoteView, String> {
-    with(&app, |s| s.set_pinned(&id, pinned))
+async fn set_pinned(app: State<'_, App>, id: String, pinned: bool) -> Result<NoteView, String> {
+    with(app, move |s| s.set_pinned(&id, pinned)).await
 }
 
 #[tauri::command]
-fn delete_note(app: State<App>, id: String) -> Result<NoteView, String> {
-    with(&app, |s| s.delete(&id))
+async fn delete_note(app: State<'_, App>, id: String) -> Result<NoteView, String> {
+    with(app, move |s| s.delete(&id)).await
 }
 
 #[tauri::command]
-fn app_info(app: State<App>) -> Result<AppInfo, String> {
-    with(&app, |s| Ok(s.info()))
+async fn app_info(app: State<'_, App>) -> Result<AppInfo, String> {
+    with(app, |s| Ok(s.info())).await
 }
 
-fn protector() -> Box<dyn notelikeus_core::crypto::KeyProtector> {
+#[tauri::command]
+async fn account(app: State<'_, App>) -> Result<AccountView, String> {
+    with(app, |s| Ok(s.account())).await
+}
+
+#[tauri::command]
+async fn request_code(app: State<'_, App>, email: String) -> Result<(), String> {
+    with(app, move |s| s.request_code(&email)).await
+}
+
+#[tauri::command]
+async fn verify_code(app: State<'_, App>, email: String, code: String) -> Result<AccountView, String> {
+    with(app, move |s| s.verify_code(&email, &code)).await
+}
+
+#[tauri::command]
+async fn sign_out(app: State<'_, App>) -> Result<AccountView, String> {
+    with(app, |s| s.sign_out()).await
+}
+
+#[tauri::command]
+async fn sync_now(app: State<'_, App>) -> Result<SyncSummary, String> {
+    with(app, |s| s.sync_now()).await
+}
+
+fn protector() -> Box<dyn notelikeus_core::crypto::KeyProtector + Send + Sync> {
     #[cfg(windows)]
     {
         Box::new(notelikeus_core::crypto::DpapiKeyProtector)
@@ -75,7 +112,7 @@ fn show_fatal_error(text: &str) {
 
 fn main() {
     let dir = service::default_data_dir();
-    let service = match NotesService::open(&dir, protector().as_ref(), Box::new(SystemIds)) {
+    let service = match NotesService::open(&dir, protector(), Box::new(SystemIds), SyncConfig::from_env()) {
         Ok(service) => service,
         Err(message) => {
             // Never show an empty library over data that could not be read: say why, and stop.
@@ -87,14 +124,19 @@ fn main() {
         }
     };
     tauri::Builder::default()
-        .manage(App(Mutex::new(service)))
+        .manage(App(Arc::new(Mutex::new(service))))
         .invoke_handler(tauri::generate_handler![
             list_notes,
             create_note,
             update_note,
             set_pinned,
             delete_note,
-            app_info
+            app_info,
+            account,
+            request_code,
+            verify_code,
+            sign_out,
+            sync_now
         ])
         .setup(|app| {
             let builder = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())

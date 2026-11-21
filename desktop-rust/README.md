@@ -30,11 +30,29 @@ performance win waits for that measurement.
 desktop-rust/
   crates/notelikeus-core/   model, conflict rules, crypto, store, sync engine, Supabase transport (feature "http")
   crates/nlk-cli/           nlk-rust: guest-mode notes in the encrypted store (new / list / edit / delete / where)
-  crates/nlk-tauri/         notelikeus-rust.exe: Tauri 2 window over the core, guest mode
+  crates/nlk-tauri/         notelikeus-rust.exe: Tauri 2 window over the core, guest mode and signed-in sync
     src/service.rs          what the window's commands do (unit-tested without Tauri)
     ui/                     the interface: plain HTML, CSS and JS, no bundler
-    e2e/drive.mjs           drives the real app over WebView2's DevTools protocol
+    e2e/drive.mjs           drives the real app over WebView2's DevTools protocol (guest mode)
+    e2e/drive-account.mjs   the same, signing in and syncing against a local Supabase stack
 ```
+
+- **Sign-in and sync** (`--features http`, which the app uses):
+  - **Sign-in:** an emailed one-time code (`auth.rs`), with the same calls as the Kotlin client: `/auth/v1/otp` with
+    `create_user`, then `/auth/v1/verify`.
+  - **The session** is sealed beside the notes under the same DPAPI-wrapped key (`SessionVault`, bound to its
+    purpose by associated data). It's refreshed before it expires, and again once if a request is refused.
+  - **The project** comes from `NLK_SUPABASE_URL` / `NLK_SUPABASE_KEY`. A build without them has no sync at all,
+    so the experiment cannot reach a project by accident.
+  - **Accounts:** each account has its own sealed store. Notes written as a guest are not merged into an account,
+    and an account's notes stay sealed on disk after sign-out.
+  - **A device's first sync** downloads first and joins the account's current wipe generation.
+  - **In the window:** an account panel (sign in, Sync now, sign out, and status: up to date, N waiting, or the
+    error). It syncs on start, 3 s after typing stops, every minute and on focus. The editor is read-only during
+    a sync, and the open note reloads if the sync changed it, so text typed over an old copy cannot be saved over
+    another device's words.
+  - **Hosted sign-in is not possible yet:** the hosted project requires a Turnstile token, and this client cannot
+    show the challenge.
 
 - **Tauri 2 app** (guest mode): a notes list with search, an editor that autosaves, pin, delete with Undo,
   keyboard shortcuts (Ctrl+N new, Ctrl+F search, Ctrl+S save now), light and dark themes from
@@ -78,20 +96,40 @@ closing surviving the close, markup staying text, no plaintext on disk, and the 
 an 8.1 MB exe. Idle memory was 4.6 MB for the app process plus about 147 MB across WebView2's six processes (one
 measurement; the Kotlin app was not measured alongside it).
 
+**Against a local Supabase stack (2026-11-21):**
+- `tests/live_supabase.rs` passes 5 tests:
+  - two devices on one account converge, keep both versions on conflict, and keep an edit to a note deleted
+    elsewhere as a copy
+  - repeating a sync changes nothing
+  - what the Rust client writes appears in `fetch_full_snapshot`, the read the web and Kotlin clients start from
+  - a second account sees nothing of the first, and writing under the same note id cannot change it
+  - a bad token is classified as unauthorised, and a refreshed token works
+  - a real emailed-code sign-in works, with the code read from the local mail catcher
+- The app's service passes a live test: two installs sync one account, guest notes stay apart, and the sign-in
+  survives a restart.
+- `e2e/drive-account.mjs` passes 12 checks through the real window: sign-in by emailed code, an empty account (no
+  guest notes merged in), a note synced and found in the database for that account only, still signed in after a
+  restart, and the guest notes back after sign-out.
+
+Without the stack's variables these tests skip themselves, so CI runs 50 Rust tests either way.
+
 ## Not done: parity gates before replacing Kotlin
 
-1. **UI parity.** The Tauri app is guest mode only: no sign-in screen, sync status, labels, colours, checklists,
-   images, reminders, archive or trash, or settings. Its interface is new and small. It does not yet reuse the web
-   app's React components; that's the next step if the experiment continues.
-2. **Sign-in**: emailed one-time code (`/auth/v1/otp`, `/auth/v1/verify`), Turnstile, token refresh, session in DPAPI.
+1. **UI parity.** No labels, colours, checklists, images, reminders, archive or trash, or settings. The interface
+   is new and small. It does not yet reuse the web app's React components; that's the next step if the experiment
+   continues.
+2. **Hosted sign-in**: the Turnstile challenge the hosted project requires. Sign-in, token refresh and the sealed
+   session work against a local stack.
 3. **First download**: `fetch_snapshot_page` with the unexplained-missing-ids guard. The engine only pulls with
    `pull_changes`, which is safe for an empty device but has no snapshot consistency check.
 4. **Attachments** (R2 Worker), **realtime** wake-ups, **reminders and the tray**, **backups** (v3 JSON, v4
    `.nlkbak`), **restore and undo** (`restore_note`), **digest-verified deletes** of notes whose revision was never
    known, the **re-upload after a wipe** flow, **account deletion**, **search operators**.
-5. **The HTTP transport has never talked to a server.** Only its reply parsing is tested. Run it against the local
-   Supabase stack (`npm run supabase:start`) before any hosted project, and never against production for testing.
-6. **Migration path**: importing a Kotlin backup (`.nlkbak`) is the only supported way to bring data across. Direct
+5. **A hosted project has never been used.** The transport and sign-in are verified against the local stack only.
+   Never point the tests at production; they create accounts, and refuse any URL that is not this machine.
+6. **Sync runs under the store's lock.** Edits made during a slow sync wait for it to finish. That's fine locally;
+   on a slow network it should become a snapshot-and-merge.
+7. **Migration path**: importing a Kotlin backup (`.nlkbak`) is the only supported way to bring data across. Direct
    reading of the Room/SQLCipher database is deliberately not planned.
 
 ## Build
@@ -103,6 +141,19 @@ cargo test --workspace --all-features
 cargo run -p nlk-tauri                      # the app, guest mode
 cargo build -p nlk-tauri && node crates/nlk-tauri/e2e/drive.mjs [screenshot-dir]
 ```
+
+Against a local Supabase stack (`npx supabase start` from the repository root; Docker must be running):
+
+```
+# from `npx supabase status -o env`: API_URL, and ANON_KEY or PUBLISHABLE_KEY
+NLK_SUPABASE_URL=http://127.0.0.1:54321 NLK_SUPABASE_KEY=<key> cargo run -p nlk-tauri
+NLK_TEST_SUPABASE_URL=http://127.0.0.1:54321 NLK_TEST_SUPABASE_KEY=<key> NLK_TEST_MAILPIT_URL=http://127.0.0.1:54324 \
+  cargo test --workspace --all-features -- --test-threads=1
+NLK_TEST_SUPABASE_URL=... NLK_TEST_SUPABASE_KEY=... NLK_TEST_MAILPIT_URL=... node crates/nlk-tauri/e2e/drive-account.mjs
+```
+
+The local stack sends at most two emails an hour. The emailed-code test and the account driver use one each, and
+say so instead of failing when the limit is used up.
 
 The core and CLI are pure Rust, so they build without a C compiler. On a machine without the Build Tools, use the
 self-contained GNU toolchain (the Tauri crate will not build there):

@@ -86,3 +86,48 @@ fn plain_http_is_refused_except_on_loopback() {
     assert!(SupabaseTransport::new("http://127.0.0.1:54321", "k", "t").is_ok());
     assert!(SupabaseTransport::new("https://example.supabase.co", "k", "t").is_ok());
 }
+
+#[test]
+fn only_https_or_this_machine_is_accepted() {
+    use notelikeus_core::http::checked_base_url;
+    for ok in [
+        "https://abc.supabase.co",
+        "https://abc.supabase.co/",
+        "http://127.0.0.1:54321",
+        "http://localhost:54321",
+        "http://[::1]:54321",
+    ] {
+        assert!(checked_base_url(ok).is_ok(), "{ok}");
+    }
+    for bad in [
+        "http://localhost.example.com",
+        "http://127.0.0.1.example.com",
+        "http://example.com",
+        "ftp://x",
+        "https://",
+        "localhost:54321",
+    ] {
+        assert!(checked_base_url(bad).is_err(), "{bad}");
+    }
+    assert_eq!(checked_base_url("https://abc.supabase.co/").unwrap(), "https://abc.supabase.co");
+}
+
+#[test]
+fn sign_in_replies_and_errors() {
+    use notelikeus_core::auth::{AuthError, classify, parse_session};
+    let session = parse_session(
+        &json!({ "access_token": "a", "refresh_token": "r", "expires_in": 3600, "user": { "id": "u-1", "email": "e@x.test" } }),
+        1_000,
+    )
+    .unwrap();
+    assert_eq!((session.user_id.as_str(), session.expires_at_ms), ("u-1", 3_601_000));
+    assert!(session.needs_refresh(3_541_000) && !session.needs_refresh(3_540_999));
+    assert!(parse_session(&json!({ "user": { "id": "u" } }), 0).is_err(), "no token is not a session");
+    assert_eq!(classify(429, &json!({})), AuthError::RateLimited);
+    assert_eq!(classify(400, &json!({ "error_code": "over_email_send_rate_limit" })), AuthError::RateLimited);
+    assert_eq!(classify(403, &json!({ "error_code": "otp_expired" })), AuthError::InvalidCode);
+    assert_eq!(classify(400, &json!({ "error_code": "captcha_failed" })), AuthError::CaptchaRequired);
+    assert_eq!(classify(400, &json!({ "error_code": "refresh_token_not_found" })), AuthError::SessionExpired);
+    // A message mentioning a code is not a code.
+    assert!(matches!(classify(400, &json!({ "msg": "otp_expired" })), AuthError::Refused { .. }));
+}

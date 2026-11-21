@@ -102,26 +102,7 @@ impl Store {
         if !valid_owner_id(owner_id) {
             return Err(Error::InvalidInput("owner id must be 1-64 characters of A-Z, a-z, 0-9, - or _".into()));
         }
-        if let Some(kotlin) = kotlin_client_dir()
-            && is_inside(root, &kotlin)
-        {
-            return Err(Error::InvalidInput(format!(
-                "refusing to use {}: it belongs to the Kotlin desktop client",
-                root.display()
-            )));
-        }
-        fs::create_dir_all(root)?;
-        let key_path = root.join(KEY_FILE);
-        let key = if key_path.exists() {
-            protector.unprotect(&fs::read(&key_path)?)?
-        } else {
-            if has_account_data(root)? {
-                return Err(Error::KeyMissing(root.display().to_string()));
-            }
-            let key = crypto::random_bytes::<KEY_LEN>()?;
-            write_atomically(root, &key_path, &protector.protect(&key)?)?;
-            key
-        };
+        let key = open_data_key(root, protector)?;
         let dir = root.join("accounts").join(owner_id);
         fs::create_dir_all(&dir)?;
         Ok(Store { dir, owner_id: owner_id.to_string(), key })
@@ -184,6 +165,104 @@ impl Store {
 
     pub fn state_path(&self) -> PathBuf {
         self.dir.join(STATE_FILE)
+    }
+}
+
+/// The install's data key, created on first use. Refuses the Kotlin client's folder, and refuses to
+/// replace a missing key while account data or a saved session exists.
+fn open_data_key(root: &Path, protector: &dyn KeyProtector) -> Result<[u8; KEY_LEN], Error> {
+    if let Some(kotlin) = kotlin_client_dir()
+        && is_inside(root, &kotlin)
+    {
+        return Err(Error::InvalidInput(format!(
+            "refusing to use {}: it belongs to the Kotlin desktop client",
+            root.display()
+        )));
+    }
+    fs::create_dir_all(root)?;
+    let key_path = root.join(KEY_FILE);
+    if key_path.exists() {
+        return protector.unprotect(&fs::read(&key_path)?);
+    }
+    if has_account_data(root)? || root.join(SESSION_FILE).exists() {
+        return Err(Error::KeyMissing(root.display().to_string()));
+    }
+    let key = crypto::random_bytes::<KEY_LEN>()?;
+    write_atomically(root, &key_path, &protector.protect(&key)?)?;
+    Ok(key)
+}
+
+const SESSION_FILE: &str = "session.nlkr";
+const SESSION_FORMAT: &str = "nlkr-session-v1";
+
+/// A signed-in Supabase session. Tokens never leave the sealed file or process memory, and are not
+/// printed: `Debug` is written by hand to leave them out.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Session {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub user_id: String,
+    pub email: Option<String>,
+    /// Epoch millis.
+    pub expires_at_ms: i64,
+}
+
+impl std::fmt::Debug for Session {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Session")
+            .field("user_id", &self.user_id)
+            .field("expires_at_ms", &self.expires_at_ms)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Session {
+    /// Refresh a minute early, so a request never leaves with a token about to lapse.
+    pub fn needs_refresh(&self, now_ms: i64) -> bool {
+        self.expires_at_ms - 60_000 <= now_ms
+    }
+}
+
+/// The saved session: one signed-in account per install, sealed with the data key and bound to its
+/// purpose by the associated data, so a state file cannot be read as a session or the reverse.
+pub struct SessionVault {
+    root: PathBuf,
+    key: [u8; KEY_LEN],
+}
+
+impl SessionVault {
+    pub fn open(root: &Path, protector: &dyn KeyProtector) -> Result<SessionVault, Error> {
+        Ok(SessionVault { root: root.to_path_buf(), key: open_data_key(root, protector)? })
+    }
+
+    pub fn load(&self) -> Result<Option<Session>, Error> {
+        let path = self.root.join(SESSION_FILE);
+        if !path.exists() {
+            return Ok(None);
+        }
+        let plain = crypto::open(&self.key, SESSION_FORMAT.as_bytes(), &fs::read(path)?)?;
+        let session: Session = serde_json::from_slice(&plain)?;
+        if !valid_owner_id(&session.user_id) {
+            return Err(Error::Corrupt("saved session names an invalid account".into()));
+        }
+        Ok(Some(session))
+    }
+
+    pub fn save(&self, session: &Session) -> Result<(), Error> {
+        if !valid_owner_id(&session.user_id) {
+            return Err(Error::InvalidInput("session account id is not a valid owner id".into()));
+        }
+        let sealed = crypto::seal(&self.key, SESSION_FORMAT.as_bytes(), &serde_json::to_vec(session)?)?;
+        write_atomically(&self.root, &self.root.join(SESSION_FILE), &sealed)
+    }
+
+    /// Signing out forgets the session. The account's notes stay sealed on disk for its next sign-in.
+    pub fn clear(&self) -> Result<(), Error> {
+        match fs::remove_file(self.root.join(SESSION_FILE)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.into()),
+        }
     }
 }
 

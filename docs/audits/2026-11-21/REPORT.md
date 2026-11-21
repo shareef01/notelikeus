@@ -171,14 +171,34 @@ covered by the suites listed above, but this pass did not exercise it on a devic
 | Note model and wire format (contracts) | V (shared Kotlin, desktopTest) | V (vitest) | V (desktopTest) | V (cargo test) |
 | Create / edit / delete locally | I | I | I | V (CLI smoke and tests) |
 | Encrypted local storage | I | I | I | V (DPAPI and AES-GCM tests) |
-| Offline queue and push | I | V (unit) | I | V (scenario tests, fake server) |
-| Concurrent edits keep both versions | I | V (unit) | I | V (scenario tests) |
-| Edit vs delete elsewhere | I | **F** (AUD-I01) | I | V (scenario tests) |
-| Sign-in (email code) | I | I | I | N |
+| Offline queue and push | I | V (unit) | I | V (scenario tests; live against a local stack) |
+| Concurrent edits keep both versions | I | V (unit) | I | V (scenario tests; live, two devices) |
+| Edit vs delete elsewhere | I | **F** (AUD-I01) | I | V (scenario tests; live, two devices) |
+| Sign-in (email code) | I | I | I | V against a local stack (real emailed code); hosted blocked by Turnstile |
+| Account isolation (RLS) | I | I | I | V against a local stack (a second account sees and changes nothing) |
 | Realtime wake-ups | I | I | I | N |
 | Attachments | I | I | I | N |
 | Backups v3/v4 | I | I | I | N |
 | Reminders | I | I | I | N |
 | Account deletion | I | V in production (2026-11-18, earlier pass) | I | N |
-| UI | I | I | I | V for guest mode (Tauri app, e2e driver); no sign-in or sync UI |
+| UI | I | I | I | V: guest mode, plus sign-in and sync through the window against a local stack (e2e drivers) |
 | e2e and pgTAP | — | B (no Docker) | — | — |
+
+## Addendum: Rust sign-in and sync (later the same day)
+
+With Docker running, the local Supabase stack was started. Its one pending migration (`20261115000000`) was applied
+with `supabase migration up --local`, which leaves local data in place, unlike `db reset`. The Rust client then
+gained:
+- emailed-code sign-in
+- a DPAPI-sealed session
+- token refresh
+- first-sync generation adoption
+- an account panel in the Tauri app
+
+Everything was verified against that stack only (see `desktop-rust/README.md`, "Against a local Supabase stack"). No
+hosted project was touched.
+
+One defect was found and fixed in passing. The transport's plain-HTTP exception for a local stack compared URL
+prefixes, so `http://localhost.example.com` passed as loopback. It now compares the host exactly
+(`http::checked_base_url`, with tests). The impact was limited to the experimental client, which has no hosted
+configuration.

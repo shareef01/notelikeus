@@ -15,6 +15,8 @@ pub mod store;
 pub mod sync;
 
 #[cfg(feature = "http")]
+pub mod auth;
+#[cfg(feature = "http")]
 pub mod http;
 
 #[derive(Debug, thiserror::Error)]

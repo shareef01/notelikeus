@@ -123,3 +123,52 @@ fn dpapi_unwraps_what_it_wrapped_and_rejects_tampering() {
     blob[last] ^= 0xff;
     assert!(p.unprotect(&blob).is_err());
 }
+
+#[test]
+fn a_session_round_trips_sealed_and_cannot_be_read_as_account_data() {
+    use notelikeus_core::store::{Session, SessionVault};
+    let root = temp_root("session");
+    let p = protector();
+    let vault = SessionVault::open(&root, p.as_ref()).unwrap();
+    assert_eq!(vault.load().unwrap(), None);
+    let session = Session {
+        access_token: "access-token-abcdef".into(),
+        refresh_token: Some("refresh-token-123456".into()),
+        user_id: "9c1f7a3e-2b44-4d1a-9f6e-0c8b2d4e6a10".into(),
+        email: Some("someone@example.test".into()),
+        expires_at_ms: 1_000,
+    };
+    vault.save(&session).unwrap();
+    assert_eq!(SessionVault::open(&root, p.as_ref()).unwrap().load().unwrap(), Some(session.clone()));
+    let raw = fs::read(root.join("session.nlkr")).unwrap();
+    for secret in ["access-token", "refresh-token", "someone@example"] {
+        assert!(!raw.windows(secret.len()).any(|w| w == secret.as_bytes()), "{secret} on disk in plaintext");
+    }
+    assert!(!format!("{session:?}").contains("token"), "Debug must not print tokens");
+    // The same bytes placed where an account's state lives are refused, not parsed.
+    let store = Store::open(&root, "owner", p.as_ref()).unwrap();
+    fs::copy(root.join("session.nlkr"), store.state_path()).unwrap();
+    assert!(store.load().is_err());
+    vault.clear().unwrap();
+    vault.clear().unwrap();
+    assert_eq!(vault.load().unwrap(), None);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_missing_key_next_to_a_saved_session_is_refused() {
+    use notelikeus_core::store::{Session, SessionVault};
+    let root = temp_root("session-key-loss");
+    let p = PlaintextKeyProtectorForTests;
+    let session = Session {
+        access_token: "a".into(),
+        refresh_token: None,
+        user_id: "user-1".into(),
+        email: None,
+        expires_at_ms: 0,
+    };
+    SessionVault::open(&root, &p).unwrap().save(&session).unwrap();
+    fs::remove_file(root.join("data-key.protected")).unwrap();
+    assert!(matches!(SessionVault::open(&root, &p), Err(Error::KeyMissing(_))));
+    fs::remove_dir_all(root).unwrap();
+}
