@@ -26,6 +26,9 @@ pub const MAX_CONTENT_CHARS: usize = 100_000;
 pub struct SyncConfig {
     pub url: String,
     pub publishable_key: String,
+    /// The web app's Turnstile challenge page (`NLK_CAPTCHA_PAGE_URL`), which the hosted project
+    /// requires before it emails a code. None for a local stack, which has no captcha.
+    pub captcha_page_url: Option<String>,
 }
 
 impl SyncConfig {
@@ -36,7 +39,15 @@ impl SyncConfig {
         let url = std::env::var("NLK_SUPABASE_URL").ok().or(option_env!("NLK_SUPABASE_URL").map(str::to_string))?;
         let publishable_key =
             std::env::var("NLK_SUPABASE_KEY").ok().or(option_env!("NLK_SUPABASE_KEY").map(str::to_string))?;
-        (!url.trim().is_empty() && !publishable_key.trim().is_empty()).then_some(SyncConfig { url, publishable_key })
+        let captcha_page_url = std::env::var("NLK_CAPTCHA_PAGE_URL")
+            .ok()
+            .or(option_env!("NLK_CAPTCHA_PAGE_URL").map(str::to_string))
+            .filter(|page| !page.trim().is_empty());
+        (!url.trim().is_empty() && !publishable_key.trim().is_empty()).then_some(SyncConfig {
+            url,
+            publishable_key,
+            captcha_page_url,
+        })
     }
 }
 
@@ -286,11 +297,20 @@ impl NotesService {
     }
 
     /// Emails a sign-in code. The hosted project's verification check is not supported yet (see auth.rs).
-    pub fn request_code(&self, email: &str) -> Result<(), String> {
+    /// The challenge page to open before asking for a code, when this build's project needs one.
+    pub fn captcha_page_url(&self) -> Option<String> {
+        self.config.as_ref().and_then(|c| c.captcha_page_url.clone())
+    }
+
+    /// Emails a sign-in code. `captcha_token` is the Turnstile token when the project requires one.
+    pub fn request_code(&self, email: &str, captcha_token: Option<&str>) -> Result<(), String> {
         if !email.contains('@') {
             return Err("Enter your email address.".into());
         }
-        self.auth()?.request_email_code(email, None).map_err(auth_message)
+        if self.captcha_page_url().is_some() && captcha_token.is_none() {
+            return Err("Sign-in needs a quick security check before we can email a code. Try again.".into());
+        }
+        self.auth()?.request_email_code(email, captcha_token).map_err(auth_message)
     }
 
     pub fn verify_code(&mut self, email: &str, code: &str) -> Result<AccountView, String> {
@@ -502,8 +522,24 @@ mod tests {
         let mut service = open(&dir);
         let account = service.account();
         assert!(!account.sync_available && !account.signed_in);
-        assert!(service.request_code("someone@example.test").is_err());
+        assert!(service.request_code("someone@example.test", None).is_err());
         assert!(service.sync_now().is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_project_that_needs_the_security_check_never_asks_without_a_token() {
+        let dir = root("needs-captcha");
+        let config = SyncConfig {
+            // Port 9 (discard): if the check were skipped, the request would fail as a network error instead.
+            url: "http://127.0.0.1:9".into(),
+            publishable_key: "k".into(),
+            captcha_page_url: Some("https://notelikeus.pages.dev/captcha".into()),
+        };
+        let service = open_with(&dir, Some(config), Box::new(TestIds(1)));
+        assert_eq!(service.captcha_page_url().as_deref(), Some("https://notelikeus.pages.dev/captcha"));
+        let error = service.request_code("someone@example.test", None).unwrap_err();
+        assert!(error.contains("security check"), "{error}");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -526,7 +562,7 @@ mod tests {
     fn live_config() -> Option<SyncConfig> {
         let url = std::env::var("NLK_TEST_SUPABASE_URL").ok()?;
         assert!(url.starts_with("http://127.0.0.1:") || url.starts_with("http://localhost:"));
-        Some(SyncConfig { url, publishable_key: std::env::var("NLK_TEST_SUPABASE_KEY").ok()? })
+        Some(SyncConfig { url, publishable_key: std::env::var("NLK_TEST_SUPABASE_KEY").ok()?, captcha_page_url: None })
     }
 
     #[test]

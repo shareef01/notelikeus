@@ -18,6 +18,7 @@ notelikeus-core = { path = "../notelikeus-core", features = ["http"] }
 tauri = { version = "2", features = [] }
 serde.workspace = true
 serde_json.workspace = true
+tokio = { version = "1", features = ["sync", "time"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = ["Win32_UI_WindowsAndMessaging"] }

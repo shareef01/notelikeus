@@ -51,8 +51,14 @@ desktop-rust/
     error). It syncs on start, 3 s after typing stops, every minute and on focus. The editor is read-only during
     a sync, and the open note reloads if the sync changed it, so text typed over an old copy cannot be saved over
     another device's words.
-  - **Hosted sign-in is not possible yet:** the hosted project requires a Turnstile token, and this client cannot
-    show the challenge.
+  - **The security check** the hosted project requires (Turnstile, D30), via `captcha.rs`:
+    - **When:** with `NLK_CAPTCHA_PAGE_URL` set (the web app's `captcha.html`, the page the Kotlin release builds
+      use), "Send code" first opens that page in its own window with `?return=app&state=<random>`.
+    - **Handing back:** the page's final `notelikeus-captcha://token?…` navigation is blocked and read. The token
+      counts only with the matching state, as in the Android client.
+    - **Containment:** the window gets no app permissions, may only navigate within the page's own site, cancels
+      when closed and gives up after five minutes.
+    - **Without the setting** nothing changes, which is what a local stack (no captcha) expects.
 
 - **Tauri 2 app** (guest mode): a notes list with search, an editor that autosaves, pin, delete with Undo,
   keyboard shortcuts (Ctrl+N new, Ctrl+F search, Ctrl+S save now), light and dark themes from
@@ -107,19 +113,28 @@ measurement; the Kotlin app was not measured alongside it).
   - a real emailed-code sign-in works, with the code read from the local mail catcher
 - The app's service passes a live test: two installs sync one account, guest notes stay apart, and the sign-in
   survives a restart.
-- `e2e/drive-account.mjs` passes 12 checks through the real window: sign-in by emailed code, an empty account (no
-  guest notes merged in), a note synced and found in the database for that account only, still signed in after a
-  restart, and the guest notes back after sign-out.
+- `e2e/drive-account.mjs` passes 15 checks through the real window:
+  - the security check: the window opens first, then closes after handing back the token
+  - sign-in by emailed code
+  - an empty account (no guest notes merged in)
+  - "1 change waiting to sync" after a save
+  - a note synced and found in the database for that account only
+  - still signed in after a restart
+  - the guest notes back after sign-out
+- The security check was exercised with the web app's own `captcha.html`, built locally with Cloudflare's published
+  always-pass **test** site key (`1x00000000000000000000AA`). That covers the real Turnstile widget and the whole
+  hand-back. The local stack does not verify the token, and the production page and project were not used.
 
-Without the stack's variables these tests skip themselves, so CI runs 50 Rust tests either way.
+Without the stack's variables these tests skip themselves, so CI runs 53 Rust tests either way.
 
 ## Not done: parity gates before replacing Kotlin
 
 1. **UI parity.** No labels, colours, checklists, images, reminders, archive or trash, or settings. The interface
    is new and small. It does not yet reuse the web app's React components; that's the next step if the experiment
    continues.
-2. **Hosted sign-in**: the Turnstile challenge the hosted project requires. Sign-in, token refresh and the sealed
-   session work against a local stack.
+2. **Hosted sign-in, untried:** the security check is implemented and tested end to end with a test key, but it has
+   never run against `https://notelikeus.pages.dev/captcha` and the hosted project together. Try that with a
+   throwaway address, by a person, before relying on it.
 3. **First download**: `fetch_snapshot_page` with the unexplained-missing-ids guard. The engine only pulls with
    `pull_changes`, which is safe for an empty device but has no snapshot consistency check.
 4. **Attachments** (R2 Worker), **realtime** wake-ups, **reminders and the tray**, **backups** (v3 JSON, v4
@@ -150,6 +165,15 @@ NLK_SUPABASE_URL=http://127.0.0.1:54321 NLK_SUPABASE_KEY=<key> cargo run -p nlk-
 NLK_TEST_SUPABASE_URL=http://127.0.0.1:54321 NLK_TEST_SUPABASE_KEY=<key> NLK_TEST_MAILPIT_URL=http://127.0.0.1:54324 \
   cargo test --workspace --all-features -- --test-threads=1
 NLK_TEST_SUPABASE_URL=... NLK_TEST_SUPABASE_KEY=... NLK_TEST_MAILPIT_URL=... node crates/nlk-tauri/e2e/drive-account.mjs
+```
+
+To include the security check, serve the web app's challenge page with Turnstile's test key and point the driver at
+it:
+
+```
+cd web && VITE_TURNSTILE_SITE_KEY=1x00000000000000000000AA npx vite build --mode e2e --outDir <dir> --emptyOutDir
+npx vite preview --outDir <dir> --port 4174 --strictPort --host 127.0.0.1
+NLK_TEST_CAPTCHA_PAGE_URL=http://127.0.0.1:4174/captcha.html NLK_TEST_SUPABASE_URL=... node crates/nlk-tauri/e2e/drive-account.mjs
 ```
 
 The local stack sends at most two emails an hour. The emailed-code test and the account driver use one each, and
