@@ -10,11 +10,20 @@ import com.aus.notelikeus.data.local.model.NoteWithLabels
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
-class FakeNoteDao : NoteDao {
+/**
+ * @param labelDao when given, a note's labels are read through [crossRefs] from it, as Room joins
+ *   them. Without it every note reads as unlabelled, which most tests rely on.
+ */
+class FakeNoteDao(private val labelDao: FakeLabelDao? = null) : NoteDao {
     val notes = mutableMapOf<Long, NoteEntity>()
     val checklistItems = mutableMapOf<Long, MutableList<ChecklistItemEntity>>()
     val crossRefs = mutableListOf<NoteLabelCrossRef>()
     var nextId = 1L
+
+    private fun labelsOf(noteId: Long): List<LabelEntity> {
+        val labels = labelDao?.labels ?: return emptyList()
+        return crossRefs.filter { it.noteId == noteId }.mapNotNull { labels[it.labelId] }
+    }
 
     val updatedServerTimestamps = mutableMapOf<Long, Long>()
 
@@ -38,14 +47,14 @@ class FakeNoteDao : NoteDao {
         val note = notes[id] ?: return null
         return NoteWithLabels(
             note = note,
-            labels = emptyList(), // Not fully implemented for fake
+            labels = labelsOf(id),
             checklist = checklistItems[id] ?: emptyList()
         )
     }
 
     override suspend fun getNoteEntityById(id: Long): NoteEntity? = notes[id]
 
-    override suspend fun getLabelsForNote(noteId: Long): List<LabelEntity> = emptyList()
+    override suspend fun getLabelsForNote(noteId: Long): List<LabelEntity> = labelsOf(noteId)
 
     override suspend fun getChecklistItemsForNote(noteId: Long): List<ChecklistItemEntity> = checklistItems[noteId] ?: emptyList()
 
@@ -58,7 +67,7 @@ class FakeNoteDao : NoteDao {
     override suspend fun getAllNotesForBackup(): List<NoteWithLabels> {
         onGetAllNotesForBackup?.invoke()
         return notes.values.map { note ->
-            NoteWithLabels(note, emptyList(), checklistItems[note.id] ?: emptyList())
+            NoteWithLabels(note, labelsOf(note.id), checklistItems[note.id] ?: emptyList())
         }
     }
 

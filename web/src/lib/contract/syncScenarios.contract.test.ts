@@ -121,18 +121,52 @@ import { pullIncrementalChanges } from '@/lib/supabase/supabaseSyncEngine';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
+import { labelFromName } from '@/types/label';
 import { createEmptyNote, type Note } from '@/types/note';
 
-type Change = null | 'delete' | { edit: string } | { create: { title: string; content: string } };
+interface NoteSpec {
+  title: string;
+  content: string;
+  labels?: string[];
+  checklist?: Array<{ text: string; isChecked: boolean }>;
+}
+interface ChangeSpec {
+  note?: number;
+  delete?: boolean;
+  edit?: string;
+  labels?: string[];
+  check?: string;
+  create?: { title: string; content: string };
+}
+type Change = null | 'delete' | ChangeSpec | ChangeSpec[];
 interface Scenarios {
-  synced: { title: string; content: string };
+  synced: NoteSpec[];
   orders: string[];
-  cases: Array<{ name: string; local: Change; elsewhere: Change; expected: { device: string[]; cloud: string[] } }>;
+  cases: Array<{
+    name: string;
+    synced?: NoteSpec[];
+    local: Change;
+    elsewhere: Change;
+    expected: { device: string[]; cloud: string[] };
+  }>;
 }
 
 const fixture = readContractFixture<Scenarios>('sync/scenarios.json');
-const label = (n: { title?: string; content?: string }) => `${n.title ?? ''}: ${n.content ?? ''}`;
-const cloudState = () => [...rows.values()].map(label).sort();
+const changes = (change: Change): ChangeSpec[] =>
+  change == null ? [] : change === 'delete' ? [{ delete: true }] : Array.isArray(change) ? change : [change];
+
+interface Labelled {
+  title?: string;
+  content?: string;
+  labels?: Array<{ name: string }>;
+  checklist?: Array<{ text: string; isChecked: boolean; position: number }>;
+}
+/** A note as the fixture writes it: `title: content #label… [x] item…`. */
+const label = (n: Labelled) =>
+  `${n.title ?? ''}: ${n.content ?? ''}` +
+  (n.labels ?? []).map((l) => l.name).sort().map((name) => ` #${name}`).join('') +
+  [...(n.checklist ?? [])].sort((a, b) => a.position - b.position).map((i) => ` ${i.isChecked ? '[x]' : '[ ]'} ${i.text}`).join('');
+const cloudState = () => [...rows.values()].map((row) => label(row as unknown as Labelled)).sort();
 
 async function deviceState(): Promise<{ stored: string[]; shown: string[] }> {
   const isDeleted = useTombstoneStore.getState().isDeleted;
@@ -141,28 +175,50 @@ async function deviceState(): Promise<{ stored: string[]; shown: string[] }> {
   return { stored, shown };
 }
 
-/** The device and the cloud agree on one note, as after a completed sync. */
-async function seedSynced(): Promise<Note> {
-  const note = { ...createEmptyNote({ id: '1', localId: 1, title: fixture.synced.title, content: fixture.synced.content }), timestamp: 50 };
-  server.apply_note_change(noteToSupabaseRpcArgs(note, null, 0) as unknown as Args);
-  const synced = supabaseNoteToNote(rows.get('1')!);
-  await putNote(USER, synced);
-  useNotesStore.getState().setNotes([synced]);
-  await saveRevisionState(USER, { noteRevisions: { '1': rows.get('1')!.revision! }, lastRemoteRevision: seq, knownCloudIds: ['1'] });
-  return synced;
+/** The device and the cloud agree on these notes (ids "1", "2", …), as after a completed sync. */
+async function seedSynced(specs: NoteSpec[]): Promise<void> {
+  const synced = specs.map((spec, index) => {
+    const id = String(index + 1);
+    const note: Note = {
+      ...createEmptyNote({ id, localId: index + 1, title: spec.title, content: spec.content }),
+      labels: (spec.labels ?? []).map((name) => labelFromName(name)),
+      checklist: (spec.checklist ?? []).map((item, position) => ({ id: `${id}-${position}`, position, ...item })),
+      timestamp: 50,
+    };
+    server.apply_note_change(noteToSupabaseRpcArgs(note, null, 0) as unknown as Args);
+    return supabaseNoteToNote(rows.get(id)!);
+  });
+  for (const note of synced) await putNote(USER, note);
+  useNotesStore.getState().setNotes(synced);
+  await saveRevisionState(USER, {
+    noteRevisions: Object.fromEntries(synced.map((n) => [n.id, rows.get(n.id)!.revision!])),
+    lastRemoteRevision: seq,
+    knownCloudIds: synced.map((n) => n.id),
+  });
 }
 
-async function actOffline(change: Change, synced: Note): Promise<void> {
-  if (change == null) return;
+async function actOffline(change: Change): Promise<void> {
   online = false;
   try {
-    if (change === 'delete') {
-      // Offline, the cloud half fails; the local delete and its tombstone stand, which is the point.
-      await removeNote('1').catch(() => {});
-    } else if ('edit' in change) {
-      await saveNote({ ...synced, content: change.edit, timestamp: synced.timestamp + 100 });
-    } else {
-      await saveNote({ ...createEmptyNote({ id: '2', localId: 2, ...change.create }), timestamp: synced.timestamp + 200 });
+    for (const [k, spec] of changes(change).entries()) {
+      if (spec.create) {
+        await saveNote({ ...createEmptyNote({ id: String(100 + k), localId: 100 + k, ...spec.create }), timestamp: 250 });
+        continue;
+      }
+      const id = String(spec.note ?? 1);
+      if (spec.delete) {
+        // Offline, the cloud half fails; the local delete and its tombstone stand, which is the point.
+        await removeNote(id).catch(() => {});
+        continue;
+      }
+      const current = useNotesStore.getState().notes.find((n) => n.id === id)!;
+      await saveNote({
+        ...current,
+        content: spec.edit ?? current.content,
+        labels: spec.labels ? spec.labels.map((name) => labelFromName(name)) : current.labels,
+        checklist: current.checklist.map((item) => (item.text === spec.check ? { ...item, isChecked: true } : item)),
+        timestamp: current.timestamp + 100,
+      });
     }
   } finally {
     online = true;
@@ -171,13 +227,24 @@ async function actOffline(change: Change, synced: Note): Promise<void> {
 
 /** Another device writes through the server. */
 function actElsewhere(change: Change): void {
-  if (change == null) return;
-  const row = rows.get('1')!;
-  if (change === 'delete') {
-    rows.delete('1');
-    tombstones.set('1', { revision: ++seq, deleted_at: 8_000 });
-  } else if ('edit' in change) {
-    rows.set('1', { ...row, content: change.edit, client_timestamp: (row.client_timestamp ?? 0) + 1, revision: ++seq, server_updated_at: 1_000_000 + seq });
+  for (const spec of changes(change)) {
+    const id = String(spec.note ?? 1);
+    const row = rows.get(id)!;
+    if (spec.delete) {
+      rows.delete(id);
+      tombstones.set(id, { revision: ++seq, deleted_at: 8_000 });
+      continue;
+    }
+    const checklist = (row.checklist ?? []) as Array<{ text: string; isChecked: boolean; position: number }>;
+    rows.set(id, {
+      ...row,
+      content: spec.edit ?? row.content,
+      labels: spec.labels ? spec.labels.map((name) => ({ name })) : row.labels,
+      checklist: checklist.map((item) => (item.text === spec.check ? { ...item, isChecked: true } : item)),
+      client_timestamp: (row.client_timestamp ?? 0) + 1,
+      revision: ++seq,
+      server_updated_at: 1_000_000 + seq,
+    } as SupabaseNotePayload);
   }
 }
 
@@ -211,8 +278,8 @@ describe('contracts/sync/scenarios.json on the web engine', () => {
   for (const scenario of fixture.cases) {
     for (const order of fixture.orders) {
       it(`${scenario.name} [${order}]`, async () => {
-        const synced = await seedSynced();
-        await actOffline(scenario.local, synced);
+        await seedSynced(scenario.synced ?? fixture.synced);
+        await actOffline(scenario.local);
         actElsewhere(scenario.elsewhere);
 
         if (order === 'pull-first') {

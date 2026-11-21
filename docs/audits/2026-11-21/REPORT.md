@@ -158,6 +158,9 @@ were fixed before the first commit. There is still no sign-in or sync in the win
    *Done later the same day:* `contracts/sync/scenarios.json` has 10 cases. Kotlin, web and Rust each run it, and all
    three reach every end state, with web and Rust checking both orders. The risk now is the fixture's coverage:
    it has one note, one other device and no attachments.
+   *Widened afterwards:* 17 cases, now including labels and checklists (changes elsewhere, the same tick on both
+   devices, different ticks on each) and two notes changing at once. All three engines still agree. Still not
+   covered: attachments, pin/colour/archive-only changes, reminders, and more than one other device.
 2. Everything already listed in `REMAINING_WORK.md` §2 and §3 (FU-6, ENV-1, device checks).
 
 ## Verification matrix

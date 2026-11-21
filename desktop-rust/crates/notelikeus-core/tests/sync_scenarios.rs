@@ -363,6 +363,63 @@ fn a_push_never_moves_the_pull_cursor() {
     assert!(b.contents().contains(&"from a: 1".to_string()));
 }
 
+/// A note as `contracts/sync/scenarios.json` writes it: `title: content #label… [x] item…`.
+fn scenario_label(note: &notelikeus_core::model::Note) -> String {
+    let mut out = format!("{}: {}", note.title, note.content);
+    let mut labels = note.labels.clone();
+    labels.sort();
+    for label in labels {
+        out.push_str(&format!(" #{label}"));
+    }
+    let mut items = note.checklist.clone();
+    items.sort_by_key(|i| i.position);
+    for item in items {
+        out.push_str(if item.is_checked { " [x] " } else { " [ ] " });
+        out.push_str(&item.text);
+    }
+    out
+}
+
+/// A scenario change, normalised: null, "delete", one object or a list of objects.
+fn changes(value: &serde_json::Value) -> Vec<serde_json::Value> {
+    match value {
+        serde_json::Value::Null => Vec::new(),
+        serde_json::Value::String(s) if s == "delete" => vec![serde_json::json!({ "delete": true })],
+        serde_json::Value::Array(list) => list.clone(),
+        other => vec![other.clone()],
+    }
+}
+
+/// Applies one change object to `device`; `ids` maps the 1-based `note` index to note ids.
+fn apply_change(device: &mut Device, ids: &[String], change: &serde_json::Value) {
+    if let Some(new) = change.get("create") {
+        device.create(new["title"].as_str().unwrap(), new["content"].as_str().unwrap());
+        return;
+    }
+    let index = change.get("note").and_then(|n| n.as_u64()).unwrap_or(1) as usize;
+    let id = ids[index - 1].clone();
+    if change.get("delete").and_then(|d| d.as_bool()) == Some(true) {
+        device.delete(&id);
+        return;
+    }
+    device.clock += 10;
+    let now = device.clock;
+    sync::edit_note(&mut device.state, &id, now, |note| {
+        if let Some(words) = change.get("edit").and_then(|v| v.as_str()) {
+            note.content = words.to_string();
+        }
+        if let Some(labels) = change.get("labels").and_then(|v| v.as_array()) {
+            note.labels = labels.iter().map(|l| l.as_str().unwrap().to_string()).collect();
+        }
+        if let Some(text) = change.get("check").and_then(|v| v.as_str()) {
+            for item in note.checklist.iter_mut().filter(|i| i.text == text) {
+                item.is_checked = true;
+            }
+        }
+    })
+    .unwrap();
+}
+
 /// `contracts/sync/scenarios.json`: the end states every engine must reach, in both orders.
 #[test]
 fn shared_sync_scenarios_reach_their_end_states_in_both_orders() {
@@ -372,36 +429,47 @@ fn shared_sync_scenarios_reach_their_end_states_in_both_orders() {
     }
     let text = std::fs::read_to_string(dir.join("contracts/sync/scenarios.json")).unwrap();
     let fixture: serde_json::Value = serde_json::from_str(&text).unwrap();
-    let (title, synced) =
-        (fixture["synced"]["title"].as_str().unwrap(), fixture["synced"]["content"].as_str().unwrap());
     let strings = |v: &serde_json::Value| -> Vec<String> {
         v.as_array().unwrap().iter().map(|s| s.as_str().unwrap().to_string()).collect()
     };
 
     let mut mismatches = Vec::new();
     for case in fixture["cases"].as_array().unwrap() {
+        let synced = case.get("synced").unwrap_or(&fixture["synced"]).as_array().unwrap();
         for order in fixture["orders"].as_array().unwrap() {
             let order = order.as_str().unwrap();
             let s = server();
             let mut device = Device::new(&s, 1_000);
             let mut other = Device::new(&s, 50_000);
-            let id = device.create(title, synced);
+            let ids: Vec<String> = synced
+                .iter()
+                .map(|note| {
+                    sync::create_note(&mut device.state, &mut Ids(&mut device.clock), |n| {
+                        n.title = note["title"].as_str().unwrap().into();
+                        n.content = note["content"].as_str().unwrap().into();
+                        n.labels = note.get("labels").map(&strings).unwrap_or_default();
+                        if let Some(items) = note.get("checklist").and_then(|c| c.as_array()) {
+                            n.checklist = items
+                                .iter()
+                                .enumerate()
+                                .map(|(position, item)| notelikeus_core::model::ChecklistItem {
+                                    text: item["text"].as_str().unwrap().into(),
+                                    is_checked: item["isChecked"].as_bool().unwrap(),
+                                    position: position as i64,
+                                })
+                                .collect();
+                        }
+                    })
+                })
+                .collect();
             device.sync().unwrap();
             other.sync().unwrap();
 
-            let local = &case["local"];
-            if local == "delete" {
-                device.delete(&id);
-            } else if let Some(words) = local.get("edit").and_then(|v| v.as_str()) {
-                device.edit(&id, words);
-            } else if let Some(new) = local.get("create") {
-                device.create(new["title"].as_str().unwrap(), new["content"].as_str().unwrap());
+            for change in changes(&case["local"]) {
+                apply_change(&mut device, &ids, &change);
             }
-            let elsewhere = &case["elsewhere"];
-            if elsewhere == "delete" {
-                other.delete(&id);
-            } else if let Some(words) = elsewhere.get("edit").and_then(|v| v.as_str()) {
-                other.edit(&id, words);
+            for change in changes(&case["elsewhere"]) {
+                apply_change(&mut other, &ids, &change);
             }
             other.sync().unwrap();
 
@@ -417,13 +485,15 @@ fn shared_sync_scenarios_reach_their_end_states_in_both_orders() {
                 other => panic!("unknown order {other}"),
             }
 
+            let mut on_device: Vec<String> = device.state.notes.values().map(scenario_label).collect();
+            on_device.sort();
+            let mut in_cloud: Vec<String> = s.borrow().rows.values().map(|r| scenario_label(&r.to_note())).collect();
+            in_cloud.sort();
             let (want_device, want_cloud) = (strings(&case["expected"]["device"]), strings(&case["expected"]["cloud"]));
-            if device.contents() != want_device || cloud_contents(&s) != want_cloud {
+            if on_device != want_device || in_cloud != want_cloud {
                 mismatches.push(format!(
-                    "{} [{order}]: device {:?} (want {want_device:?}), cloud {:?} (want {want_cloud:?})",
-                    case["name"],
-                    device.contents(),
-                    cloud_contents(&s)
+                    "{} [{order}]: device {on_device:?} (want {want_device:?}), cloud {in_cloud:?} (want {want_cloud:?})",
+                    case["name"]
                 ));
             }
         }
