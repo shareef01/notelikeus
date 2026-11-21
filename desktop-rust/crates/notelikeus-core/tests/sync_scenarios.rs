@@ -362,3 +362,71 @@ fn a_push_never_moves_the_pull_cursor() {
     sync::pull_only(&mut b.state, &mut Link(&s), &mut Ids(&mut clock)).unwrap();
     assert!(b.contents().contains(&"from a: 1".to_string()));
 }
+
+/// `contracts/sync/scenarios.json`: the end states every engine must reach, in both orders.
+#[test]
+fn shared_sync_scenarios_reach_their_end_states_in_both_orders() {
+    let mut dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    while !dir.join("contracts").join("README.md").exists() {
+        assert!(dir.pop(), "contracts/ not found");
+    }
+    let text = std::fs::read_to_string(dir.join("contracts/sync/scenarios.json")).unwrap();
+    let fixture: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let (title, synced) =
+        (fixture["synced"]["title"].as_str().unwrap(), fixture["synced"]["content"].as_str().unwrap());
+    let strings = |v: &serde_json::Value| -> Vec<String> {
+        v.as_array().unwrap().iter().map(|s| s.as_str().unwrap().to_string()).collect()
+    };
+
+    let mut mismatches = Vec::new();
+    for case in fixture["cases"].as_array().unwrap() {
+        for order in fixture["orders"].as_array().unwrap() {
+            let order = order.as_str().unwrap();
+            let s = server();
+            let mut device = Device::new(&s, 1_000);
+            let mut other = Device::new(&s, 50_000);
+            let id = device.create(title, synced);
+            device.sync().unwrap();
+            other.sync().unwrap();
+
+            let local = &case["local"];
+            if local == "delete" {
+                device.delete(&id);
+            } else if let Some(words) = local.get("edit").and_then(|v| v.as_str()) {
+                device.edit(&id, words);
+            } else if let Some(new) = local.get("create") {
+                device.create(new["title"].as_str().unwrap(), new["content"].as_str().unwrap());
+            }
+            let elsewhere = &case["elsewhere"];
+            if elsewhere == "delete" {
+                other.delete(&id);
+            } else if let Some(words) = elsewhere.get("edit").and_then(|v| v.as_str()) {
+                other.edit(&id, words);
+            }
+            other.sync().unwrap();
+
+            let mut clock = device.clock;
+            match order {
+                "push-first" => {
+                    sync::sync(&mut device.state, &mut Link(&s), &mut Ids(&mut clock)).unwrap();
+                }
+                "pull-first" => {
+                    sync::pull_only(&mut device.state, &mut Link(&s), &mut Ids(&mut clock)).unwrap();
+                    sync::sync(&mut device.state, &mut Link(&s), &mut Ids(&mut clock)).unwrap();
+                }
+                other => panic!("unknown order {other}"),
+            }
+
+            let (want_device, want_cloud) = (strings(&case["expected"]["device"]), strings(&case["expected"]["cloud"]));
+            if device.contents() != want_device || cloud_contents(&s) != want_cloud {
+                mismatches.push(format!(
+                    "{} [{order}]: device {:?} (want {want_device:?}), cloud {:?} (want {want_cloud:?})",
+                    case["name"],
+                    device.contents(),
+                    cloud_contents(&s)
+                ));
+            }
+        }
+    }
+    assert!(mismatches.is_empty(), "{mismatches:#?}");
+}

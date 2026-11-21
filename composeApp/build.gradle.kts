@@ -169,6 +169,11 @@ tasks.withType<Test>().configureEach {
         showCauses = true
         showStackTraces = true
     }
+    // The contract tests read ../contracts at run time. Declared as an input, a fixture change reruns
+    // them instead of the task being reported up to date with results from the old fixture.
+    inputs.dir(rootProject.layout.projectDirectory.dir("contracts"))
+        .withPropertyName("contractFixtures")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 /**

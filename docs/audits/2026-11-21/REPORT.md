@@ -89,6 +89,12 @@ before the edit is pushed". It failed before the fix (`expected [ 'offline edit'
 Rust core's `TombstoneOrigin` does. The row-presence rule is the same discriminator the Kotlin engine uses, and it
 is sufficient today. An explicit field would stop the next reader from repeating the "deleted here" assumption.
 
+*Decided later the same day: not done.* `contracts/sync/scenarios.json` now guards the rule behaviourally:
+putting the old `flushOne` line back fails its download-first run of "an offline edit of a note deleted elsewhere
+survives as a copy". A stored origin would need every one of the six `markDeleted` callers to tag correctly, and
+several of them infer a deletion from the cloud. One mislabelled caller could reintroduce the bug the field was
+meant to prevent.
+
 ## Changes (file by file)
 
 | File | Change |
@@ -149,6 +155,9 @@ were fixed before the first commit. There is still no sign-in or sync in the win
    `offlineEditDurability.test.ts`. A shared scenario fixture (inputs plus expected end state) that every engine
    runs would have caught AUD-I01. That's the highest-value next step, and the Rust scenario tests are a starting
    point.
+   *Done later the same day:* `contracts/sync/scenarios.json` has 10 cases. Kotlin, web and Rust each run it, and all
+   three reach every end state, with web and Rust checking both orders. The risk now is the fixture's coverage:
+   it has one note, one other device and no attachments.
 2. Everything already listed in `REMAINING_WORK.md` §2 and §3 (FU-6, ENV-1, device checks).
 
 ## Verification matrix
