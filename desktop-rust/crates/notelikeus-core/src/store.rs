@@ -61,6 +61,11 @@ pub struct LocalState {
     pub last_remote_revision: i64,
     pub wipe_generation: i64,
     pub push_seq: u64,
+    /// Labels created on this device, used or not, like the web app's label registry. The cloud only
+    /// stores labels on notes, so this list is local; a label in use is known from its notes anyway.
+    /// Defaulted, so state written before it existed still opens.
+    #[serde(default)]
+    pub label_registry: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -55,9 +55,19 @@ where
     }
 }
 
-/// Whether a note matches the search box: every word appears in the title or the body, ignoring case.
+/// Whether a note matches the search box: every word appears in the title, the body, a checklist item or
+/// a label, ignoring case.
 pub fn matches(note: &NoteView, query: &str) -> bool {
-    let haystack = format!("{}\n{}", note.title, note.content).to_lowercase();
+    let mut haystack = format!("{}\n{}", note.title, note.content);
+    for item in &note.checklist {
+        haystack.push('\n');
+        haystack.push_str(&item.text);
+    }
+    for label in &note.labels {
+        haystack.push('\n');
+        haystack.push_str(label);
+    }
+    let haystack = haystack.to_lowercase();
     query.split_whitespace().all(|word| haystack.contains(&word.to_lowercase()))
 }
 
@@ -90,7 +100,10 @@ pub fn masonry<T>(cards: Vec<T>, columns: usize, height: impl Fn(&T) -> usize) -
 
 /// The estimated height of a note's card, for [`masonry`].
 pub fn card_height(note: &NoteView) -> usize {
-    estimated_height(&note.title, &preview(&note.content))
+    // A checklist card shows up to six items and a "+ n more" line; labels take one row of chips.
+    let items = note.checklist.len().min(6) + usize::from(note.checklist.len() > 6);
+    let labels = usize::from(!note.labels.is_empty()) * 2;
+    estimated_height(&note.title, &preview(&note.content)) + items + labels
 }
 
 #[cfg(test)]
@@ -106,6 +119,11 @@ mod tests {
             timestamp: 0,
             is_pinned: false,
             unsynced: true,
+            color: 0,
+            is_archived: false,
+            is_trashed: false,
+            labels: Vec::new(),
+            checklist: Vec::new(),
         }
     }
 
@@ -138,6 +156,17 @@ mod tests {
         assert!(matches(&groceries, "MILK groceries"));
         assert!(matches(&groceries, "  eggs   oat "));
         assert!(!matches(&groceries, "milk bread"));
+    }
+
+    #[test]
+    fn search_looks_in_checklist_items_and_labels() {
+        let mut list = note("Weekend", "");
+        list.checklist =
+            vec![notelikeus_app::ChecklistItem { text: "Call plumber".into(), is_checked: false, position: 0 }];
+        list.labels = vec!["Home".into()];
+        assert!(matches(&list, "plumber"));
+        assert!(matches(&list, "home weekend"));
+        assert!(!matches(&list, "office"));
     }
 
     #[test]

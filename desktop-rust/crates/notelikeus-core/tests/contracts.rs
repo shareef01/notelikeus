@@ -156,3 +156,29 @@ fn a_conflicted_copy_keeps_the_words_under_a_new_id() {
     note.title = "x".repeat(2000);
     assert_eq!(conflict::conflicted_copy_of(&note, 8).title.encode_utf16().count(), 2000);
 }
+
+#[test]
+fn the_note_palette_matches_every_client() {
+    use notelikeus_core::palette::{NOTE_COLORS, for_theme, index_of, to_store};
+    let fixture = fixture("design/note-colors.json");
+    let parse = |v: &Value| u32::from_str_radix(v.as_str().unwrap().trim_start_matches("0x"), 16).unwrap() as i32;
+    let colors = fixture["colors"].as_array().unwrap();
+    assert_eq!(colors.len(), NOTE_COLORS.len());
+    for (i, entry) in colors.iter().enumerate() {
+        assert_eq!(entry["index"], i);
+        let ours = NOTE_COLORS[i];
+        assert_eq!(ours.keyword, entry["keyword"].as_str().unwrap(), "keyword {i}");
+        assert_eq!(ours.name, entry["name"].as_str().unwrap(), "name {i}");
+        assert_eq!(ours.light, parse(&entry["light"]), "light {i}");
+        assert_eq!(ours.dark, parse(&entry["dark"]), "dark {i}");
+    }
+    assert_eq!(parse(&fixture["noColor"]), 0);
+    // One stored value, shown as the active theme's counterpart; stored as the variant on screen.
+    let green = NOTE_COLORS[4];
+    assert_eq!(for_theme(green.light, true), green.dark);
+    assert_eq!(for_theme(green.dark, false), green.light);
+    assert_eq!(index_of(green.dark), Some(4));
+    assert_eq!(to_store(4, true), green.dark);
+    assert_eq!(for_theme(0x12345678, true), 0x12345678, "a colour outside the palette is shown as stored");
+    assert_eq!(for_theme(0, true), 0);
+}

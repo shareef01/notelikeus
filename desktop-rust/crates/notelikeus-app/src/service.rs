@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use notelikeus_core::auth::{AuthClient, AuthError};
 use notelikeus_core::crypto::KeyProtector;
 use notelikeus_core::http::SupabaseTransport;
-use notelikeus_core::model::Note;
+use notelikeus_core::model::{ChecklistItem, Note};
 use notelikeus_core::store::{LocalState, Session, SessionVault, Store, TombstoneOrigin};
 use notelikeus_core::sync::{self, IdSource, SyncError, TransportError};
 use serde::Serialize;
@@ -63,6 +63,46 @@ pub struct NoteView {
     pub is_pinned: bool,
     /// Saved here but not confirmed by the cloud. Always true in guest mode, which never syncs.
     pub unsynced: bool,
+    /// The stored ARGB (see `notelikeus_core::palette`); 0 for no colour.
+    pub color: i32,
+    pub is_archived: bool,
+    pub is_trashed: bool,
+    pub labels: Vec<String>,
+    /// A note is text or a checklist: when this is non-empty, `content` is empty.
+    pub checklist: Vec<ChecklistItem>,
+}
+
+/// Which notes a view shows, as the web app's sidebar: Notes, Archive and Trash.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+pub enum Scope {
+    #[default]
+    Notes,
+    Archive,
+    Trash,
+}
+
+/// How many notes each view holds, for the sidebar.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct ScopeCounts {
+    pub notes: usize,
+    pub archive: usize,
+    pub trash: usize,
+}
+
+/// `validate_note_payload`'s limits on labels and checklists.
+pub const MAX_LABELS_PER_NOTE: usize = 100;
+pub const MAX_CHECKLIST_ITEMS: usize = 500;
+pub const MAX_LABEL_CHARS: usize = 2_000;
+
+/// The form two label names are compared in, as the Kotlin client compares them: trimmed, inner
+/// whitespace collapsed, lower case. "Work", " work " and "WORK" are one label.
+pub fn label_key(name: &str) -> String {
+    name.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// A label name as stored: trimmed, inner whitespace collapsed, case kept.
+fn tidy_label(name: &str) -> String {
+    name.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -202,7 +242,259 @@ impl NotesService {
             timestamp: note.timestamp,
             is_pinned: note.is_pinned,
             unsynced: self.state.pending.contains_key(&note.id),
+            color: note.color,
+            is_archived: note.is_archived,
+            is_trashed: note.is_trashed,
+            labels: note.labels.clone(),
+            checklist: note.checklist.clone(),
         }
+    }
+
+    fn in_scope(note: &Note, scope: Scope) -> bool {
+        match scope {
+            Scope::Notes => !note.is_trashed && !note.is_archived,
+            Scope::Archive => !note.is_trashed && note.is_archived,
+            Scope::Trash => note.is_trashed,
+        }
+    }
+
+    /// The notes one view shows: in Notes, pinned first; then most recently edited.
+    pub fn list_in(&self, scope: Scope) -> Vec<NoteView> {
+        let mut notes: Vec<&Note> = self.state.notes.values().filter(|n| Self::in_scope(n, scope)).collect();
+        notes.sort_by(|a, b| {
+            let pin = if scope == Scope::Notes { b.is_pinned.cmp(&a.is_pinned) } else { std::cmp::Ordering::Equal };
+            pin.then(b.timestamp.cmp(&a.timestamp)).then(b.id.cmp(&a.id))
+        });
+        notes.into_iter().map(|n| self.view(n)).collect()
+    }
+
+    pub fn counts(&self) -> ScopeCounts {
+        let mut counts = ScopeCounts::default();
+        for note in self.state.notes.values() {
+            if Self::in_scope(note, Scope::Trash) {
+                counts.trash += 1;
+            } else if Self::in_scope(note, Scope::Archive) {
+                counts.archive += 1;
+            } else {
+                counts.notes += 1;
+            }
+        }
+        counts
+    }
+
+    pub fn note(&self, id: &str) -> Option<NoteView> {
+        self.state.notes.get(id).map(|n| self.view(n))
+    }
+
+    /// Changes one note through the sync engine (so the change is queued for upload and re-stamped)
+    /// and saves, putting everything back if the save fails.
+    fn modify(&mut self, id: &str, change: impl FnOnce(&mut Note)) -> Result<NoteView, String> {
+        if !self.state.notes.contains_key(id) {
+            return Err("That note no longer exists.".into());
+        }
+        let before = self.state.clone();
+        let now = self.ids.now_millis();
+        sync::edit_note(&mut self.state, id, now, change).map_err(|e| e.to_string())?;
+        self.commit(before)?;
+        Ok(self.view(&self.state.notes[id]))
+    }
+
+    pub fn set_color(&mut self, id: &str, color: i32) -> Result<NoteView, String> {
+        match self.state.notes.get(id) {
+            Some(note) if note.color == color => Ok(self.view(note)),
+            _ => self.modify(id, |n| n.color = color),
+        }
+    }
+
+    pub fn set_archived(&mut self, id: &str, archived: bool) -> Result<NoteView, String> {
+        self.modify(id, |n| n.is_archived = archived)
+    }
+
+    /// Moving to the trash is an edit like any other: the note syncs as trashed and can come back.
+    pub fn move_to_trash(&mut self, id: &str) -> Result<NoteView, String> {
+        self.modify(id, |n| n.is_trashed = true)
+    }
+
+    pub fn restore_from_trash(&mut self, id: &str) -> Result<NoteView, String> {
+        self.modify(id, |n| n.is_trashed = false)
+    }
+
+    /// Deletes every note in the trash for good, in one save. Returns how many went.
+    pub fn empty_trash(&mut self) -> Result<usize, String> {
+        let trashed: Vec<String> = self.state.notes.values().filter(|n| n.is_trashed).map(|n| n.id.clone()).collect();
+        if trashed.is_empty() {
+            return Ok(0);
+        }
+        let before = self.state.clone();
+        let now = self.ids.now_millis();
+        for id in &trashed {
+            sync::delete_note(&mut self.state, id, now).map_err(|e| e.to_string())?;
+        }
+        self.commit(before)?;
+        Ok(trashed.len())
+    }
+
+    /// Every label: the registry and every label on a note, one per name (compared as [`label_key`]),
+    /// sorted ignoring case.
+    pub fn label_names(&self) -> Vec<String> {
+        let mut seen = std::collections::BTreeMap::new();
+        let on_notes = self.state.notes.values().filter(|n| !n.is_trashed).flat_map(|n| n.labels.iter());
+        for name in self.state.label_registry.iter().chain(on_notes) {
+            seen.entry(label_key(name)).or_insert_with(|| tidy_label(name));
+        }
+        seen.into_values().collect()
+    }
+
+    fn check_label(name: &str) -> Result<String, String> {
+        let name = tidy_label(name);
+        if name.is_empty() {
+            return Err("A label needs a name.".into());
+        }
+        if name.chars().count() > MAX_LABEL_CHARS {
+            return Err(format!("A label can be at most {MAX_LABEL_CHARS} characters."));
+        }
+        Ok(name)
+    }
+
+    /// Adds a label to the registry. A name that already exists (ignoring case and spacing) returns
+    /// the existing one rather than a near-duplicate.
+    pub fn create_label(&mut self, name: &str) -> Result<String, String> {
+        let name = Self::check_label(name)?;
+        if let Some(existing) = self.label_names().into_iter().find(|n| label_key(n) == label_key(&name)) {
+            if !self.state.label_registry.iter().any(|n| label_key(n) == label_key(&existing)) {
+                let before = self.state.clone();
+                self.state.label_registry.push(existing.clone());
+                self.commit(before)?;
+            }
+            return Ok(existing);
+        }
+        let before = self.state.clone();
+        self.state.label_registry.push(name.clone());
+        self.commit(before)?;
+        Ok(name)
+    }
+
+    /// Puts a label on a note, or takes it off.
+    pub fn set_note_label(&mut self, id: &str, name: &str, on: bool) -> Result<NoteView, String> {
+        let name = Self::check_label(name)?;
+        let key = label_key(&name);
+        let note = self.state.notes.get(id).ok_or("That note no longer exists.")?;
+        let has = note.labels.iter().any(|l| label_key(l) == key);
+        if has == on {
+            return Ok(self.view(note));
+        }
+        if on && note.labels.len() >= MAX_LABELS_PER_NOTE {
+            return Err(format!("A note can have at most {MAX_LABELS_PER_NOTE} labels."));
+        }
+        self.modify(id, |n| {
+            if on {
+                n.labels.push(name);
+            } else {
+                n.labels.retain(|l| label_key(l) != key);
+            }
+        })
+    }
+
+    /// Renames a label everywhere: the registry and every note carrying it (each such note syncs).
+    /// Renaming onto an existing label merges the two.
+    pub fn rename_label(&mut self, old: &str, new: &str) -> Result<(), String> {
+        let new = Self::check_label(new)?;
+        let (old_key, new_key) = (label_key(old), label_key(&new));
+        let before = self.state.clone();
+        let now = self.ids.now_millis();
+        let carrying: Vec<String> = self
+            .state
+            .notes
+            .values()
+            .filter(|n| n.labels.iter().any(|l| label_key(l) == old_key))
+            .map(|n| n.id.clone())
+            .collect();
+        for id in carrying {
+            sync::edit_note(&mut self.state, &id, now, |n| {
+                n.labels.retain(|l| label_key(l) != old_key && label_key(l) != new_key);
+                n.labels.push(new.clone());
+            })
+            .map_err(|e| e.to_string())?;
+        }
+        self.state.label_registry.retain(|l| label_key(l) != old_key && label_key(l) != new_key);
+        self.state.label_registry.push(new);
+        self.commit(before)
+    }
+
+    /// Deletes a label: off every note (each syncs) and out of the registry. The notes stay.
+    pub fn delete_label(&mut self, name: &str) -> Result<(), String> {
+        let key = label_key(name);
+        let before = self.state.clone();
+        let now = self.ids.now_millis();
+        let carrying: Vec<String> = self
+            .state
+            .notes
+            .values()
+            .filter(|n| n.labels.iter().any(|l| label_key(l) == key))
+            .map(|n| n.id.clone())
+            .collect();
+        for id in carrying {
+            sync::edit_note(&mut self.state, &id, now, |n| n.labels.retain(|l| label_key(l) != key))
+                .map_err(|e| e.to_string())?;
+        }
+        self.state.label_registry.retain(|l| label_key(l) != key);
+        self.commit(before)
+    }
+
+    /// Replaces a checklist note's items (the editor's ticks, edits, additions and removals).
+    pub fn set_checklist(&mut self, id: &str, items: Vec<ChecklistItem>) -> Result<NoteView, String> {
+        if items.len() > MAX_CHECKLIST_ITEMS {
+            return Err(format!("A checklist can have at most {MAX_CHECKLIST_ITEMS} items."));
+        }
+        if let Some(item) = items.iter().find(|i| i.text.chars().count() > MAX_CONTENT_CHARS) {
+            let start: String = item.text.chars().take(20).collect();
+            return Err(format!("A checklist item is longer than {MAX_CONTENT_CHARS} characters ({start}…)."));
+        }
+        match self.state.notes.get(id) {
+            Some(note) if note.checklist == items => Ok(self.view(note)),
+            _ => self.modify(id, |n| n.checklist = items),
+        }
+    }
+
+    /// Text to checklist, as the web editor converts: each non-empty line, trimmed, becomes an unticked
+    /// item; an empty note gets one empty item.
+    pub fn convert_to_checklist(&mut self, id: &str) -> Result<NoteView, String> {
+        let note = self.state.notes.get(id).ok_or("That note no longer exists.")?;
+        if !note.checklist.is_empty() {
+            return Ok(self.view(note));
+        }
+        let mut lines: Vec<String> =
+            note.content.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect();
+        if lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.truncate(MAX_CHECKLIST_ITEMS);
+        self.modify(id, move |n| {
+            n.content.clear();
+            n.checklist = lines
+                .into_iter()
+                .enumerate()
+                .map(|(position, text)| ChecklistItem { text, is_checked: false, position: position as i64 })
+                .collect();
+        })
+    }
+
+    /// Checklist to text: the item texts, trimmed, one per line. The ticks are not kept.
+    pub fn convert_to_text(&mut self, id: &str) -> Result<NoteView, String> {
+        let note = self.state.notes.get(id).ok_or("That note no longer exists.")?;
+        if note.checklist.is_empty() {
+            return Ok(self.view(note));
+        }
+        let mut items = note.checklist.clone();
+        items.sort_by_key(|i| i.position);
+        let content = items.iter().map(|i| i.text.trim()).collect::<Vec<_>>().join("\n");
+        if content.chars().count() > MAX_CONTENT_CHARS {
+            return Err(format!("The note is longer than {MAX_CONTENT_CHARS} characters."));
+        }
+        self.modify(id, move |n| {
+            n.checklist.clear();
+            n.content = content;
+        })
     }
 
     /// Pinned first, then most recently edited.
@@ -608,5 +900,145 @@ mod tests {
 
         std::fs::remove_dir_all(dir_a).unwrap();
         std::fs::remove_dir_all(dir_b).unwrap();
+    }
+
+    #[test]
+    fn views_count_notes_archive_and_trash_and_list_what_each_shows() {
+        let dir = root("scopes");
+        let mut service = open(&dir);
+        let a = service.create("Active", "").unwrap();
+        let b = service.create("Archived", "").unwrap();
+        let c = service.create("Trashed", "").unwrap();
+        service.set_archived(&b.id, true).unwrap();
+        service.move_to_trash(&c.id).unwrap();
+        assert_eq!(service.counts(), ScopeCounts { notes: 1, archive: 1, trash: 1 });
+        let titles = |s: &NotesService, scope| s.list_in(scope).into_iter().map(|n| n.title).collect::<Vec<_>>();
+        assert_eq!(titles(&service, Scope::Notes), ["Active"]);
+        assert_eq!(titles(&service, Scope::Archive), ["Archived"]);
+        assert_eq!(titles(&service, Scope::Trash), ["Trashed"]);
+        // Restored notes come back to where they were; trash wins over archive while trashed.
+        service.restore_from_trash(&c.id).unwrap();
+        service.move_to_trash(&b.id).unwrap();
+        assert_eq!(service.counts(), ScopeCounts { notes: 2, archive: 0, trash: 1 });
+        assert!(service.note(&b.id).unwrap().is_archived, "a trashed archived note keeps its archive flag");
+        let _ = a;
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn colour_archive_and_trash_survive_a_restart_and_are_queued_for_sync() {
+        let dir = root("flags-persist");
+        let mut service = open(&dir);
+        let note = service.create("Note", "words").unwrap();
+        let green = notelikeus_core::palette::to_store(4, false);
+        service.set_color(&note.id, green).unwrap();
+        service.set_archived(&note.id, true).unwrap();
+        drop(service);
+        let service = open(&dir);
+        let reopened = service.note(&note.id).unwrap();
+        assert_eq!((reopened.color, reopened.is_archived), (green, true));
+        assert!(reopened.unsynced);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn emptying_the_trash_deletes_only_trashed_notes_for_good() {
+        let dir = root("empty-trash");
+        let mut service = open(&dir);
+        let keep = service.create("Keep", "").unwrap();
+        for title in ["Gone 1", "Gone 2"] {
+            let n = service.create(title, "").unwrap();
+            service.move_to_trash(&n.id).unwrap();
+        }
+        assert_eq!(service.empty_trash().unwrap(), 2);
+        assert_eq!(service.counts(), ScopeCounts { notes: 1, archive: 0, trash: 0 });
+        assert!(service.note(&keep.id).is_some());
+        assert_eq!(open(&dir).counts().trash, 0, "on disk too");
+        assert_eq!(service.empty_trash().unwrap(), 0);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn labels_are_one_per_name_and_rename_and_delete_reach_every_note() {
+        let dir = root("labels");
+        let mut service = open(&dir);
+        assert_eq!(service.create_label("  Work  ").unwrap(), "Work");
+        assert_eq!(service.create_label("WORK").unwrap(), "Work", "the same name in another case is the same label");
+        assert!(service.create_label("   ").is_err());
+        service.create_label("Home").unwrap();
+        assert_eq!(service.label_names(), ["Home", "Work"]);
+
+        let a = service.create("A", "").unwrap();
+        let b = service.create("B", "").unwrap();
+        service.set_note_label(&a.id, "work", true).unwrap();
+        service.set_note_label(&b.id, "Work", true).unwrap();
+        service.set_note_label(&b.id, "Errands", true).unwrap();
+        assert_eq!(service.note(&b.id).unwrap().labels, ["Work", "Errands"]);
+        assert_eq!(service.label_names(), ["Errands", "Home", "Work"], "a label used on a note is known");
+
+        service.rename_label("Work", "Job").unwrap();
+        assert_eq!(service.note(&a.id).unwrap().labels, ["Job"]);
+        assert_eq!(service.label_names(), ["Errands", "Home", "Job"]);
+        // Renaming onto an existing label merges: no note ends up with it twice.
+        service.rename_label("Errands", "job").unwrap();
+        assert_eq!(service.note(&b.id).unwrap().labels, ["job"]);
+
+        service.delete_label("JOB").unwrap();
+        assert!(service.note(&a.id).unwrap().labels.is_empty());
+        assert!(service.note(&b.id).unwrap().labels.is_empty());
+        assert_eq!(service.label_names(), ["Home"]);
+        drop(service);
+        assert_eq!(open(&dir).label_names(), ["Home"], "the registry is saved");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_note_holds_at_most_the_servers_number_of_labels() {
+        let dir = root("label-limit");
+        let mut service = open(&dir);
+        let note = service.create("Many", "").unwrap();
+        for i in 0..MAX_LABELS_PER_NOTE {
+            service.set_note_label(&note.id, &format!("l{i}"), true).unwrap();
+        }
+        assert!(service.set_note_label(&note.id, "one too many", true).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn checklists_convert_both_ways_as_the_web_editor_does() {
+        let dir = root("checklist");
+        let mut service = open(&dir);
+        let note = service.create("Groceries", "  milk \n\n eggs\nbread  ").unwrap();
+        let list = service.convert_to_checklist(&note.id).unwrap();
+        assert_eq!(list.content, "");
+        let texts: Vec<_> = list.checklist.iter().map(|i| (i.text.as_str(), i.is_checked, i.position)).collect();
+        assert_eq!(texts, [("milk", false, 0), ("eggs", false, 1), ("bread", false, 2)]);
+
+        let mut items = list.checklist.clone();
+        items[1].is_checked = true;
+        items.push(ChecklistItem { text: "lemons".into(), is_checked: false, position: 3 });
+        let ticked = service.set_checklist(&note.id, items).unwrap();
+        assert_eq!(ticked.checklist.len(), 4);
+        assert!(ticked.checklist[1].is_checked);
+
+        let text = service.convert_to_text(&note.id).unwrap();
+        assert!(text.checklist.is_empty());
+        assert_eq!(text.content, "milk\neggs\nbread\nlemons", "ticks are not kept, order is");
+
+        let empty = service.create("Empty", "").unwrap();
+        let one = service.convert_to_checklist(&empty.id).unwrap();
+        assert_eq!(one.checklist.len(), 1, "an empty note becomes one empty item");
+        assert!(
+            service
+                .set_checklist(
+                    &note.id,
+                    vec![
+                        ChecklistItem { text: String::new(), is_checked: false, position: 0 };
+                        MAX_CHECKLIST_ITEMS + 1
+                    ]
+                )
+                .is_err()
+        );
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

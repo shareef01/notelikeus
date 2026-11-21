@@ -1,32 +1,52 @@
-//! Connects the window to the app logic: fills the grid, runs the editor (autosave, pin, delete with
-//! Undo), searches, and saves before anything that would lose an edit (closing the editor or the window,
-//! opening another note).
+//! Connects the window to the app logic: the views (Notes, Archive, Trash), the grid, the editor (autosave,
+//! pin, colour, labels, checklists, archive and trash with Undo, delete forever), Edit labels, and search.
+//! It saves before anything that would lose an edit: closing the editor or the window, opening another
+//! note, converting between text and checklist.
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-use notelikeus_app::{NoteView, NotesService};
-use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
+use notelikeus_app::{ChecklistItem, NoteView, NotesService, Scope, label_key};
+use notelikeus_core::palette;
+use slint::{Color, ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
 use crate::view;
-use crate::{AppWindow, CardColumn, NoteCard};
+use crate::{AppWindow, CardColumn, ChecklistLine, EditRow, LabelChoice, NoteCard, Swatch, View};
 
 const AUTOSAVE_AFTER: Duration = Duration::from_millis(400);
 const TOAST_FOR: Duration = Duration::from_secs(6);
+const CARD_LABELS: usize = 3;
+const CARD_ITEMS: usize = 6;
 
-/// The note in the editor: `None` until a draft's first save gives it an id.
+/// The note in the editor: `id` is `None` until a draft's first save gives it one.
 #[derive(Default)]
 struct Editing {
     id: Option<String>,
     dirty: bool,
+    /// The checklist as edited, for a checklist note (empty for text).
+    checklist: Vec<ChecklistItem>,
+    is_checklist: bool,
+}
+
+/// What the toast's Undo does.
+enum Undo {
+    Restore(String),
+    Unarchive(String),
+    Rearchive(String),
+}
+
+/// What the confirmation dialog will do when accepted.
+enum Confirm {
+    EmptyTrash,
+    DeleteForever(String),
 }
 
 #[derive(Default)]
 struct State {
     editing: Option<Editing>,
-    /// The note the toast's Undo brings back.
-    undo: Option<NoteView>,
+    undo: Option<Undo>,
+    confirm: Option<Confirm>,
 }
 
 pub struct Controller {
@@ -35,6 +55,46 @@ pub struct Controller {
     state: RefCell<State>,
     autosave: Timer,
     toast: Timer,
+}
+
+fn scope_of(view: View) -> Scope {
+    match view {
+        View::Notes => Scope::Notes,
+        View::Archive => Scope::Archive,
+        View::Trash => Scope::Trash,
+    }
+}
+
+fn view_of(note: &NoteView) -> View {
+    if note.is_trashed {
+        View::Trash
+    } else if note.is_archived {
+        View::Archive
+    } else {
+        View::Notes
+    }
+}
+
+fn argb(value: i32) -> Color {
+    Color::from_argb_encoded(value as u32)
+}
+
+fn model<T: Clone + 'static>(items: Vec<T>) -> ModelRc<T> {
+    ModelRc::new(VecModel::from(items))
+}
+
+/// Labels sorted as the web app shows them: by name, ignoring case.
+fn sorted_labels(labels: &[String]) -> Vec<String> {
+    let mut labels = labels.to_vec();
+    labels.sort_by_key(|l| label_key(l));
+    labels
+}
+
+/// Checklist items in the order the web app shows them: unticked first, then by position.
+fn sorted_items(items: &[ChecklistItem]) -> Vec<ChecklistItem> {
+    let mut items = items.to_vec();
+    items.sort_by_key(|i| (i.is_checked, i.position));
+    items
 }
 
 impl Controller {
@@ -47,47 +107,55 @@ impl Controller {
             autosave: Timer::default(),
             toast: Timer::default(),
         });
+        ui.set_swatches(model(
+            palette::NOTE_COLORS
+                .iter()
+                .map(|c| Swatch { name: c.name.into(), none: c.light == 0, light: argb(c.light), dark: argb(c.dark) })
+                .collect(),
+        ));
 
-        let on = |f: fn(&Controller)| {
-            let weak: Weak<Controller> = Rc::downgrade(&controller);
-            move || {
-                if let Some(c) = weak.upgrade() {
-                    f(&c);
-                }
-            }
-        };
-        ui.on_new_note(on(Controller::new_note));
-        ui.on_editor_edited(on(Controller::edited));
-        ui.on_close_editor(on(Controller::close_editor));
-        ui.on_toggle_pin(on(Controller::toggle_pin));
-        ui.on_delete_note(on(Controller::delete_note));
-        ui.on_toast_acted(on(Controller::undo_delete));
-        ui.on_autosave_due(on(Controller::save_now));
-        ui.on_toast_expired(on(Controller::toast_expired));
-        {
-            let weak = Rc::downgrade(&controller);
-            ui.on_open_note(move |id| {
-                if let Some(c) = weak.upgrade() {
-                    c.open_note(&id);
-                }
-            });
+        macro_rules! wire {
+            ($setter:ident, |$c:ident $(, $arg:ident)*| $body:expr) => {{
+                let weak: Weak<Controller> = Rc::downgrade(&controller);
+                ui.$setter(move |$($arg),*| {
+                    if let Some($c) = weak.upgrade() {
+                        $body;
+                    }
+                });
+            }};
         }
-        ui.on_columns_changed({
-            let weak = Rc::downgrade(&controller);
-            move |_| {
-                if let Some(c) = weak.upgrade() {
-                    c.refresh();
-                }
-            }
-        });
-        ui.on_query_edited({
-            let weak = Rc::downgrade(&controller);
-            move |_| {
-                if let Some(c) = weak.upgrade() {
-                    c.refresh();
-                }
-            }
-        });
+        wire!(on_new_note, |c| c.new_note());
+        wire!(on_open_note, |c, id| c.open_note(&id));
+        wire!(on_editor_edited, |c| c.edited());
+        wire!(on_close_editor, |c| c.close_editor());
+        wire!(on_toggle_pin, |c| c.toggle_pin());
+        wire!(on_archive_toggled, |c| c.toggle_archive());
+        wire!(on_trash_note, |c| c.trash_note());
+        wire!(on_restore_note, |c| c.restore_note());
+        wire!(on_delete_forever, |c| c.ask_delete_forever());
+        wire!(on_empty_trash, |c| c.ask_empty_trash());
+        wire!(on_confirm_accepted, |c| c.confirm_accepted());
+        wire!(on_confirm_cancelled, |c| c.confirm_cancelled());
+        wire!(on_view_selected, |c, view| c.select_view(view));
+        wire!(on_open_options, |c| c.open_options());
+        wire!(on_color_picked, |c, index, dark| c.pick_color(index as usize, dark));
+        wire!(on_label_toggled, |c, name| c.toggle_label(&name));
+        wire!(on_label_created, |c, name| c.create_label_for_note(&name));
+        wire!(on_item_edited, |c, position, text| c.item_edited(position as i64, &text));
+        wire!(on_item_toggled, |c, position| c.item_toggled(position as i64));
+        wire!(on_item_removed, |c, position| c.item_removed(position as i64));
+        wire!(on_item_added, |c| c.item_added());
+        wire!(on_to_checklist, |c| c.to_checklist());
+        wire!(on_to_text, |c| c.to_text());
+        wire!(on_open_labels, |c| c.open_labels());
+        wire!(on_labels_created, |c, name| c.labels_created(&name));
+        wire!(on_label_renamed, |c, old, new| c.label_renamed(&old, &new));
+        wire!(on_label_deleted, |c, name| c.label_deleted(&name));
+        wire!(on_toast_acted, |c| c.undo());
+        wire!(on_autosave_due, |c| c.save_now());
+        wire!(on_toast_expired, |c| c.toast_expired());
+        wire!(on_columns_changed, |c, _count| c.refresh());
+        wire!(on_query_edited, |c, _query| c.refresh());
         {
             let weak = Rc::downgrade(&controller);
             ui.window().on_close_requested(move || {
@@ -106,54 +174,129 @@ impl Controller {
         self.ui.upgrade()
     }
 
-    /// Rebuilds the grid from the store: search applied, pinned first, laid out in as many columns as fit.
+    fn editing_id(&self) -> Option<String> {
+        self.state.borrow().editing.as_ref().and_then(|e| e.id.clone())
+    }
+
+    fn card(note: &NoteView, now: &chrono::DateTime<chrono::Local>) -> NoteCard {
+        let labels = sorted_labels(&note.labels);
+        let items = sorted_items(&note.checklist);
+        NoteCard {
+            id: note.id.as_str().into(),
+            title: note.title.trim().into(),
+            preview: if note.checklist.is_empty() { view::preview(&note.content).into() } else { SharedString::new() },
+            time: view::card_time(note.timestamp, now).into(),
+            pinned: note.is_pinned,
+            has_color: note.color != 0,
+            color_light: argb(palette::for_theme(note.color, false)),
+            color_dark: argb(palette::for_theme(note.color, true)),
+            labels: model(labels.iter().take(CARD_LABELS).map(|l| SharedString::from(l.as_str())).collect()),
+            more_labels: labels.len().saturating_sub(CARD_LABELS) as i32,
+            checklist: model(
+                items
+                    .iter()
+                    .take(CARD_ITEMS)
+                    .map(|i| ChecklistLine { text: i.text.as_str().into(), checked: i.is_checked })
+                    .collect(),
+            ),
+            more_items: items.len().saturating_sub(CARD_ITEMS) as i32,
+        }
+    }
+
+    /// Rebuilds the grid and the sidebar counts: the selected view, search applied, laid out in as many
+    /// columns as fit.
     pub fn refresh(&self) {
         let Some(ui) = self.ui() else { return };
         let query = ui.get_query().to_string();
+        let service = self.service.borrow();
+        let counts = service.counts();
+        ui.set_count_notes(counts.notes as i32);
+        ui.set_count_archive(counts.archive as i32);
+        ui.set_count_trash(counts.trash as i32);
         let notes: Vec<NoteView> =
-            self.service.borrow().list().into_iter().filter(|n| view::matches(n, &query)).collect();
+            service.list_in(scope_of(ui.get_view())).into_iter().filter(|n| view::matches(n, &query)).collect();
+        drop(service);
         let now = chrono::Local::now();
+        let shown = notes.len();
         let columns = view::masonry(notes, ui.get_column_count().max(1) as usize, view::card_height)
             .into_iter()
-            .map(|column| {
-                let cards: Vec<NoteCard> = column
-                    .into_iter()
-                    .map(|n| NoteCard {
-                        id: n.id.as_str().into(),
-                        title: n.title.trim().into(),
-                        preview: view::preview(&n.content).into(),
-                        time: view::card_time(n.timestamp, &now).into(),
-                        pinned: n.is_pinned,
-                    })
-                    .collect();
-                CardColumn { cards: ModelRc::new(VecModel::from(cards)) }
-            })
+            .map(|column| CardColumn { cards: model(column.iter().map(|n| Self::card(n, &now)).collect()) })
             .collect::<Vec<_>>();
-        let shown: usize = columns.iter().map(|c| slint::Model::row_count(&c.cards)).sum();
         ui.set_note_count(shown as i32);
         ui.set_searching(!query.trim().is_empty());
-        ui.set_columns(ModelRc::new(VecModel::from(columns)));
+        ui.set_columns(model(columns));
+    }
+
+    pub fn select_view(&self, view: View) {
+        let Some(ui) = self.ui() else { return };
+        ui.set_view(view);
+        self.refresh();
+    }
+
+    fn saved_footer(timestamp: i64) -> SharedString {
+        format!("Saved on this device · {}", view::card_time(timestamp, &chrono::Local::now())).into()
+    }
+
+    /// Shows the editor's colour, labels, checklist and flags for `note` (everything but the title and
+    /// body text, which [`Controller::show_editor`] sets once so typing is never overwritten).
+    fn show_note_details(&self, ui: &AppWindow, note: &NoteView) {
+        ui.set_editor_mode(view_of(note));
+        ui.set_editor_pinned(note.is_pinned);
+        ui.set_editor_has_color(note.color != 0);
+        ui.set_editor_color_light(argb(palette::for_theme(note.color, false)));
+        ui.set_editor_color_dark(argb(palette::for_theme(note.color, true)));
+        ui.set_editor_color_index(palette::index_of(note.color).map_or(-1, |i| i as i32));
+        ui.set_editor_labels(model(
+            sorted_labels(&note.labels).iter().map(|l| SharedString::from(l.as_str())).collect(),
+        ));
+        ui.set_editor_footer(Self::saved_footer(note.timestamp));
+    }
+
+    fn show_rows(&self, ui: &AppWindow, focus: Option<i64>) {
+        let state = self.state.borrow();
+        let Some(editing) = state.editing.as_ref() else { return };
+        ui.set_editor_is_checklist(editing.is_checklist);
+        ui.set_editor_rows(model(
+            sorted_items(&editing.checklist)
+                .iter()
+                .map(|i| EditRow {
+                    position: i.position as i32,
+                    text: i.text.as_str().into(),
+                    checked: i.is_checked,
+                    focus: focus == Some(i.position),
+                })
+                .collect(),
+        ));
     }
 
     fn show_editor(&self, ui: &AppWindow, note: Option<&NoteView>) {
         ui.set_editor_title(note.map(|n| n.title.as_str()).unwrap_or_default().into());
         ui.set_editor_body(note.map(|n| n.content.as_str()).unwrap_or_default().into());
-        ui.set_editor_pinned(note.is_some_and(|n| n.is_pinned));
         ui.set_editor_saved_once(note.is_some());
-        ui.set_editor_footer(match note {
-            Some(n) => self.saved_footer(n.timestamp),
-            None => "Not saved yet".into(),
-        });
+        match note {
+            Some(n) => self.show_note_details(ui, n),
+            None => {
+                ui.set_editor_mode(View::Notes);
+                ui.set_editor_pinned(false);
+                ui.set_editor_has_color(false);
+                ui.set_editor_color_index(0);
+                ui.set_editor_labels(model(Vec::new()));
+                ui.set_editor_footer("Not saved yet".into());
+            }
+        }
+        self.show_rows(ui, None);
+        ui.set_options_open(false);
         ui.set_editor_open(true);
-    }
-
-    fn saved_footer(&self, timestamp: i64) -> SharedString {
-        format!("Saved on this device · {}", view::card_time(timestamp, &chrono::Local::now())).into()
     }
 
     pub fn new_note(&self) {
         self.save_now();
         let Some(ui) = self.ui() else { return };
+        if ui.get_view() != View::Notes {
+            // A new note lands in Notes, so show it there.
+            ui.set_view(View::Notes);
+            self.refresh();
+        }
         self.state.borrow_mut().editing = Some(Editing::default());
         self.show_editor(&ui, None);
     }
@@ -161,8 +304,13 @@ impl Controller {
     pub fn open_note(&self, id: &str) {
         self.save_now();
         let Some(ui) = self.ui() else { return };
-        let Some(note) = self.service.borrow().list().into_iter().find(|n| n.id == id) else { return };
-        self.state.borrow_mut().editing = Some(Editing { id: Some(note.id.clone()), dirty: false });
+        let Some(note) = self.service.borrow().note(id) else { return };
+        self.state.borrow_mut().editing = Some(Editing {
+            id: Some(note.id.clone()),
+            dirty: false,
+            is_checklist: !note.checklist.is_empty(),
+            checklist: note.checklist.clone(),
+        });
         self.show_editor(&ui, Some(&note));
     }
 
@@ -183,29 +331,37 @@ impl Controller {
         });
     }
 
-    /// Saves what the editor shows, if it changed. A draft becomes a note on its first words.
-    pub fn save_now(&self) {
+    /// Saves what the editor shows, if it changed. A draft becomes a note on its first words (or when
+    /// `force`, for a draft turned into a checklist before anything was typed).
+    fn save_editor(&self, force: bool) -> Option<NoteView> {
         self.autosave.stop();
-        let Some(ui) = self.ui() else { return };
-        let (id, dirty) = match self.state.borrow().editing.as_ref() {
-            Some(e) => (e.id.clone(), e.dirty),
-            None => return,
+        let ui = self.ui()?;
+        let (id, dirty, is_checklist, checklist) = {
+            let state = self.state.borrow();
+            let e = state.editing.as_ref()?;
+            (e.id.clone(), e.dirty, e.is_checklist, e.checklist.clone())
         };
-        if !dirty {
-            return;
+        if !dirty && !force {
+            return id.and_then(|id| self.service.borrow().note(&id));
         }
         let title = ui.get_editor_title().to_string();
-        let body = ui.get_editor_body().to_string();
+        let body = if is_checklist { String::new() } else { ui.get_editor_body().to_string() };
         let result = match &id {
-            None if title.trim().is_empty() && body.trim().is_empty() => {
+            None if !force && title.trim().is_empty() && body.trim().is_empty() => {
                 if let Some(e) = self.state.borrow_mut().editing.as_mut() {
                     e.dirty = false;
                 }
                 ui.set_editor_footer("Not saved yet".into());
-                return;
+                return None;
             }
             None => self.service.borrow_mut().create(&title, &body),
-            Some(id) => self.service.borrow_mut().update(id, &title, &body),
+            Some(id) => {
+                let updated = self.service.borrow_mut().update(id, &title, &body);
+                match updated {
+                    Ok(_) if is_checklist => self.service.borrow_mut().set_checklist(id, checklist),
+                    other => other,
+                }
+            }
         };
         match result {
             Ok(saved) => {
@@ -214,81 +370,367 @@ impl Controller {
                     e.dirty = false;
                 }
                 ui.set_editor_saved_once(true);
-                ui.set_editor_footer(self.saved_footer(saved.timestamp));
+                ui.set_editor_footer(Self::saved_footer(saved.timestamp));
                 self.refresh();
+                Some(saved)
             }
             Err(message) => {
                 ui.set_editor_footer(format!("Not saved: {message}").into());
-                self.show_toast(&format!("Not saved: {message}"), None);
+                self.show_toast(&format!("Not saved: {message}"), None, None);
+                None
             }
         }
     }
 
-    pub fn close_editor(&self) {
-        self.save_now();
+    pub fn save_now(&self) {
+        self.save_editor(false);
+    }
+
+    fn close_sheet(&self) {
         self.state.borrow_mut().editing = None;
         if let Some(ui) = self.ui() {
+            ui.set_options_open(false);
             ui.set_editor_open(false);
             ui.invoke_focus_main();
         }
         self.refresh();
     }
 
-    pub fn toggle_pin(&self) {
+    pub fn close_editor(&self) {
         self.save_now();
-        let Some(ui) = self.ui() else { return };
-        let Some(id) = self.state.borrow().editing.as_ref().and_then(|e| e.id.clone()) else { return };
-        let pinned = !ui.get_editor_pinned();
-        match self.service.borrow_mut().set_pinned(&id, pinned) {
-            Ok(saved) => {
-                ui.set_editor_pinned(saved.is_pinned);
-                ui.set_editor_footer(self.saved_footer(saved.timestamp));
-            }
-            Err(message) => self.show_toast(&message, None),
-        }
-        self.refresh();
+        self.close_sheet();
     }
 
-    pub fn delete_note(&self) {
+    /// Applies a change to the open note and shows the result in the editor and the grid.
+    fn change_open_note(
+        &self,
+        change: impl FnOnce(&mut NotesService, &str) -> Result<NoteView, String>,
+    ) -> Option<NoteView> {
         self.save_now();
-        let Some(id) = self.state.borrow().editing.as_ref().and_then(|e| e.id.clone()) else { return };
-        match self.service.borrow_mut().delete(&id) {
-            Ok(removed) => {
-                let name = if removed.title.trim().is_empty() {
-                    "Untitled note".to_string()
-                } else {
-                    removed.title.trim().to_string()
-                };
-                self.state.borrow_mut().undo = Some(removed);
-                self.state.borrow_mut().editing = None;
-                if let Some(ui) = self.ui() {
-                    ui.set_editor_open(false);
-                }
-                self.show_toast(&format!("Deleted \"{name}\""), Some("Undo"));
-            }
-            Err(message) => self.show_toast(&message, None),
-        }
-        self.refresh();
-    }
-
-    /// Undo brings the words back as a new note: the deleted id stays retired, as on the other clients.
-    pub fn undo_delete(&self) {
-        let Some(removed) = self.state.borrow_mut().undo.take() else { return };
-        self.hide_toast();
-        let restored = self.service.borrow_mut().create(&removed.title, &removed.content);
-        match restored {
+        let ui = self.ui()?;
+        let id = self.editing_id()?;
+        let result = change(&mut self.service.borrow_mut(), &id);
+        match result {
             Ok(note) => {
-                if removed.is_pinned {
-                    let _ = self.service.borrow_mut().set_pinned(&note.id, true);
+                self.show_note_details(&ui, &note);
+                self.refresh();
+                Some(note)
+            }
+            Err(message) => {
+                self.show_toast(&message, None, None);
+                None
+            }
+        }
+    }
+
+    pub fn toggle_pin(&self) {
+        let pinned = self.ui().is_some_and(|ui| ui.get_editor_pinned());
+        self.change_open_note(|s, id| s.set_pinned(id, !pinned));
+    }
+
+    /// Archive or unarchive, close the editor, and offer Undo, as the web app does.
+    pub fn toggle_archive(&self) {
+        let Some(ui) = self.ui() else { return };
+        let archiving = ui.get_editor_mode() != View::Archive;
+        let Some(note) = self.change_open_note(|s, id| s.set_archived(id, archiving)) else { return };
+        self.close_sheet();
+        if archiving {
+            self.show_toast("Note archived", Some("Undo"), Some(Undo::Unarchive(note.id)));
+        } else {
+            self.show_toast("Note unarchived", Some("Undo"), Some(Undo::Rearchive(note.id)));
+        }
+    }
+
+    pub fn trash_note(&self) {
+        let Some(note) = self.change_open_note(|s, id| s.move_to_trash(id)) else { return };
+        self.close_sheet();
+        self.show_toast("Note moved to trash", Some("Undo"), Some(Undo::Restore(note.id)));
+    }
+
+    pub fn restore_note(&self) {
+        if self.change_open_note(|s, id| s.restore_from_trash(id)).is_some() {
+            self.close_sheet();
+            self.show_toast("Note restored", None, None);
+        }
+    }
+
+    fn ask(&self, title: &str, body: &str, action: &str, confirm: Confirm) {
+        let Some(ui) = self.ui() else { return };
+        self.state.borrow_mut().confirm = Some(confirm);
+        ui.set_confirm_body(body.into());
+        ui.set_confirm_action(action.into());
+        ui.set_confirm_title(title.into());
+    }
+
+    pub fn ask_delete_forever(&self) {
+        let Some(id) = self.editing_id() else { return };
+        self.ask(
+            "Delete forever?",
+            "This note will be deleted for good. This can't be undone.",
+            "Delete forever",
+            Confirm::DeleteForever(id),
+        );
+    }
+
+    pub fn ask_empty_trash(&self) {
+        let count = self.service.borrow().counts().trash;
+        let body = if count == 1 {
+            "1 note will be deleted for good. This can't be undone.".to_string()
+        } else {
+            format!("{count} notes will be deleted for good. This can't be undone.")
+        };
+        self.ask("Empty trash?", &body, "Empty trash", Confirm::EmptyTrash);
+    }
+
+    pub fn confirm_cancelled(&self) {
+        self.state.borrow_mut().confirm = None;
+        if let Some(ui) = self.ui() {
+            ui.set_confirm_title("".into());
+        }
+    }
+
+    pub fn confirm_accepted(&self) {
+        let confirm = self.state.borrow_mut().confirm.take();
+        if let Some(ui) = self.ui() {
+            ui.set_confirm_title("".into());
+        }
+        match confirm {
+            Some(Confirm::DeleteForever(id)) => {
+                let result = self.service.borrow_mut().delete(&id);
+                match result {
+                    Ok(_) => {
+                        self.close_sheet();
+                        self.show_toast("Note deleted forever", None, None);
+                    }
+                    Err(message) => self.show_toast(&message, None, None),
                 }
             }
-            Err(message) => self.show_toast(&message, None),
+            Some(Confirm::EmptyTrash) => {
+                let result = self.service.borrow_mut().empty_trash();
+                match result {
+                    Ok(0) => {}
+                    Ok(n) => self.show_toast(&format!("Trash emptied ({n})"), None, None),
+                    Err(message) => self.show_toast(&message, None, None),
+                }
+                self.refresh();
+            }
+            None => {}
+        }
+    }
+
+    // --- Note options: colour and labels --------------------------------------------------------------
+
+    fn show_label_choices(&self, ui: &AppWindow) {
+        let service = self.service.borrow();
+        let on: Vec<String> = self
+            .editing_id()
+            .and_then(|id| service.note(&id))
+            .map(|n| n.labels.iter().map(|l| label_key(l)).collect())
+            .unwrap_or_default();
+        ui.set_label_choices(model(
+            service
+                .label_names()
+                .into_iter()
+                .map(|name| LabelChoice { on: on.contains(&label_key(&name)), name: name.into() })
+                .collect(),
+        ));
+    }
+
+    pub fn open_options(&self) {
+        self.save_now();
+        let Some(ui) = self.ui() else { return };
+        self.show_label_choices(&ui);
+        ui.set_new_label("".into());
+        ui.set_options_open(true);
+    }
+
+    /// The picker stores the colour variant it showed, as the web app's picker does.
+    pub fn pick_color(&self, index: usize, dark: bool) {
+        self.change_open_note(|s, id| s.set_color(id, palette::to_store(index, dark)));
+    }
+
+    pub fn toggle_label(&self, name: &str) {
+        let on = self
+            .editing_id()
+            .and_then(|id| self.service.borrow().note(&id))
+            .is_some_and(|n| n.labels.iter().any(|l| label_key(l) == label_key(name)));
+        self.change_open_note(|s, id| s.set_note_label(id, name, !on));
+        if let Some(ui) = self.ui() {
+            self.show_label_choices(&ui);
+        }
+    }
+
+    /// A label created in the options sheet is put on the note too.
+    pub fn create_label_for_note(&self, name: &str) {
+        let Some(ui) = self.ui() else { return };
+        let created = self.service.borrow_mut().create_label(name);
+        match created {
+            Ok(name) => {
+                self.change_open_note(|s, id| s.set_note_label(id, &name, true));
+                ui.set_new_label("".into());
+                self.show_label_choices(&ui);
+            }
+            Err(message) => self.show_toast(&message, None, None),
+        }
+    }
+
+    // --- Checklists -----------------------------------------------------------------------------------
+
+    pub fn item_edited(&self, position: i64, text: &str) {
+        if let Some(editing) = self.state.borrow_mut().editing.as_mut()
+            && let Some(item) = editing.checklist.iter_mut().find(|i| i.position == position)
+        {
+            item.text = text.to_string();
+        }
+        // The row already shows the text: no model rebuild while typing, so the caret stays put.
+        self.edited();
+    }
+
+    fn change_items(&self, focus: Option<i64>, change: impl FnOnce(&mut Vec<ChecklistItem>)) {
+        {
+            let mut state = self.state.borrow_mut();
+            let Some(editing) = state.editing.as_mut() else { return };
+            change(&mut editing.checklist);
+            editing.dirty = true;
+        }
+        self.save_now();
+        if let Some(ui) = self.ui() {
+            self.show_rows(&ui, focus);
+        }
+    }
+
+    pub fn item_toggled(&self, position: i64) {
+        self.change_items(None, |items| {
+            if let Some(item) = items.iter_mut().find(|i| i.position == position) {
+                item.is_checked = !item.is_checked;
+            }
+        });
+    }
+
+    pub fn item_removed(&self, position: i64) {
+        self.change_items(None, |items| items.retain(|i| i.position != position));
+    }
+
+    pub fn item_added(&self) {
+        let next = self
+            .state
+            .borrow()
+            .editing
+            .as_ref()
+            .map_or(0, |e| e.checklist.iter().map(|i| i.position + 1).max().unwrap_or(0));
+        if next as usize >= notelikeus_app::MAX_CHECKLIST_ITEMS {
+            self.show_toast("A checklist can't hold any more items.", None, None);
+            return;
+        }
+        self.change_items(Some(next), |items| {
+            items.push(ChecklistItem { text: String::new(), is_checked: false, position: next });
+        });
+    }
+
+    pub fn to_checklist(&self) {
+        let Some(ui) = self.ui() else { return };
+        // A draft becomes a note first, so there is something to convert.
+        if self.save_editor(true).is_none() && self.editing_id().is_none() {
+            return;
+        }
+        let Some(id) = self.editing_id() else { return };
+        let converted = self.service.borrow_mut().convert_to_checklist(&id);
+        match converted {
+            Ok(note) => {
+                if let Some(e) = self.state.borrow_mut().editing.as_mut() {
+                    e.is_checklist = true;
+                    e.checklist = note.checklist.clone();
+                }
+                ui.set_editor_body("".into());
+                self.show_note_details(&ui, &note);
+                self.show_rows(&ui, note.checklist.first().map(|i| i.position));
+                self.refresh();
+            }
+            Err(message) => self.show_toast(&message, None, None),
+        }
+    }
+
+    pub fn to_text(&self) {
+        self.save_now();
+        let Some(ui) = self.ui() else { return };
+        let Some(id) = self.editing_id() else { return };
+        let converted = self.service.borrow_mut().convert_to_text(&id);
+        match converted {
+            Ok(note) => {
+                if let Some(e) = self.state.borrow_mut().editing.as_mut() {
+                    e.is_checklist = false;
+                    e.checklist.clear();
+                }
+                ui.set_editor_body(note.content.as_str().into());
+                self.show_note_details(&ui, &note);
+                self.show_rows(&ui, None);
+                self.refresh();
+            }
+            Err(message) => self.show_toast(&message, None, None),
+        }
+    }
+
+    // --- Edit labels ----------------------------------------------------------------------------------
+
+    fn show_all_labels(&self, ui: &AppWindow) {
+        let names = self.service.borrow().label_names();
+        ui.set_all_labels(model(names.iter().map(|n| SharedString::from(n.as_str())).collect()));
+    }
+
+    /// After a label changed everywhere: the grid, and the open note's chips if any.
+    fn labels_changed(&self, ui: &AppWindow) {
+        self.show_all_labels(ui);
+        if let Some(note) = self.editing_id().and_then(|id| self.service.borrow().note(&id)) {
+            self.show_note_details(ui, &note);
         }
         self.refresh();
     }
 
-    fn show_toast(&self, text: &str, action: Option<&str>) {
+    pub fn open_labels(&self) {
         let Some(ui) = self.ui() else { return };
+        self.show_all_labels(&ui);
+        ui.set_labels_new("".into());
+        ui.set_labels_open(true);
+    }
+
+    pub fn labels_created(&self, name: &str) {
+        let Some(ui) = self.ui() else { return };
+        let created = self.service.borrow_mut().create_label(name);
+        match created {
+            Ok(_) => {
+                ui.set_labels_new("".into());
+                self.show_all_labels(&ui);
+            }
+            Err(message) => self.show_toast(&message, None, None),
+        }
+    }
+
+    pub fn label_renamed(&self, old: &str, new: &str) {
+        let Some(ui) = self.ui() else { return };
+        let renamed = self.service.borrow_mut().rename_label(old, new);
+        match renamed {
+            Ok(()) => self.labels_changed(&ui),
+            Err(message) => self.show_toast(&message, None, None),
+        }
+    }
+
+    pub fn label_deleted(&self, name: &str) {
+        let Some(ui) = self.ui() else { return };
+        let deleted = self.service.borrow_mut().delete_label(name);
+        match deleted {
+            Ok(()) => {
+                self.labels_changed(&ui);
+                self.show_toast(&format!("Label \"{name}\" deleted"), None, None);
+            }
+            Err(message) => self.show_toast(&message, None, None),
+        }
+    }
+
+    // --- The toast ------------------------------------------------------------------------------------
+
+    fn show_toast(&self, text: &str, action: Option<&str>, undo: Option<Undo>) {
+        let Some(ui) = self.ui() else { return };
+        self.state.borrow_mut().undo = undo;
         ui.set_toast_text(text.into());
         ui.set_toast_action(action.unwrap_or_default().into());
         let weak = self.ui.clone();
@@ -299,12 +741,30 @@ impl Controller {
         });
     }
 
-    pub fn hide_toast(&self) {
+    fn hide_toast(&self) {
         self.toast.stop();
         if let Some(ui) = self.ui() {
             ui.set_toast_text("".into());
             ui.set_toast_action("".into());
         }
+    }
+
+    /// The toast's Undo: the archive or trash move it announced is reversed.
+    pub fn undo(&self) {
+        let Some(undo) = self.state.borrow_mut().undo.take() else { return };
+        self.hide_toast();
+        let result = {
+            let mut service = self.service.borrow_mut();
+            match undo {
+                Undo::Restore(id) => service.restore_from_trash(&id),
+                Undo::Unarchive(id) => service.set_archived(&id, false),
+                Undo::Rearchive(id) => service.set_archived(&id, true),
+            }
+        };
+        if let Err(message) = result {
+            self.show_toast(&message, None, None);
+        }
+        self.refresh();
     }
 
     /// The toast timed out: its Undo is no longer offered.
