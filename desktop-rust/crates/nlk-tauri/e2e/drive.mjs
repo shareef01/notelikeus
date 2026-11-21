@@ -74,14 +74,32 @@ async function connect(url) {
     if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? 'evaluate failed');
     return r.result.value;
   };
+  /**
+   * Runs `fn` (a function written in this file) in the page with `args` passed as real arguments.
+   * Values are never spliced into source text, so no value can change what code runs.
+   */
+  const call = async (fn, ...args) => {
+    const { result: global } = await send('Runtime.evaluate', { expression: 'globalThis' });
+    const r = await send('Runtime.callFunctionOn', {
+      objectId: global.objectId,
+      functionDeclaration: fn.toString(),
+      arguments: args.map((value) => ({ value })),
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? 'call failed');
+    return r.result.value;
+  };
   const key = (k, code, modifiers = 0, vk = 0) => Promise.all([
     send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, modifiers, windowsVirtualKeyCode: vk }),
     send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, modifiers, windowsVirtualKeyCode: vk }),
   ]);
   const type = (text) => send('Input.insertText', { text });
   const click = async (selector) => {
-    const box = await evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+    const box = await call((sel) => {
+      const r = document.querySelector(sel).getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }, selector);
     for (const type of ['mousePressed', 'mouseReleased']) {
       await send('Input.dispatchMouseEvent', { type, x: box.x, y: box.y, button: 'left', clickCount: 1 });
     }
@@ -92,12 +110,13 @@ async function connect(url) {
     const { data } = await send('Page.captureScreenshot', { format: 'png' });
     writeFileSync(join(shots, `${name}.png`), Buffer.from(data, 'base64'));
   };
-  return { ws, send, evaluate, key, type, click, shot };
+  return { ws, send, evaluate, call, key, type, click, shot };
 }
 
 /** Closes the window the way the title bar's X does (WM_CLOSE), then waits for the process to exit. */
 async function closeLikeUser(child) {
-  execFileSync('powershell', ['-NoProfile', '-Command', `[void](Get-Process -Id ${child.pid}).CloseMainWindow()`]);
+  // taskkill without /F posts WM_CLOSE, as the X button does; the pid goes as an argument, no shell.
+  execFileSync('taskkill', ['/PID', String(child.pid)], { stdio: 'ignore' });
   const exited = await Promise.race([
     new Promise((r) => child.once('exit', () => r(true))),
     sleep(10_000).then(() => false),
@@ -111,7 +130,7 @@ const listTitles = (cdp) => cdp.evaluate(
  * Whether the element is actually rendered, hidden ancestors included. Not the `hidden` property (CSS can
  * override it) and not the element's own computed display (a hidden parent leaves that unchanged).
  */
-const visible = (cdp, id) => cdp.evaluate(`document.getElementById(${JSON.stringify(id)}).checkVisibility()`);
+const visible = (cdp, id) => cdp.call((elementId) => document.getElementById(elementId).checkVisibility(), id);
 
 async function waitFor(fn, what, ms = 5000) {
   const until = Date.now() + ms;
