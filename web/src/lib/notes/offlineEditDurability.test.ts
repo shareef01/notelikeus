@@ -267,6 +267,30 @@ describe('F-06 offline edit durability', () => {
     expect(await listPendingPushes(USER)).toEqual({});
   });
 
+  it('keeps the edit as a copy when a pull learns of the delete before the edit is pushed', async () => {
+    await editWhileOffline();
+    cloud.delete('1');
+    cloudTombstones.set('1', 2_000);
+
+    // What pullIncrementalChanges does with a tombstone change: the page skips the row that holds
+    // the unconfirmed edit, and the cloud's tombstone goes into the tombstone store.
+    await applyRemotePageAtomically({
+      ownerId: USER,
+      upserts: [],
+      deletedNoteIds: ['1'],
+      noteRevisions: {},
+      lastRemoteRevision: revisionSeq,
+    });
+    useTombstoneStore.getState().mergeFromCloud({ '1': 2_000 });
+
+    await flushPendingPushes(USER);
+
+    const stored = await listNotes(USER);
+    expect(stored.map((note) => note.title)).toContain('offline edit (conflicted copy)');
+    expect([...cloud.values()].map((row) => row.note.title)).toEqual(['offline edit (conflicted copy)']);
+    expect(await listPendingPushes(USER)).toEqual({});
+  });
+
   it('keeps the original edit and image pending when conflict-copy staging fails, then retries', async () => {
     expect(await storePendingAttachment('quota-photo', new Blob(['only copy']), 'image/png', '1', USER)).toBe(true);
     online = false;

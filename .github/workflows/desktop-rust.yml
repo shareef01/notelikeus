@@ -1,0 +1,51 @@
+name: Rust desktop (experimental)
+
+# The experimental Rust core under desktop-rust/. Not a required check and not shipped: it guards the
+# core against the shared contracts/ fixtures, so the Rust client cannot drift from Kotlin and web.
+
+on:
+  push:
+    branches: [main]
+    paths: ['desktop-rust/**', 'contracts/**', '.github/workflows/desktop-rust.yml']
+  pull_request:
+    branches: [main]
+    paths: ['desktop-rust/**', 'contracts/**', '.github/workflows/desktop-rust.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-rust-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Rust core (windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop-rust
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # rustup ships on the runner image; no third-party action is needed.
+      - name: Install the stable toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+          cargo --version
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
+
+      # Includes the real DPAPI round trip and the contract fixtures shared with Kotlin and web.
+      - name: Test
+        run: cargo test --workspace --all-features --locked

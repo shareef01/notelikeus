@@ -1,0 +1,24 @@
+[package]
+name = "notelikeus-core"
+description = "Experimental Rust core for a Notelikeus Windows client: note model, encrypted local store, revision-checked sync."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+# The Supabase HTTP transport. Off by default so the core and its tests build without a TLS stack.
+http = ["dep:ureq", "dep:native-tls"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+aes-gcm.workspace = true
+getrandom.workspace = true
+ureq = { workspace = true, optional = true }
+native-tls = { workspace = true, optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

@@ -143,18 +143,23 @@ function reportRejection(userId: string, noteId: string, error: unknown): void {
 }
 
 async function flushOne(userId: string, noteId: string, result: PendingFlushResult, isActive: () => boolean): Promise<void> {
-  if (useTombstoneStore.getState().isDeleted(noteId)) {
-    // Deleted on this device: the delete path owns what happens in the cloud now.
-    await dropPendingPush(userId, noteId);
-    return;
-  }
   const pending = await readPendingEdit(userId, noteId);
   if (!isActive()) return;
   if (!pending) {
+    // No row: deleted on this device (the delete removes the row before tombstoning it), so the
+    // delete path owns what happens in the cloud now.
     await dropPendingPush(userId, noteId);
     return;
   }
   const { marker } = pending;
+  if (useTombstoneStore.getState().isDeleted(noteId)) {
+    // Tombstoned, yet the row with the unconfirmed edit is still here. A pull or snapshot learned
+    // of another device's delete and skipped the row because it is the only copy of this edit
+    // (applyRemotePageAtomically). The edit was never in the cloud, so it is kept as its own note,
+    // as it would be had the push itself met the delete.
+    await keepBothVersions(userId, pending.note, marker.seq, null, result, isActive);
+    return;
+  }
   // A blocked account must not upload its old image bytes before the note mutation refuses.
   await wipeGenerationForPush(userId);
   if (!isActive()) return;
