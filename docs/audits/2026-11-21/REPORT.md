@@ -1,7 +1,7 @@
 # Audit, data-integrity fix and Rust experiment — 2026-11-21
 
 Baseline: `main` at `95cb15d9` (v2.7.0 released; nothing waiting to deploy). Work is on branch
-`audit/2026-11-21`, **not committed**. Findings already recorded in earlier audits (`docs/audit/AUDIT_REPORT.md`,
+`audit/2026-11-21`. Findings already recorded in earlier audits (`docs/audit/AUDIT_REPORT.md`,
 `docs/audits/2026-11-05` to `-18`) were not re-reported.
 
 **Result: one confirmed data-loss defect on the web fixed with a regression test (AUD-I01). Kotlin already handled
