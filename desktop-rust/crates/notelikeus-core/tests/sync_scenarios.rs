@@ -430,3 +430,17 @@ fn shared_sync_scenarios_reach_their_end_states_in_both_orders() {
     }
     assert!(mismatches.is_empty(), "{mismatches:#?}");
 }
+
+#[test]
+fn a_device_that_never_synced_joins_an_account_wiped_before_it_arrived() {
+    // The account's cloud data was deleted on another device long ago (generation 3). A new device
+    // with a note written before its first sync must join that generation, not be refused as stale.
+    let s = server();
+    s.borrow_mut().wipe_generation = 3;
+    let mut fresh = Device::new(&s, 1_000);
+    fresh.create("First", "written before the first sync");
+    let report = fresh.sync().unwrap();
+    assert_eq!(report.pushed.len(), 1);
+    assert_eq!(fresh.state.wipe_generation, 3);
+    assert_eq!(cloud_contents(&s), ["First: written before the first sync"]);
+}

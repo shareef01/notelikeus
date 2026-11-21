@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { reloadWhenServiceWorkerControls } from './helpers/reload';
 
 /**
  * End-to-end tests for Web Rapid Image Capture:
@@ -81,7 +82,7 @@ test.describe('Web Rapid Image Capture E2E', () => {
     await expect(card).toBeVisible({ timeout: 20_000 });
 
     // Reload: guest mode is remembered, so the notes come straight back from IndexedDB
-    await page.reload();
+    await reloadWhenServiceWorkerControls(page);
     await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
 
     const reloadedCard = page.getByRole('button', { name: new RegExp(title) }).first();

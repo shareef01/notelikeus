@@ -10,6 +10,38 @@ use serde_json::{Value, json};
 use crate::model::{ApplyNoteChangeArgs, CloudChange, CloudNoteRow};
 use crate::sync::{ApplyOutcome, DeleteOutcome, PullPage, Transport, TransportError};
 
+/// The project URL without a trailing slash, if it is HTTPS, or plain HTTP to this machine (a local
+/// stack). The host is compared exactly: `http://localhost.example.com` is not loopback.
+pub fn checked_base_url(base_url: &str) -> Result<String, String> {
+    let base = base_url.trim().trim_end_matches('/');
+    if let Some(rest) = base.strip_prefix("https://") {
+        if rest.is_empty() {
+            return Err("the Supabase URL has no host".into());
+        }
+        return Ok(base.to_string());
+    }
+    let rest = base.strip_prefix("http://").ok_or("refusing a non-HTTPS Supabase URL")?;
+    let authority = rest.split('/').next().unwrap_or_default();
+    let host = if let Some(v6) = authority.strip_prefix('[') {
+        v6.split(']').next().map(|h| format!("[{h}]")).unwrap_or_default()
+    } else {
+        authority.split(':').next().unwrap_or_default().to_string()
+    };
+    match host.as_str() {
+        "127.0.0.1" | "localhost" | "[::1]" => Ok(base.to_string()),
+        _ => Err("refusing a non-HTTPS Supabase URL".into()),
+    }
+}
+
+/// One HTTPS agent: Windows SChannel through `native-tls`, 30-second timeout.
+pub(crate) fn tls_agent() -> Result<ureq::Agent, String> {
+    let tls = native_tls::TlsConnector::new().map_err(|e| e.to_string())?;
+    Ok(ureq::AgentBuilder::new()
+        .tls_connector(std::sync::Arc::new(tls))
+        .timeout(std::time::Duration::from_secs(30))
+        .build())
+}
+
 pub struct SupabaseTransport {
     base_url: String,
     publishable_key: String,
@@ -20,18 +52,10 @@ pub struct SupabaseTransport {
 impl SupabaseTransport {
     /// `base_url` must be `https://` (a plain-HTTP URL is accepted only for a local stack on loopback).
     pub fn new(base_url: &str, publishable_key: &str, access_token: &str) -> Result<Self, TransportError> {
-        let base = base_url.trim_end_matches('/');
-        let loopback = base.starts_with("http://127.0.0.1") || base.starts_with("http://localhost");
-        if !base.starts_with("https://") && !loopback {
-            return Err(TransportError::Server("refusing a non-HTTPS Supabase URL".into()));
-        }
-        let tls = native_tls::TlsConnector::new().map_err(|e| TransportError::Network(e.to_string()))?;
-        let agent = ureq::AgentBuilder::new()
-            .tls_connector(std::sync::Arc::new(tls))
-            .timeout(std::time::Duration::from_secs(30))
-            .build();
+        let base = checked_base_url(base_url).map_err(TransportError::Server)?;
+        let agent = tls_agent().map_err(TransportError::Network)?;
         Ok(SupabaseTransport {
-            base_url: base.to_string(),
+            base_url: base,
             publishable_key: publishable_key.to_string(),
             access_token: access_token.to_string(),
             agent,

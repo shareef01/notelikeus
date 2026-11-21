@@ -362,11 +362,16 @@ fn pull(
     ids: &mut dyn IdSource,
     report: &mut SyncReport,
 ) -> Result<(), TransportError> {
+    let fresh = never_synced(state);
     loop {
         let page = transport.pull_changes(state.last_remote_revision, 100)?;
         if page.wipe_generation > state.wipe_generation {
-            // Uploading now would put back what the user deleted on another device; that is their call.
-            return Err(TransportError::WipeGenerationStale);
+            if !fresh {
+                // Uploading now would put back what the user deleted on another device; that is their call.
+                return Err(TransportError::WipeGenerationStale);
+            }
+            // A device that never synced holds nothing from before the wipe: it joins the current generation.
+            state.wipe_generation = page.wipe_generation;
         }
         let mut cursor = state.last_remote_revision;
         for change in &page.changes {
@@ -420,9 +425,19 @@ pub fn sync(
     ids: &mut dyn IdSource,
 ) -> Result<SyncReport, SyncError> {
     let mut report = SyncReport::default();
+    // A device's first sync downloads first, to learn the account's wipe generation before an upload
+    // presents one (a write with an old generation is refused, NL002).
+    if never_synced(state) {
+        pull(state, transport, ids, &mut report)?;
+    }
     push_pending(state, transport, ids, &mut report)?;
     push_deletes(state, transport, &mut report)?;
     pull(state, transport, ids, &mut report)?;
     push_pending(state, transport, ids, &mut report)?;
     Ok(report)
+}
+
+/// Nothing this device holds has ever been confirmed by the cloud.
+fn never_synced(state: &LocalState) -> bool {
+    state.last_remote_revision == 0 && state.revisions.is_empty()
 }

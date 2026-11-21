@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { selectNoteText } from './helpers/richNoteSelection';
+import { reloadWhenServiceWorkerControls } from './helpers/reload';
 
 async function openEditor(page: Page) {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -38,7 +39,7 @@ test('a formatted guest note survives a reload', async ({ page }) => {
   // Back waits for IndexedDB before closing; a click alone does not await that work.
   await expect(page.getByRole('textbox', { name: 'Note title' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Persistence check', exact: true })).toBeVisible();
-  await page.reload();
+  await reloadWhenServiceWorkerControls(page);
   // Guest mode is remembered: the reload opens the guest's notes, not the sign-in gate.
   await expect(page.getByRole('button', { name: 'Continue without an account' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Persistence check', exact: true }).click();

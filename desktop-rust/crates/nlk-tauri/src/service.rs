@@ -1,18 +1,44 @@
-//! What the window's commands do, without Tauri: open the guest store, list, create, update and
-//! delete notes, saving after every change. Kept apart from `main.rs` so it is unit-tested directly.
+//! What the window's commands do, without Tauri: open the right account's store, list, create, update
+//! and delete notes (saving after every change), sign in with an emailed code, sync, and sign out.
+//! Kept apart from `main.rs` so it is unit-tested directly.
+//!
+//! Each account has its own sealed store (`accounts/<owner>`); guest notes live under `__guest__`.
+//! Signing in switches to the account's store and signing out switches back: notes written as a guest
+//! are not merged into an account, and an account's notes stay sealed on disk after sign-out.
 
 use std::path::{Path, PathBuf};
 
+use notelikeus_core::auth::{AuthClient, AuthError};
 use notelikeus_core::crypto::KeyProtector;
+use notelikeus_core::http::SupabaseTransport;
 use notelikeus_core::model::Note;
-use notelikeus_core::store::{LocalState, Store};
-use notelikeus_core::sync::{self, IdSource};
+use notelikeus_core::store::{LocalState, Session, SessionVault, Store, TombstoneOrigin};
+use notelikeus_core::sync::{self, IdSource, SyncError, TransportError};
 use serde::Serialize;
 
 pub const GUEST: &str = "__guest__";
 /// `validate_note_payload` limits (Postgres `char_length`, so Unicode scalar values).
 pub const MAX_TITLE_CHARS: usize = 2_000;
 pub const MAX_CONTENT_CHARS: usize = 100_000;
+
+/// The Supabase project this build syncs with. None: the build has no sync at all.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SyncConfig {
+    pub url: String,
+    pub publishable_key: String,
+}
+
+impl SyncConfig {
+    /// `NLK_SUPABASE_URL` and `NLK_SUPABASE_KEY`, read at run time, falling back to the values a
+    /// build was compiled with. Unset in both places means no sync, so this experiment never reaches
+    /// a project by accident.
+    pub fn from_env() -> Option<SyncConfig> {
+        let url = std::env::var("NLK_SUPABASE_URL").ok().or(option_env!("NLK_SUPABASE_URL").map(str::to_string))?;
+        let publishable_key =
+            std::env::var("NLK_SUPABASE_KEY").ok().or(option_env!("NLK_SUPABASE_KEY").map(str::to_string))?;
+        (!url.trim().is_empty() && !publishable_key.trim().is_empty()).then_some(SyncConfig { url, publishable_key })
+    }
+}
 
 /// What the UI is shown of a note. Ids are strings: they exceed JavaScript's safe-integer range
 /// only in theory, but a string never rounds.
@@ -36,6 +62,31 @@ pub struct AppInfo {
     pub mode: &'static str,
 }
 
+/// The account part of the window: whether sync exists in this build, who is signed in, how it went.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountView {
+    pub sync_available: bool,
+    pub signed_in: bool,
+    pub email: Option<String>,
+    /// Edits and deletes saved here that the cloud has not confirmed yet.
+    pub waiting: usize,
+    /// Epoch millis of the last sync that finished.
+    pub last_synced_at: Option<i64>,
+    pub last_error: Option<String>,
+}
+
+/// What one sync did, in the words the UI shows.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSummary {
+    pub uploaded: usize,
+    pub downloaded: usize,
+    pub conflicted_copies: usize,
+    pub deleted_elsewhere: usize,
+    pub restored_by_cloud: usize,
+}
+
 pub struct SystemIds;
 
 impl IdSource for SystemIds {
@@ -48,9 +99,16 @@ impl IdSource for SystemIds {
 }
 
 pub struct NotesService {
+    root: PathBuf,
+    protector: Box<dyn KeyProtector + Send + Sync>,
+    vault: SessionVault,
+    config: Option<SyncConfig>,
+    session: Option<Session>,
     store: Store,
     state: LocalState,
     ids: Box<dyn IdSource + Send>,
+    last_synced_at: Option<i64>,
+    last_error: Option<String>,
 }
 
 /// `%APPDATA%\NotelikeusRustExperimental`, or `NLK_RUST_DATA_DIR` when set (tests, side-by-side runs).
@@ -74,11 +132,52 @@ fn check_lengths(title: &str, content: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn auth_message(error: AuthError) -> String {
+    error.to_string()
+}
+
 impl NotesService {
-    pub fn open(root: &Path, protector: &dyn KeyProtector, ids: Box<dyn IdSource + Send>) -> Result<Self, String> {
-        let store = Store::open(root, GUEST, protector).map_err(|e| e.to_string())?;
+    /// Opens the signed-in account's notes, or the guest notes when nobody is signed in. A saved
+    /// session that cannot be read is forgotten (with a message) rather than hiding the notes.
+    pub fn open(
+        root: &Path,
+        protector: Box<dyn KeyProtector + Send + Sync>,
+        ids: Box<dyn IdSource + Send>,
+        config: Option<SyncConfig>,
+    ) -> Result<Self, String> {
+        let vault = SessionVault::open(root, protector.as_ref()).map_err(|e| e.to_string())?;
+        let mut last_error = None;
+        let session = match vault.load() {
+            Ok(session) => session,
+            Err(error) => {
+                let _ = vault.clear();
+                last_error = Some(format!("The saved sign-in could not be read ({error}); sign in again."));
+                None
+            }
+        };
+        let owner = session.as_ref().map_or(GUEST.to_string(), |s| s.user_id.clone());
+        let store = Store::open(root, &owner, protector.as_ref()).map_err(|e| e.to_string())?;
         let state = store.load().map_err(|e| e.to_string())?;
-        Ok(NotesService { store, state, ids })
+        Ok(NotesService {
+            root: root.to_path_buf(),
+            protector,
+            vault,
+            config,
+            session,
+            store,
+            state,
+            ids,
+            last_synced_at: None,
+            last_error,
+        })
+    }
+
+    fn switch_to(&mut self, owner: &str) -> Result<(), String> {
+        let store = Store::open(&self.root, owner, self.protector.as_ref()).map_err(|e| e.to_string())?;
+        self.state = store.load().map_err(|e| e.to_string())?;
+        self.store = store;
+        self.last_synced_at = None;
+        Ok(())
     }
 
     fn view(&self, note: &Note) -> NoteView {
@@ -164,7 +263,128 @@ impl NotesService {
         AppInfo {
             data_file: self.store.state_path().display().to_string(),
             note_count: self.state.notes.len(),
-            mode: "guest",
+            mode: if self.session.is_some() { "account" } else { "guest" },
+        }
+    }
+
+    pub fn account(&self) -> AccountView {
+        let unconfirmed_deletes =
+            self.state.tombstones.values().filter(|t| t.origin == TombstoneOrigin::Local { confirmed: false }).count();
+        AccountView {
+            sync_available: self.config.is_some(),
+            signed_in: self.session.is_some(),
+            email: self.session.as_ref().and_then(|s| s.email.clone()),
+            waiting: if self.session.is_some() { self.state.pending.len() + unconfirmed_deletes } else { 0 },
+            last_synced_at: self.last_synced_at,
+            last_error: self.last_error.clone(),
+        }
+    }
+
+    fn auth(&self) -> Result<AuthClient, String> {
+        let config = self.config.as_ref().ok_or("Sync isn't set up in this build.")?;
+        AuthClient::new(&config.url, &config.publishable_key).map_err(auth_message)
+    }
+
+    /// Emails a sign-in code. The hosted project's verification check is not supported yet (see auth.rs).
+    pub fn request_code(&self, email: &str) -> Result<(), String> {
+        if !email.contains('@') {
+            return Err("Enter your email address.".into());
+        }
+        self.auth()?.request_email_code(email, None).map_err(auth_message)
+    }
+
+    pub fn verify_code(&mut self, email: &str, code: &str) -> Result<AccountView, String> {
+        let session = self.auth()?.verify_email_code(email, code).map_err(auth_message)?;
+        self.signed_in(session)
+    }
+
+    #[cfg(test)]
+    fn sign_in_with_password(&mut self, email: &str, password: &str) -> Result<AccountView, String> {
+        let session = self.auth()?.sign_in_with_password(email, password).map_err(auth_message)?;
+        self.signed_in(session)
+    }
+
+    fn signed_in(&mut self, session: Session) -> Result<AccountView, String> {
+        self.vault.save(&session).map_err(|e| format!("Could not save the sign-in: {e}"))?;
+        let owner = session.user_id.clone();
+        self.session = Some(session);
+        self.last_error = None;
+        self.switch_to(&owner)?;
+        Ok(self.account())
+    }
+
+    /// Forgets the session and shows the guest notes. The account's notes stay sealed on disk.
+    pub fn sign_out(&mut self) -> Result<AccountView, String> {
+        self.vault.clear().map_err(|e| e.to_string())?;
+        self.session = None;
+        self.last_error = None;
+        self.switch_to(GUEST)?;
+        Ok(self.account())
+    }
+
+    fn refreshed(&mut self, auth: &AuthClient) -> Result<Session, String> {
+        let current = self.session.clone().ok_or("Sign in to sync.")?;
+        let token = current.refresh_token.as_deref().ok_or("The sign-in has ended; sign in again.")?;
+        match auth.refresh(token) {
+            Ok(session) => {
+                self.vault.save(&session).map_err(|e| e.to_string())?;
+                self.session = Some(session.clone());
+                Ok(session)
+            }
+            Err(AuthError::SessionExpired | AuthError::Refused { .. }) => {
+                // The account's notes stay on disk; only the sign-in goes.
+                let _ = self.sign_out();
+                Err("The sign-in has ended; sign in again. Your notes are still on this device.".into())
+            }
+            Err(other) => Err(auth_message(other)),
+        }
+    }
+
+    /// One full sync of the signed-in account. Progress made before a failure is kept on disk, so
+    /// the next sync carries on from there.
+    pub fn sync_now(&mut self) -> Result<SyncSummary, String> {
+        let config = self.config.clone().ok_or("Sync isn't set up in this build.")?;
+        let auth = self.auth()?;
+        let mut session = self.session.clone().ok_or("Sign in to sync.")?;
+        if session.needs_refresh(self.ids.now_millis()) {
+            session = self.refreshed(&auth)?;
+        }
+        let mut transport = SupabaseTransport::new(&config.url, &config.publishable_key, &session.access_token)
+            .map_err(|e| e.to_string())?;
+        let mut result = sync::sync(&mut self.state, &mut transport, self.ids.as_mut());
+        if matches!(result, Err(SyncError::Transport(TransportError::Unauthorized))) {
+            session = self.refreshed(&auth)?;
+            transport.set_access_token(&session.access_token);
+            result = sync::sync(&mut self.state, &mut transport, self.ids.as_mut());
+        }
+        // Saved whatever happened: a half-finished run's confirmed pushes must not be forgotten.
+        let saved = self.store.save(&self.state).map_err(|e| format!("Could not save: {e}"));
+        match result {
+            Ok(report) => {
+                saved?;
+                self.last_synced_at = Some(self.ids.now_millis());
+                self.last_error = None;
+                Ok(SyncSummary {
+                    uploaded: report.pushed.len(),
+                    downloaded: report.pulled,
+                    conflicted_copies: report.conflicted_copies.len(),
+                    deleted_elsewhere: report.deleted_remotely.len(),
+                    restored_by_cloud: report.restored_by_cloud.len(),
+                })
+            }
+            Err(error) => {
+                let message = match error {
+                    SyncError::Transport(TransportError::Network(_)) => {
+                        "Offline. Your changes are saved here and will sync later.".to_string()
+                    }
+                    SyncError::Transport(TransportError::WipeGenerationStale) => {
+                        "This account's cloud notes were deleted on another device. Nothing was uploaded.".to_string()
+                    }
+                    other => format!("Sync failed: {other}"),
+                };
+                self.last_error = Some(message.clone());
+                Err(message)
+            }
         }
     }
 }
@@ -191,8 +411,12 @@ mod tests {
         dir
     }
 
+    fn open_with(dir: &Path, config: Option<SyncConfig>, ids: Box<dyn IdSource + Send>) -> NotesService {
+        NotesService::open(dir, Box::new(PlaintextKeyProtectorForTests), ids, config).unwrap()
+    }
+
     fn open(dir: &Path) -> NotesService {
-        NotesService::open(dir, &PlaintextKeyProtectorForTests, Box::new(TestIds(1_000))).unwrap()
+        open_with(dir, None, Box::new(TestIds(1_000)))
     }
 
     #[test]
@@ -226,11 +450,10 @@ mod tests {
         let mut service = open(&dir);
         let old = service.create("old", "").unwrap();
         let _mid = service.create("mid", "").unwrap();
-        let new = service.create("new", "").unwrap();
+        let _new = service.create("new", "").unwrap();
         service.set_pinned(&old.id, true).unwrap();
         let titles: Vec<String> = service.list().into_iter().map(|n| n.title).collect();
         assert_eq!(titles, ["old", "new", "mid"]);
-        let _ = new;
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -271,5 +494,80 @@ mod tests {
         let titles: Vec<String> = service.list().into_iter().map(|n| n.title).collect();
         assert_eq!(titles, ["kept"]);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn without_a_configured_project_there_is_no_sync() {
+        let dir = root("no-sync");
+        let mut service = open(&dir);
+        let account = service.account();
+        assert!(!account.sync_available && !account.signed_in);
+        assert!(service.request_code("someone@example.test").is_err());
+        assert!(service.sync_now().is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_unreadable_saved_session_is_forgotten_and_the_notes_still_open() {
+        let dir = root("bad-session");
+        let mut service = open(&dir);
+        service.create("guest note", "").unwrap();
+        drop(service);
+        std::fs::write(dir.join("session.nlkr"), b"damaged").unwrap();
+        let reopened = open(&dir);
+        assert!(!reopened.account().signed_in);
+        assert!(reopened.account().last_error.is_some());
+        assert_eq!(reopened.list().len(), 1);
+        assert!(!dir.join("session.nlkr").exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Against a LOCAL Supabase stack only; see crates/notelikeus-core/tests/live_supabase.rs.
+    fn live_config() -> Option<SyncConfig> {
+        let url = std::env::var("NLK_TEST_SUPABASE_URL").ok()?;
+        assert!(url.starts_with("http://127.0.0.1:") || url.starts_with("http://localhost:"));
+        Some(SyncConfig { url, publishable_key: std::env::var("NLK_TEST_SUPABASE_KEY").ok()? })
+    }
+
+    #[test]
+    fn signed_in_notes_sync_between_installs_and_stay_apart_from_guest_notes() {
+        let Some(config) = live_config() else {
+            eprintln!("skipped: set NLK_TEST_SUPABASE_URL and NLK_TEST_SUPABASE_KEY");
+            return;
+        };
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let email = format!("nlk-tauri-{nanos}@example.test");
+        AuthClient::new(&config.url, &config.publishable_key)
+            .unwrap()
+            .sign_up(&email, "a-long-test-password-1")
+            .unwrap();
+
+        let (dir_a, dir_b) = (root("live-a"), root("live-b"));
+        let mut laptop = open_with(&dir_a, Some(config.clone()), Box::new(TestIds(1_000_000)));
+        laptop.create("written as a guest", "").unwrap();
+        laptop.sign_in_with_password(&email, "a-long-test-password-1").unwrap();
+        assert!(laptop.list().is_empty(), "guest notes are not merged into the account");
+        laptop.create("Groceries", "milk").unwrap();
+        assert_eq!(laptop.account().waiting, 1);
+        let summary = laptop.sync_now().unwrap();
+        assert_eq!(summary.uploaded, 1);
+        assert_eq!(laptop.account().waiting, 0);
+
+        // Another install signs in to the same account and gets the note.
+        let mut desktop = open_with(&dir_b, Some(config.clone()), Box::new(TestIds(9_000_000)));
+        desktop.sign_in_with_password(&email, "a-long-test-password-1").unwrap();
+        desktop.sync_now().unwrap();
+        assert_eq!(desktop.list().iter().map(|n| n.title.as_str()).collect::<Vec<_>>(), ["Groceries"]);
+
+        // The sign-in survives a restart; signing out brings the guest notes back.
+        drop(laptop);
+        let mut laptop = open_with(&dir_a, Some(config), Box::new(TestIds(2_000_000)));
+        assert!(laptop.account().signed_in);
+        assert_eq!(laptop.list().len(), 1);
+        laptop.sign_out().unwrap();
+        assert_eq!(laptop.list().iter().map(|n| n.title.as_str()).collect::<Vec<_>>(), ["written as a guest"]);
+
+        std::fs::remove_dir_all(dir_a).unwrap();
+        std::fs::remove_dir_all(dir_b).unwrap();
     }
 }

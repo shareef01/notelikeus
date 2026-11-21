@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { reloadWhenServiceWorkerControls } from './helpers/reload';
 
 /**
  * Journey J — reminders: set, change, clear, custom time, reopen, reload.
@@ -153,7 +154,7 @@ test('a reminder survives a reload the way guest notes do', async ({ browser }) 
   else await page.keyboard.press('Escape');
   await page.waitForTimeout(1_600);
 
-  await page.reload({ waitUntil: 'networkidle' });
+  await reloadWhenServiceWorkerControls(page, { waitUntil: 'networkidle' });
   await page.waitForTimeout(2_500);
   // Guest mode is remembered across the reload, and the reminder comes back with the note (F10).
   await expect(page.getByRole('button', { name: 'Continue without an account' })).toHaveCount(0);
