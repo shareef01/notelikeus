@@ -1,0 +1,11 @@
+[package]
+name = "notelikeus-app"
+description = "The Rust client's app logic, shared by its front ends: accounts, the notes store, sign-in and sync."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+notelikeus-core = { path = "../notelikeus-core", features = ["http"] }
+serde.workspace = true

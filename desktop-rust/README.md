@@ -24,14 +24,51 @@ is tested against the same `contracts/` fixtures as the other two, and why the r
 Not measured: startup time and memory of the Compose Desktop app against a Tauri build. Any claim of a
 performance win waits for that measurement.
 
+## Native app (2026-11-21 onwards)
+
+The owner's direction since 2026-11-21: a **fully Rust, native** Windows app, separate in logic and data from the
+Kotlin app, built step by step. It's a Slint UI (`crates/nlk-native`, binary `notelikeus.exe`) over the shared app
+logic (`crates/notelikeus-app`). The Tauri app stays as an earlier experiment.
+
+- **Look:** laid out like the web app: a sidebar, a search bar with a `Ctrl K` hint and a round + button, a masonry
+  grid of rounded cards, and the editor as a floating sheet. It uses the web app's icons and the design tokens in
+  `docs/design/tokens.json`, follows the Windows light or dark setting, and is set in Inter (OFL, `licenses/`).
+- **Data:** `%APPDATA%\NotelikeusRust` (override: `NLK_RUST_DATA_DIR`), sealed with the DPAPI-wrapped key like the
+  rest of the Rust client. It never opens the Kotlin app's `~/.notelikeus` or the Tauri app's folder.
+- **Licence:** Slint is used under its Royalty-free licence 2.0. A distributed build must show the "Made with
+  Slint" attribution (planned for the About screen in step 8).
+- **Tests:** `view.rs` unit tests (previews, card times, search, masonry), and `tests/ui.rs`, which drives the real
+  window headlessly through its accessible labels (create, edit, reopen after a restart, empty drafts, pin, search,
+  delete and Undo). Debug builds embed element debug info for that.
+
+**Roadmap.** One step at a time, each reviewed before the next:
+
+| Step | Scope | State |
+|---|---|---|
+| 1 | Foundation: web-app layout and theme, notes create / edit (autosave) / pin / delete with Undo / search | **Done** |
+| 2 | Note features: colours, archive and trash, labels, checklists | Next |
+| 3 | Search operators (`contracts/query/parser-vectors.json`), saved filters, smart views | |
+| 4 | Sign-in (emailed code, security check) and sync for everything above, conflict review | |
+| 5 | Images: staging, upload through the attachments Worker, thumbnails | |
+| 6 | Reminders: Windows notifications, tray | |
+| 7 | Backups: v3 JSON and v4 `.nlkbak` against `contracts/backup` | |
+| 8 | Settings: themes, account, diagnostics, delete account, About (Slint attribution) | |
+| 9 | Packaging and polish: installer, accessibility review, performance | |
+
+```
+cargo run -p nlk-native                      # the app
+cargo test -p nlk-native                     # view unit tests and the headless UI test
+```
+
 ## What exists
 
 ```
 desktop-rust/
   crates/notelikeus-core/   model, conflict rules, crypto, store, sync engine, Supabase transport (feature "http")
+  crates/notelikeus-app/    the app logic both front ends share: accounts, notes, sign-in, sync (service.rs)
+  crates/nlk-native/        notelikeus.exe: the native Slint app (see "Native app")
   crates/nlk-cli/           nlk-rust: guest-mode notes in the encrypted store (new / list / edit / delete / where)
   crates/nlk-tauri/         notelikeus-rust.exe: Tauri 2 window over the core, guest mode and signed-in sync
-    src/service.rs          what the window's commands do (unit-tested without Tauri)
     ui/                     the interface: plain HTML, CSS and JS, no bundler
     e2e/drive.mjs           drives the real app over WebView2's DevTools protocol (guest mode)
     e2e/drive-account.mjs   the same, signing in and syncing against a local Supabase stack

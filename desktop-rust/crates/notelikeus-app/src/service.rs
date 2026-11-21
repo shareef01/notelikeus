@@ -122,15 +122,18 @@ pub struct NotesService {
     last_error: Option<String>,
 }
 
-/// `%APPDATA%\NotelikeusRustExperimental`, or `NLK_RUST_DATA_DIR` when set (tests, side-by-side runs).
-pub fn default_data_dir() -> PathBuf {
+/// `%APPDATA%\<folder>`, or `NLK_RUST_DATA_DIR` when set (tests, side-by-side runs). Each front end has
+/// its own folder, so two of them never write the same files.
+pub fn data_dir_named(folder: &str) -> PathBuf {
     if let Some(dir) = std::env::var_os("NLK_RUST_DATA_DIR") {
         return PathBuf::from(dir);
     }
-    std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("NotelikeusRustExperimental")
+    std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(".")).join(folder)
+}
+
+/// The Tauri experiment's folder.
+pub fn default_data_dir() -> PathBuf {
+    data_dir_named("NotelikeusRustExperimental")
 }
 
 fn check_lengths(title: &str, content: &str) -> Result<(), String> {

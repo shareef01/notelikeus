@@ -1,0 +1,28 @@
+[package]
+name = "nlk-native"
+description = "The native Notelikeus app for Windows: a Slint UI over the Rust client's app logic."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "notelikeus"
+path = "src/main.rs"
+
+[dependencies]
+notelikeus-app = { path = "../notelikeus-app" }
+notelikeus-core = { path = "../notelikeus-core", features = ["http"] }
+# Royalty-free licence 2.0: a distributed build must show the "Made with Slint" attribution (an About
+# screen is planned in the settings step).
+slint = "=1.19.0"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_UI_WindowsAndMessaging"] }
+
+[build-dependencies]
+slint-build = "=1.19.0"
+
+[dev-dependencies]
+i-slint-backend-testing = "=1.19.0"

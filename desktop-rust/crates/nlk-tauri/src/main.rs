@@ -5,11 +5,9 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod service;
-
 use std::sync::{Arc, Mutex};
 
-use service::{AccountView, AppInfo, NoteView, NotesService, SyncConfig, SyncSummary, SystemIds};
+use notelikeus_app::{AccountView, AppInfo, NoteView, NotesService, SyncConfig, SyncSummary, SystemIds};
 use tauri::State;
 
 #[derive(Clone)]
@@ -202,7 +200,7 @@ fn show_fatal_error(text: &str) {
 }
 
 fn main() {
-    let dir = service::default_data_dir();
+    let dir = notelikeus_app::default_data_dir();
     let service = match NotesService::open(&dir, protector(), Box::new(SystemIds), SyncConfig::from_env()) {
         Ok(service) => service,
         Err(message) => {

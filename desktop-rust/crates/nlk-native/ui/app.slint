@@ -1,0 +1,639 @@
+// The native Notelikeus window, laid out like the web app: a sidebar, a top bar with search and a
+// new-note button, a masonry grid of note cards, and the editor as a floating sheet.
+//
+// Every interactive element carries an accessible role and label: screen readers use them, and so do
+// the headless UI tests (tests/ui.rs).
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Icons, Icon, IconButton } from "theme.slint";
+import "fonts/inter_regular.ttf";
+import "fonts/inter_medium.ttf";
+import "fonts/inter_semibold.ttf";
+import "fonts/inter_bold.ttf";
+
+export struct NoteCard {
+    id: string,
+    title: string,
+    preview: string,
+    time: string,
+    pinned: bool,
+}
+
+export struct CardColumn {
+    cards: [NoteCard],
+}
+
+component SectionLabel inherits Text {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.9px;
+    color: Theme.muted;
+}
+
+component NavItem inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <int> count: -1;
+    in property <bool> selected;
+    callback clicked();
+    height: 44px;
+    border-radius: Theme.radius-md;
+    background: selected ? Theme.surface-variant : (touch.has-hover ? Theme.hover : transparent);
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { root.clicked(); }
+
+    // The web app's selection bar on the left edge.
+    if selected: Rectangle {
+        x: -12px;
+        width: 3px;
+        height: 24px;
+        border-radius: 2px;
+        background: Theme.on-surface;
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 14px;
+        Icon {
+            y: (parent.height - self.height) / 2;
+            path: root.icon;
+            color: root.selected ? Theme.on-surface : Theme.on-surface-secondary;
+        }
+        Text {
+            text: root.label;
+            vertical-alignment: center;
+            font-size: 14px;
+            font-weight: root.selected ? 600 : 500;
+            color: root.selected ? Theme.on-surface : Theme.on-surface-secondary;
+            horizontal-stretch: 1;
+        }
+        if root.count >= 0: Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: max(20px, count-text.preferred-width + 10px);
+            height: 20px;
+            border-radius: 10px;
+            background: Theme.outline;
+            count-text := Text {
+                text: root.count;
+                font-size: 11px;
+                font-weight: 600;
+                color: Theme.on-surface;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component Card inherits Rectangle {
+    in property <NoteCard> card;
+    callback clicked();
+    border-radius: Theme.radius-note;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.muted : Theme.outline;
+    background: Theme.surface;
+    accessible-role: button;
+    accessible-label: card.title != "" ? card.title : "Untitled note";
+    accessible-description: card.preview;
+    accessible-action-default => { root.clicked(); }
+
+    VerticalLayout {
+        padding: 20px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 8px;
+            if card.title != "": Text {
+                text: card.title;
+                font-size: 18px;
+                font-weight: 600;
+                letter-spacing: -0.3px;
+                color: Theme.on-surface;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+            if card.title == "": Rectangle { horizontal-stretch: 1; }
+            if card.pinned: Icon {
+                width: 16px;
+                height: 16px;
+                path: Icons.pin;
+                color: Theme.muted;
+                accessible-role: image;
+                accessible-label: "Pinned";
+            }
+        }
+        if card.preview != "": Text {
+            text: card.preview;
+            font-size: 15px;
+            color: card.title != "" ? Theme.on-surface-secondary : Theme.on-surface;
+            wrap: word-wrap;
+        }
+        Text {
+            text: card.time;
+            font-size: 12px;
+            font-weight: 600;
+            color: Theme.muted;
+            horizontal-alignment: right;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component Sidebar inherits Rectangle {
+    in property <int> note-count;
+    width: Theme.sidebar-width;
+    background: Theme.surface;
+
+    VerticalLayout {
+        padding-top: 20px;
+        padding-bottom: 20px;
+        spacing: 0px;
+
+        // Brand.
+        HorizontalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-bottom: 20px;
+            spacing: 12px;
+            Rectangle {
+                width: 40px;
+                height: 40px;
+                border-radius: 20px;
+                background: Theme.on-surface;
+                Image {
+                    width: 28px;
+                    height: 28px;
+                    source: @image-url("images/icon.png");
+                    accessible-role: image;
+                    accessible-label: "Notelikeus";
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Text { text: "Notelikeus"; font-size: 16px; font-weight: 700; color: Theme.on-surface; }
+                Text { text: "Capture what matters"; font-size: 12px; color: Theme.on-surface-secondary; }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.outline; }
+
+        VerticalLayout {
+            padding: 12px;
+            padding-top: 20px;
+            spacing: 4px;
+            vertical-stretch: 0;
+            alignment: start;
+            HorizontalLayout { padding-left: 12px; SectionLabel { text: "LIBRARY"; } }
+            Rectangle { height: 6px; }
+            NavItem {
+                icon: Icons.notes;
+                label: "Notes";
+                count: root.note-count;
+                selected: true;
+            }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        HorizontalLayout {
+            padding-left: 24px;
+            Text {
+            text: "Rust · guest";
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.8px;
+            color: Theme.muted;
+            }
+        }
+    }
+
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.outline;
+    }
+}
+
+component SearchField inherits Rectangle {
+    in-out property <string> text;
+    callback edited(string);
+    forward-focus: input;
+    height: 48px;
+    border-radius: self.height / 2;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.muted : Theme.outline;
+
+    public function focus-search() {
+        input.focus();
+        input.select-all();
+    }
+
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 12px;
+        spacing: 8px;
+        Rectangle {
+            horizontal-stretch: 1;
+            if input.text == "": Text {
+                x: 0;
+                width: parent.width;
+                height: parent.height;
+                text: "Search notes";
+                font-size: 15px;
+                color: Theme.muted;
+                vertical-alignment: center;
+            }
+            input := TextInput {
+                text <=> root.text;
+                font-size: 15px;
+                color: Theme.on-surface;
+                vertical-alignment: center;
+                single-line: true;
+                accessible-role: text-input;
+                accessible-label: "Search notes";
+                edited => { root.edited(self.text); }
+            }
+        }
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: hint.preferred-width + 12px;
+            height: 22px;
+            border-radius: 6px;
+            background: Theme.surface-variant;
+            hint := Text {
+                text: "Ctrl K";
+                font-size: 11px;
+                font-weight: 600;
+                color: Theme.muted;
+            }
+        }
+    }
+}
+
+component EditorSheet inherits Rectangle {
+    in-out property <string> title;
+    in-out property <string> body;
+    in property <bool> pinned;
+    in property <string> footer;
+    in property <bool> can-act;
+    callback edited();
+    callback close();
+    callback toggle-pin();
+    callback delete();
+    forward-focus: body-input;
+    border-radius: Theme.radius-sheet;
+    border-width: 1px;
+    border-color: Theme.outline;
+    background: Theme.surface;
+    drop-shadow-blur: 32px;
+    drop-shadow-color: #00000066;
+
+    public function focus-title() {
+        title-input.focus();
+    }
+
+    // Swallow clicks so they do not reach the scrim behind the sheet.
+    TouchArea { }
+
+    VerticalLayout {
+        // Header.
+        HorizontalLayout {
+            padding: 16px;
+            padding-left: 24px;
+            padding-right: 24px;
+            spacing: 4px;
+            IconButton {
+                icon: Icons.back;
+                label: "Back to notes";
+                clicked => { root.close(); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            if root.can-act: IconButton {
+                icon: root.pinned ? Icons.pin-off : Icons.pin;
+                label: root.pinned ? "Unpin" : "Pin";
+                clicked => { root.toggle-pin(); }
+            }
+            if root.can-act: IconButton {
+                icon: Icons.trash;
+                label: "Delete note";
+                clicked => { root.delete(); }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.outline; }
+
+        // Title and body.
+        VerticalLayout {
+            padding: 40px;
+            padding-top: 28px;
+            padding-bottom: 12px;
+            spacing: 16px;
+            vertical-stretch: 1;
+
+            Rectangle {
+                height: max(title-input.preferred-height, 40px);
+                if title-input.text == "": Text {
+                    x: 0;
+                    y: 0;
+                    text: "Title";
+                    font-size: 32px;
+                    font-weight: 700;
+                    color: Theme.muted;
+                }
+                title-input := TextInput {
+                    y: 0;
+                    text <=> root.title;
+                    font-size: 32px;
+                    font-weight: 700;
+                    letter-spacing: -0.6px;
+                    color: Theme.on-surface;
+                    single-line: false;
+                    wrap: word-wrap;
+                    accessible-role: text-input;
+                    accessible-label: "Title";
+                    edited => { root.edited(); }
+                    key-pressed(event) => {
+                        if (event.text == Key.Return) {
+                            body-input.focus();
+                            return accept;
+                        }
+                        reject
+                    }
+                }
+            }
+
+            body-scroll := Flickable {
+                vertical-stretch: 1;
+                content-height: max(self.height, body-input.preferred-height + 24px);
+                if body-input.text == "": Text {
+                    x: 0;
+                    y: 0;
+                    text: "Start writing…";
+                    font-size: 17px;
+                    color: Theme.muted;
+                }
+                body-input := TextInput {
+                    width: body-scroll.width;
+                    text <=> root.body;
+                    font-size: 17px;
+                    color: Theme.on-surface;
+                    single-line: false;
+                    wrap: word-wrap;
+                    accessible-role: text-input;
+                    accessible-label: "Note";
+                    edited => { root.edited(); }
+                    // Keep the caret in view as the note grows past the sheet.
+                    cursor-position-changed(position) => {
+                        if (position.y + 40px > body-scroll.height - body-scroll.content-y) {
+                            body-scroll.content-y = min(0px, body-scroll.height - position.y - 40px);
+                        } else if (position.y < -body-scroll.content-y) {
+                            body-scroll.content-y = -position.y;
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle { height: 1px; background: Theme.outline; }
+        HorizontalLayout {
+            padding: 16px;
+            padding-left: 40px;
+            Text {
+                text: root.footer;
+                font-size: 13px;
+                font-weight: 600;
+                color: Theme.on-surface-secondary;
+                accessible-role: text;
+                accessible-label: "Save status";
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Notelikeus";
+    icon: @image-url("images/icon.png");
+    preferred-width: 1280px;
+    preferred-height: 820px;
+    min-width: 640px;
+    min-height: 480px;
+    background: Theme.background;
+    default-font-family: "Inter";
+
+    // Notes, from Rust.
+    in property <[CardColumn]> columns;
+    in property <int> note-count;
+    in property <bool> searching;
+    in-out property <string> query;
+
+    // The editor.
+    in-out property <bool> editor-open;
+    in-out property <string> editor-title;
+    in-out property <string> editor-body;
+    in property <bool> editor-pinned;
+    in property <bool> editor-saved-once;
+    in property <string> editor-footer;
+
+    // A short message with an optional action (Undo).
+    in property <string> toast-text;
+    in property <string> toast-action;
+
+    // How many card columns fit; Rust lays the cards out into that many.
+    out property <int> column-count: max(1, min(4, floor((scroll.visible-width - 48px + Theme.note-gap) / (Theme.card-min-width + Theme.note-gap))));
+    // Every column the same width, whatever its cards say.
+    property <length> column-width: (scroll.visible-width - 48px - (root.column-count - 1) * Theme.note-gap) / root.column-count;
+
+    callback columns-changed(int);
+    callback query-edited(string);
+    callback new-note();
+    callback open-note(string);
+    callback editor-edited();
+    callback close-editor();
+    callback toggle-pin();
+    callback delete-note();
+    callback toast-acted();
+    // Raised by Rust timers, so their closures never hold the controller.
+    callback autosave-due();
+    callback toast-expired();
+
+    changed column-count => { root.columns-changed(self.column-count); }
+
+    public function focus-search() {
+        search.focus-search();
+    }
+
+    // Back to the window after the editor closes, so the shortcuts keep working.
+    public function focus-main() {
+        keys.focus();
+    }
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.modifiers.control && (event.text == "n" || event.text == "N")) {
+                root.new-note();
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "k" || event.text == "K" || event.text == "f" || event.text == "F")) {
+                if (!root.editor-open) {
+                    search.focus-search();
+                }
+                return accept;
+            }
+            if (event.text == Key.Escape && root.editor-open) {
+                root.close-editor();
+                return accept;
+            }
+            reject
+        }
+
+        HorizontalLayout {
+            Sidebar { note-count: root.note-count; }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+
+                // Top bar.
+                HorizontalLayout {
+                    padding: 24px;
+                    padding-top: 16px;
+                    padding-bottom: 16px;
+                    spacing: 12px;
+                    search := SearchField {
+                        horizontal-stretch: 1;
+                        text <=> root.query;
+                        edited(text) => { root.query-edited(text); }
+                    }
+                    IconButton {
+                        y: (parent.height - self.height) / 2;
+                        icon: Icons.add;
+                        label: "New note";
+                        filled: true;
+                        size: 44px;
+                        clicked => { root.new-note(); }
+                    }
+                }
+
+                // The grid, or what to say when there is nothing in it.
+                Rectangle {
+                    vertical-stretch: 1;
+                    scroll := ScrollView {
+                        visible: root.note-count > 0;
+                        content-width: self.visible-width;
+                        content-height: grid.preferred-height;
+                        grid := HorizontalLayout {
+                            width: scroll.visible-width;
+                            alignment: start;
+                            padding-left: 24px;
+                            padding-right: 24px;
+                            padding-bottom: 24px;
+                            spacing: Theme.note-gap;
+                            for column in root.columns: VerticalLayout {
+                                alignment: start;
+                                spacing: Theme.note-gap;
+                                width: root.column-width;
+                                for card in column.cards: Card {
+                                    card: card;
+                                    clicked => { root.open-note(card.id); }
+                                }
+                            }
+                        }
+                    }
+                    if root.note-count == 0: VerticalLayout {
+                        alignment: center;
+                        spacing: 8px;
+                        Text {
+                            text: root.searching ? "No notes match your search" : "No notes yet";
+                            horizontal-alignment: center;
+                            font-size: 18px;
+                            font-weight: 600;
+                            color: Theme.on-surface;
+                        }
+                        Text {
+                            text: root.searching ? "Try other words." : "Press Ctrl+N, or the + button, to write one.";
+                            horizontal-alignment: center;
+                            font-size: 14px;
+                            color: Theme.on-surface-secondary;
+                        }
+                    }
+                }
+            }
+        }
+
+        // The editor floats over the grid, as the web app's "Float" mode.
+        if root.editor-open: Rectangle {
+            background: Theme.scrim;
+            TouchArea { clicked => { root.close-editor(); } }
+            sheet := EditorSheet {
+                x: (parent.width - self.width) / 2;
+                y: 40px;
+                width: min(960px, parent.width - 64px);
+                height: parent.height - 80px;
+                title <=> root.editor-title;
+                body <=> root.editor-body;
+                pinned: root.editor-pinned;
+                footer: root.editor-footer;
+                can-act: root.editor-saved-once;
+                edited => { root.editor-edited(); }
+                close => { root.close-editor(); }
+                toggle-pin => { root.toggle-pin(); }
+                delete => { root.delete-note(); }
+                init => {
+                    if (root.editor-title == "") {
+                        self.focus-title();
+                    } else {
+                        self.focus();
+                    }
+                }
+            }
+        }
+
+        if root.toast-text != "": Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height - 32px;
+            width: toast-row.preferred-width;
+            height: 48px;
+            border-radius: Theme.radius-md;
+            background: Theme.on-surface;
+            accessible-role: text;
+            accessible-label: root.toast-text;
+            toast-row := HorizontalLayout {
+                padding-left: 18px;
+                padding-right: 8px;
+                spacing: 12px;
+                Text {
+                    text: root.toast-text;
+                    vertical-alignment: center;
+                    font-size: 14px;
+                    color: Theme.background;
+                }
+                if root.toast-action != "": Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    width: action-text.preferred-width + 20px;
+                    height: 34px;
+                    border-radius: Theme.radius-sm;
+                    background: action-touch.has-hover ? Theme.background.transparentize(0.85) : transparent;
+                    accessible-role: button;
+                    accessible-label: root.toast-action;
+                    accessible-action-default => { root.toast-acted(); }
+                    action-text := Text {
+                        text: root.toast-action;
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: Theme.background;
+                    }
+                    action-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.toast-acted(); }
+                    }
+                }
+            }
+        }
+    }
+}
