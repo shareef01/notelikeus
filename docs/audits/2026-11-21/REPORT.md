@@ -136,6 +136,12 @@ conflict rules, the encrypted per-account store with a DPAPI-wrapped key, the sy
 scenarios, the HTTP transport (parsing tested only) and a guest-mode CLI. There is no UI, sign-in or snapshot
 download yet. The Tauri shell needs the MSVC Build Tools, which this machine lacks.
 
+**Addendum, later the same day.** The Build Tools were installed and a guest-mode Tauri 2 app was added
+(`desktop-rust/crates/nlk-tauri`). It has a notes list, search, autosave, pin, delete with Undo and a narrow layout.
+The 18-check end-to-end driver runs against the real window. Building it caught one UI race (keystrokes typed while
+a previous save was in flight could be lost) and one rendering bug (`hidden` overridden by CSS display rules). Both
+were fixed before the first commit. There is still no sign-in or sync in the window.
+
 ## Remaining risks
 
 1. **Two (soon three) implementations of the sync rules.** `contracts/sync/inbound-resolution.json` pins the Kotlin
@@ -165,5 +171,5 @@ covered by the suites listed above, but this pass did not exercise it on a devic
 | Backups v3/v4 | I | I | I | N |
 | Reminders | I | I | I | N |
 | Account deletion | I | V in production (2026-11-18, earlier pass) | I | N |
-| UI | I | I | I | N (blocked: no MSVC Build Tools here) |
+| UI | I | I | I | V for guest mode (Tauri app, e2e driver); no sign-in or sync UI |
 | e2e and pgTAP | — | B (no Docker) | — | — |
