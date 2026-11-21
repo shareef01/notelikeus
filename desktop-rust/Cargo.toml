@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["crates/notelikeus-core", "crates/nlk-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "LicenseRef-AllRightsReserved"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+aes-gcm = "0.10"
+getrandom = "0.2"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+ureq = { version = "2", default-features = false, features = ["json", "native-tls"] }
+native-tls = "0.2"
+
+[profile.release]
+lto = true
+codegen-units = 1
