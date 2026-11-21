@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
 const url = process.env.NLK_TEST_SUPABASE_URL;
 const key = process.env.NLK_TEST_SUPABASE_KEY;
 const mailpit = process.env.NLK_TEST_MAILPIT_URL;
+/** Optional: a local build of web/captcha.html (Turnstile test key), to run the security check too. */
+const captchaPage = process.env.NLK_TEST_CAPTCHA_PAGE_URL ?? null;
 if (!url || !key || !mailpit) {
   console.log('skipped: set NLK_TEST_SUPABASE_URL, NLK_TEST_SUPABASE_KEY and NLK_TEST_MAILPIT_URL');
   process.exit(0);
@@ -54,6 +56,7 @@ async function launch() {
       NLK_RUST_DEVTOOLS_PORT: String(PORT),
       NLK_SUPABASE_URL: url,
       NLK_SUPABASE_KEY: key,
+      ...(captchaPage ? { NLK_CAPTCHA_PAGE_URL: captchaPage } : {}),
     },
     stdio: 'ignore',
   });
@@ -198,6 +201,25 @@ try {
   await cdp.call(() => document.getElementById('email').focus());
   await cdp.type(email);
   await cdp.click('#send-code');
+  if (captchaPage) {
+    // The security check opens in its own window: a second page target on the same WebView2.
+    const findCheck = async () => {
+      const pages = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+      return pages.find((p) => p.type === 'page' && p.url.includes('return=app') && p.url.includes('state='));
+    };
+    let target = null;
+    await waitFor(async () => (target = await findCheck()) != null, 'the security check window to open', 15_000);
+    check(target != null, 'Send code opens the security check window first');
+    if (target == null) console.log(`     dialog says: ${await text(cdp, 'sign-in-error')}`);
+    if (target && shots) {
+      const check2 = await connect(target.webSocketDebuggerUrl);
+      await sleep(1500);
+      await check2.shot('account-00-security-check');
+      check2.ws.close();
+    }
+    await waitFor(async () => (await findCheck()) == null, 'the security check window to close', 60_000);
+    check((await findCheck()) == null, 'the window closes itself after handing back the token');
+  }
   const sent = await Promise.race([
     (async () => { await waitFor(() => visible(cdp, 'code-step'), 'the code step', 15_000); return true; })(),
     sleep(15_000).then(() => false),
@@ -219,6 +241,8 @@ try {
 
     await newNote(cdp, 'From the Rust app', 'synced through the window');
     await waitFor(async () => (await titles(cdp)).includes('From the Rust app'), 'the account note to save');
+    await waitFor(async () => /waiting to sync/.test(await text(cdp, 'sync-line')), 'the panel to show the edit waiting');
+    check(/1 change waiting to sync/.test(await text(cdp, 'sync-line')), 'after a save the panel says the edit is waiting, not "Up to date"');
     await cdp.click('#sync-button');
     await waitFor(async () => (await text(cdp, 'sync-line')).startsWith('Up to date'), 'the sync to finish');
     const unsynced = await cdp.call(() => window.__TAURI__.core.invoke('list_notes').then((n) => n.filter((x) => x.unsynced).length));

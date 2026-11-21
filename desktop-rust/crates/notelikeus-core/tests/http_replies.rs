@@ -131,3 +131,39 @@ fn sign_in_replies_and_errors() {
     // A message mentioning a code is not a code.
     assert!(matches!(classify(400, &json!({ "msg": "otp_expired" })), AuthError::Refused { .. }));
 }
+
+#[test]
+fn captcha_state_and_challenge_url() {
+    use notelikeus_core::captcha::{challenge_url, checked_page_url, new_state};
+    let (a, b) = (new_state().unwrap(), new_state().unwrap());
+    assert_ne!(a, b);
+    assert_eq!(a.len(), 32);
+    assert!(a.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_'), "{a}");
+    assert_eq!(challenge_url("https://x.test/captcha", "s"), "https://x.test/captcha?return=app&state=s");
+    assert_eq!(challenge_url("https://x.test/captcha?v=1", "s"), "https://x.test/captcha?v=1&return=app&state=s");
+    assert!(checked_page_url("https://notelikeus.pages.dev/captcha").is_ok());
+    assert!(checked_page_url("http://127.0.0.1:4174/captcha.html").is_ok());
+    assert!(checked_page_url("http://notelikeus.pages.dev/captcha").is_err());
+}
+
+#[test]
+fn only_the_page_this_app_opened_can_hand_back_a_token() {
+    use notelikeus_core::captcha::{is_return_url, token_from_return_url};
+    let state = "abcdefghijklmnop1234";
+    let ok = format!("notelikeus-captcha://token?state={state}&token=0.ABC_def-123%2Bx");
+    assert_eq!(token_from_return_url(&ok, state).as_deref(), Some("0.ABC_def-123+x"));
+    assert!(is_return_url(&ok) && is_return_url("NOTELIKEUS-CAPTCHA://token?x"));
+    for bad in [
+        "notelikeus-captcha://token?state=wrong-state-0000000&token=t".to_string(),
+        format!("notelikeus-captcha://token?state={state}"),
+        format!("notelikeus-captcha://token?state={state}&token="),
+        format!("notelikeus-captcha://other?state={state}&token=t"),
+        format!("https://evil.test/?state={state}&token=t"),
+        format!("notelikeus-captcha://token?state={state}&token=a&token=b"),
+        format!("notelikeus-captcha://token?state={state}&token=has%20space"),
+        format!("notelikeus-captcha://token?state={state}&token={}", "x".repeat(5000)),
+    ] {
+        assert_eq!(token_from_return_url(&bad, state), None, "{bad}");
+    }
+    assert_eq!(token_from_return_url(&ok, ""), None, "an empty expected state accepts nothing");
+}

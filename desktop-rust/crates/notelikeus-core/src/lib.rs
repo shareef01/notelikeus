@@ -17,6 +17,8 @@ pub mod sync;
 #[cfg(feature = "http")]
 pub mod auth;
 #[cfg(feature = "http")]
+pub mod captcha;
+#[cfg(feature = "http")]
 pub mod http;
 
 #[derive(Debug, thiserror::Error)]

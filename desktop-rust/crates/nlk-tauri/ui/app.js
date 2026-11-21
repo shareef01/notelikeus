@@ -138,6 +138,11 @@ function saveNow() {
     }
     setStatus(account?.signedIn ? 'Saved on this device.' : SAVED);
     render();
+    if (account?.signedIn) {
+      // The panel must not keep saying "Up to date" while this edit waits to upload.
+      account = await invoke('account');
+      renderAccount();
+    }
     scheduleAutoSync();
   });
 }

@@ -66,8 +66,84 @@ async fn account(app: State<'_, App>) -> Result<AccountView, String> {
 }
 
 #[tauri::command]
-async fn request_code(app: State<'_, App>, email: String) -> Result<(), String> {
-    with(app, move |s| s.request_code(&email)).await
+async fn request_code(handle: tauri::AppHandle, app: State<'_, App>, email: String) -> Result<(), String> {
+    let page = with(app.clone(), |s| Ok(s.captcha_page_url())).await?;
+    let token = match page {
+        Some(page) => Some(security_check(&handle, &page).await?),
+        None => None,
+    };
+    with(app, move |s| s.request_code(&email, token.as_deref())).await
+}
+
+const SECURITY_CHECK_CANCELLED: &str = "Sign-in needs a quick security check before we can email a code. Try again.";
+
+/// Opens the web app's Turnstile page in its own window and waits for the token it hands back.
+///
+/// The window gets no app permissions (the capability file grants commands to `main` only), may only
+/// navigate within the page's own site, and its final `notelikeus-captcha:` navigation is blocked and
+/// read instead: the token counts only with the random state this call put in the URL. Closing the
+/// window cancels; after five minutes it gives up.
+async fn security_check(handle: &tauri::AppHandle, page: &str) -> Result<String, String> {
+    use notelikeus_core::captcha;
+    use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+
+    let page = captcha::checked_page_url(page)?;
+    let state = captcha::new_state().map_err(|e| e.to_string())?;
+    let url: tauri::Url =
+        captcha::challenge_url(&page, &state).parse().map_err(|e| format!("bad captcha page URL: {e}"))?;
+    let origin = url.origin();
+    let label = "security-check";
+    if let Some(open) = handle.get_webview_window(label) {
+        let _ = open.set_focus();
+        return Err("The security check is already open.".into());
+    }
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
+    let tx = Arc::new(Mutex::new(Some(tx)));
+    let send = {
+        let tx = tx.clone();
+        move |result: Result<String, String>| {
+            if let Some(tx) = tx.lock().ok().and_then(|mut slot| slot.take()) {
+                let _ = tx.send(result);
+            }
+        }
+    };
+    let on_return = send.clone();
+    let builder = WebviewWindowBuilder::new(handle, label, WebviewUrl::External(url))
+        .title("Security check · Notelikeus")
+        .inner_size(460.0, 620.0)
+        .resizable(false);
+    let builder = match debug_browser_args() {
+        Some(args) => builder.additional_browser_args(&args),
+        None => builder,
+    };
+    let window = builder
+        .on_navigation(move |next| {
+            if captcha::is_return_url(next.as_str()) {
+                on_return(
+                    captcha::token_from_return_url(next.as_str(), &state)
+                        .ok_or_else(|| SECURITY_CHECK_CANCELLED.to_string()),
+                );
+                return false;
+            }
+            // Only the challenge page's own site; Turnstile itself runs in a frame, not a navigation.
+            next.origin() == origin
+        })
+        .build()
+        .map_err(|e| format!("Could not open the security check: {e}"))?;
+    let on_close = send.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, WindowEvent::Destroyed) {
+            on_close(Err(SECURITY_CHECK_CANCELLED.into()));
+        }
+    });
+
+    let outcome = tokio::time::timeout(std::time::Duration::from_secs(300), rx).await;
+    let _ = window.close();
+    match outcome {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) | Err(_) => Err(SECURITY_CHECK_CANCELLED.into()),
+    }
 }
 
 #[tauri::command]
@@ -94,6 +170,21 @@ fn protector() -> Box<dyn notelikeus_core::crypto::KeyProtector + Send + Sync> {
     {
         Box::new(notelikeus_core::crypto::PlaintextKeyProtectorForTests)
     }
+}
+
+/// Debug builds only: `NLK_RUST_DEVTOOLS_PORT` opens WebView2's DevTools protocol on loopback so the
+/// UI can be driven end to end in tests. A release build always answers None.
+///
+/// Every window must be built with these same arguments: WebView2 refuses to create a second window
+/// whose browser arguments differ from the first's in the same data folder (0x8007139F).
+fn debug_browser_args() -> Option<String> {
+    #[cfg(debug_assertions)]
+    {
+        let port = std::env::var("NLK_RUST_DEVTOOLS_PORT").ok()?.parse::<u16>().ok()?;
+        Some(format!("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}"))
+    }
+    #[cfg(not(debug_assertions))]
+    None
 }
 
 /// A release build has no console, so a startup failure needs a dialog to be seen at all.
@@ -143,13 +234,8 @@ fn main() {
                 .title("Notelikeus (Rust experiment)")
                 .inner_size(1100.0, 720.0)
                 .min_inner_size(480.0, 400.0);
-            // Debug builds only: NLK_RUST_DEVTOOLS_PORT opens WebView2's DevTools protocol on loopback so
-            // the UI can be driven end to end in tests. A release build ignores it.
-            #[cfg(debug_assertions)]
-            let builder = match std::env::var("NLK_RUST_DEVTOOLS_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
-                Some(port) => builder.additional_browser_args(&format!(
-                    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}"
-                )),
+            let builder = match debug_browser_args() {
+                Some(args) => builder.additional_browser_args(&args),
                 None => builder,
             };
             builder.build()?;

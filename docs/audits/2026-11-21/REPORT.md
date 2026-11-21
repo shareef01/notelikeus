@@ -205,3 +205,19 @@ One defect was found and fixed in passing. The transport's plain-HTTP exception 
 prefixes, so `http://localhost.example.com` passed as loopback. It now compares the host exactly
 (`http::checked_base_url`, with tests). The impact was limited to the experimental client, which has no hosted
 configuration.
+
+## Addendum: the security check for hosted sign-in (later the same day)
+
+The Rust app now runs the Turnstile step the hosted project requires (`desktop-rust/crates/notelikeus-core/src/captcha.rs`,
+`security_check` in the app). It works like Android's: it opens the web app's `captcha.html` in its own window and
+catches the `notelikeus-captcha:` hand-back, accepting the token only with the random state it sent.
+
+It was tested end to end through the real window, using the web app's challenge page built with Cloudflare's
+always-pass test key. The production page and hosted project were not used.
+
+Two defects were found and fixed while testing it:
+1. **A second window failed to open in debug runs** (WebView2 `0x8007139F`), because its browser arguments
+   differed from the main window's. Both windows now take their arguments from one function. Release builds
+   were not affected.
+2. **The account panel kept saying "Up to date" after a save** while the edit waited to upload. It now refreshes
+   after every save while signed in, and the driver checks for "1 change waiting to sync".
