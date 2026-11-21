@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { leaveEditor, openNewNote } from './helpers/newNote';
+import { reloadWhenServiceWorkerControls } from './helpers/reload';
 
 /**
  * A note's full round trip through a real browser and local Supabase.
@@ -40,7 +41,7 @@ function noteCard(page: Page, title: string) {
 }
 
 async function reloadApp(page: Page): Promise<void> {
-  await page.reload();
+  await reloadWhenServiceWorkerControls(page);
   await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
 }
 

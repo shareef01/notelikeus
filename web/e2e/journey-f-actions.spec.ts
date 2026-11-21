@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { createNoteWithTitle } from './helpers/newNote';
+import { reloadWhenServiceWorkerControls } from './helpers/reload';
 
 /**
  * Journey F, part two: what pin, archive and trash do to the data.
@@ -132,7 +133,7 @@ test('a pin survives a reload', async ({ browser }) => {
   await page.waitForTimeout(1_400);
   await leaveSelection(page);
 
-  await page.reload({ waitUntil: 'networkidle' });
+  await reloadWhenServiceWorkerControls(page, { waitUntil: 'networkidle' });
   await page.waitForTimeout(2_500);
   // Guest mode is remembered: the reload opens the notes, not the sign-in gate.
   await expect(page.getByRole('button', { name: 'Continue without an account' })).toHaveCount(0);
