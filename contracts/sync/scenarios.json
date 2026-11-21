@@ -1,0 +1,74 @@
+{
+  "description": "End states every sync engine must reach. One device and the cloud start in agreement on one note (`synced`). The device then acts offline (`local`) while another device changes the cloud (`elsewhere`), and the device syncs. `expected` lists the notes on the device and in the cloud afterwards, as \"title: content\", sorted. Engines that can download and upload separately (web, Rust) run every case in each of `orders` and must reach the same end state both ways: AUD-I01 was exactly an outcome that depended on the order. Kotlin syncs in one call and runs each case once. Nothing may be lost: a conflict ends with both versions somewhere.",
+  "synced": { "title": "Groceries", "content": "milk" },
+  "copySuffix": " (conflicted copy)",
+  "orders": ["push-first", "pull-first"],
+  "cases": [
+    {
+      "name": "an offline edit with nothing changed elsewhere is uploaded",
+      "local": { "edit": "milk, bread" },
+      "elsewhere": null,
+      "expected": { "device": ["Groceries: milk, bread"], "cloud": ["Groceries: milk, bread"] }
+    },
+    {
+      "name": "an edit made elsewhere is downloaded",
+      "local": null,
+      "elsewhere": { "edit": "milk, eggs" },
+      "expected": { "device": ["Groceries: milk, eggs"], "cloud": ["Groceries: milk, eggs"] }
+    },
+    {
+      "name": "two different edits keep both: the other device's on the note, ours as a copy",
+      "local": { "edit": "milk, bread" },
+      "elsewhere": { "edit": "milk, eggs" },
+      "expected": {
+        "device": ["Groceries (conflicted copy): milk, bread", "Groceries: milk, eggs"],
+        "cloud": ["Groceries (conflicted copy): milk, bread", "Groceries: milk, eggs"]
+      }
+    },
+    {
+      "name": "the same edit made on both devices is not duplicated",
+      "local": { "edit": "milk, eggs" },
+      "elsewhere": { "edit": "milk, eggs" },
+      "expected": { "device": ["Groceries: milk, eggs"], "cloud": ["Groceries: milk, eggs"] }
+    },
+    {
+      "name": "an offline edit of a note deleted elsewhere survives as a copy",
+      "local": { "edit": "milk, bread" },
+      "elsewhere": "delete",
+      "expected": {
+        "device": ["Groceries (conflicted copy): milk, bread"],
+        "cloud": ["Groceries (conflicted copy): milk, bread"]
+      }
+    },
+    {
+      "name": "a note deleted elsewhere and untouched here is deleted here",
+      "local": null,
+      "elsewhere": "delete",
+      "expected": { "device": [], "cloud": [] }
+    },
+    {
+      "name": "an offline delete with nothing changed elsewhere is deleted in the cloud",
+      "local": "delete",
+      "elsewhere": null,
+      "expected": { "device": [], "cloud": [] }
+    },
+    {
+      "name": "an offline delete loses to an edit made elsewhere: the note comes back with those words",
+      "local": "delete",
+      "elsewhere": { "edit": "milk, eggs" },
+      "expected": { "device": ["Groceries: milk, eggs"], "cloud": ["Groceries: milk, eggs"] }
+    },
+    {
+      "name": "a note deleted on both devices stays deleted",
+      "local": "delete",
+      "elsewhere": "delete",
+      "expected": { "device": [], "cloud": [] }
+    },
+    {
+      "name": "a note created offline is uploaded alongside the synced one",
+      "local": { "create": { "title": "Trip", "content": "pack" } },
+      "elsewhere": null,
+      "expected": { "device": ["Groceries: milk", "Trip: pack"], "cloud": ["Groceries: milk", "Trip: pack"] }
+    }
+  ]
+}

@@ -27,6 +27,7 @@ side that reads it is enough to make drift a failing test rather than a support 
 | `design/theme-colors.json` | The chrome colours of every theme (background, surfaces, text roles, outline) and the light accent tints |
 | `design/note-colors.json` | The note colour palette: each entry's index, `color:` keyword, English name and light/dark ARGB, and that a missing `color` reads as no colour (`0`) |
 | `sync/inbound-resolution.json` | Kotlin download rules: what an inbound cloud version may do to the local row — accept, keep the local row, or keep the local edit as a conflicted copy. Web reaches the same end states through pending-push markers (`offlineEditDurability.test.ts`) |
+| `sync/scenarios.json` | End states **every** sync engine must reach: one synced note, an offline change on the device (edit, delete, create, nothing), a change made elsewhere (edit, delete, nothing), then a sync. Lists the notes on the device and in the cloud afterwards. Web and Rust run each case download-first and upload-first and must agree both ways; reintroducing AUD-I01 fails the download-first run of "an offline edit of a note deleted elsewhere survives as a copy" |
 
 ## The normal form
 
@@ -53,9 +54,14 @@ fields leaking in:
 | TypeScript | `web/src/theme/noteColors.contract.test.ts` (note colours, and the missing-colour fallback in each mapper) |
 | Kotlin | `composeApp/src/commonTest/kotlin/com/aus/notelikeus/contract/QueryParserContractTest.kt` (search operators) |
 | TypeScript | `web/src/lib/query/noteQueryParser.contract.test.ts` (search operators) |
+| Kotlin | `composeApp/src/commonTest/kotlin/com/aus/notelikeus/data/sync/SyncScenariosContractTest.kt` (sync end states, against a cloud fake that enforces revisions) |
+| TypeScript | `web/src/lib/contract/syncScenarios.contract.test.ts` (sync end states, through the app's own sync code over a fake RPC server) |
+| Rust | `desktop-rust/crates/notelikeus-core/tests/sync_scenarios.rs` (sync end states) |
+| Rust | `desktop-rust/crates/notelikeus-core/tests/contracts.rs` (cloud rows, RPC arguments, tombstones, inbound rules, digests, owner tags) |
 
-Both resolve this directory by walking up from the working directory, so they run from the
-repository root or from inside a module.
+All of them resolve this directory by walking up from the working directory, so they run from the
+repository root or from inside a module. The Kotlin test tasks declare `contracts/` as an input,
+so changing a fixture reruns them.
 
 The fixtures pin what each client *sends*; they cannot say whether the database accepts it.
 PostgREST matches an RPC by its set of argument names, so that is checked separately, against
