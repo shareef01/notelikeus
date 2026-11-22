@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/notelikeus-core", "crates/nlk-cli", "crates/nlk-tauri"]
+members = ["crates/notelikeus-core", "crates/notelikeus-app", "crates/nlk-cli", "crates/nlk-tauri", "crates/nlk-native"]
 
 [workspace.package]
 version = "0.1.0"
@@ -21,3 +21,14 @@ native-tls = "0.2"
 [profile.release]
 lto = true
 codegen-units = 1
+
+# Keep application code line-debuggable while avoiding full dependency symbols in dev/test builds.
+# Cargo's test profile inherits dev; debug assertions and overflow checks remain enabled.
+[profile.dev]
+debug = 1
+incremental = true
+debug-assertions = true
+overflow-checks = true
+
+[profile.dev.package."*"]
+debug = 0

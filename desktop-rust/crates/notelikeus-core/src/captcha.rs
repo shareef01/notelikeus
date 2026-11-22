@@ -82,7 +82,15 @@ pub fn token_from_return_url(url: &str, expected_state: &str) -> Option<String> 
     }
     let rest = &url[RETURN_SCHEME.len() + 1..];
     let query = rest.strip_prefix("//token?")?;
-    let query = query.split('#').next().unwrap_or_default();
+    token_from_query(query.split('#').next().unwrap_or_default(), expected_state)
+}
+
+/// The token from a hand-back query string (`state=…&token=…`), when its state is `expected_state`:
+/// Kotlin `captchaTokenFromReturnQuery`.
+pub fn token_from_query(query: &str, expected_state: &str) -> Option<String> {
+    if expected_state.is_empty() {
+        return None;
+    }
     let (mut state, mut token) = (None, None);
     for pair in query.split('&') {
         let (key, value) = pair.split_once('=')?;
@@ -97,4 +105,180 @@ pub fn token_from_return_url(url: &str, expected_state: &str) -> Option<String> 
     let token = token?;
     let plausible = !token.is_empty() && token.len() <= MAX_TOKEN_LEN && token.bytes().all(|b| b.is_ascii_graphic());
     (state.as_deref() == Some(expected_state) && plausible).then_some(token)
+}
+
+// --- The desktop's loopback return ------------------------------------------------------------------
+
+/// Desktop's way back (Kotlin `LoopbackCaptchaTokenProvider`): the system browser opens the challenge
+/// page with `?port=<n>&state=<s>`, and the page sends the token to `http://127.0.0.1:<n>/?state=&token=`.
+///
+/// It listens on 127.0.0.1 only, on a port the OS picks. The first request to `/` with the right state
+/// yields the token. A request with a wrong or missing state gets a 400 and the listener keeps waiting,
+/// so a stray visit does not spoil the check, but after [`MAX_BAD_ATTEMPTS`] of them it fails.
+pub struct Loopback {
+    listener: std::net::TcpListener,
+    state: String,
+}
+
+/// Wrong-state requests tolerated before the check fails.
+pub const MAX_BAD_ATTEMPTS: u32 = 5;
+
+impl Loopback {
+    pub fn start() -> Result<Loopback, String> {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0))
+            .map_err(|e| format!("Couldn't start the security check: {e}"))?;
+        listener.set_nonblocking(true).map_err(|e| e.to_string())?;
+        let state = new_state().map_err(|e| e.to_string())?;
+        Ok(Loopback { listener, state })
+    }
+
+    pub fn port(&self) -> u16 {
+        self.listener.local_addr().map(|a| a.port()).unwrap_or(0)
+    }
+
+    /// The challenge page asked to hand its token back to this listener.
+    pub fn challenge_url(&self, page_url: &str) -> String {
+        let separator = if page_url.contains('?') { '&' } else { '?' };
+        format!("{page_url}{separator}port={}&state={}", self.port(), self.state)
+    }
+
+    /// Waits for the token until `timeout`, or until `cancelled` turns true.
+    pub fn wait(
+        &self,
+        timeout: std::time::Duration,
+        cancelled: &std::sync::atomic::AtomicBool,
+    ) -> Result<String, String> {
+        use std::sync::atomic::Ordering;
+        let deadline = std::time::Instant::now() + timeout;
+        let mut bad = 0;
+        loop {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err("The security check was cancelled.".into());
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err("The security check in your browser timed out. Try again.".into());
+            }
+            match self.listener.accept() {
+                Ok((stream, _)) => match self.answer(stream) {
+                    Answer::Token(token) => return Ok(token),
+                    Answer::WrongState => {
+                        bad += 1;
+                        if bad >= MAX_BAD_ATTEMPTS {
+                            return Err("The security check didn't go through. Try again.".into());
+                        }
+                    }
+                    Answer::Ignored => {}
+                },
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                Err(e) => return Err(format!("The security check failed: {e}")),
+            }
+        }
+    }
+
+    fn answer(&self, mut stream: std::net::TcpStream) -> Answer {
+        use std::io::{Read, Write};
+        let _ = stream.set_nonblocking(false);
+        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+        let mut request = Vec::new();
+        let mut buffer = [0u8; 2048];
+        // The request line and headers; a GET has no body. Capped, since anything may connect.
+        while !request.windows(4).any(|w| w == b"\r\n\r\n") && request.len() < 16 * 1024 {
+            match stream.read(&mut buffer) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => request.extend_from_slice(&buffer[..n]),
+            }
+        }
+        let text = String::from_utf8_lossy(&request);
+        let line = text.lines().next().unwrap_or_default();
+        let mut parts = line.split(' ');
+        let (method, target) = (parts.next().unwrap_or_default(), parts.next().unwrap_or_default());
+        let (path, query) = target.split_once('?').unwrap_or((target, ""));
+        // The browser may also ask for /favicon.ico; only the page's redirect to / counts.
+        let (status, message, answer) = if method != "GET" || path != "/" {
+            ("404 Not Found", "Not found.", Answer::Ignored)
+        } else if let Some(token) = token_from_query(query, &self.state) {
+            ("200 OK", "Done. You can close this tab and return to Notelikeus.", Answer::Token(token))
+        } else {
+            (
+                "400 Bad Request",
+                "This security check is not the one Notelikeus started. Return to the app and try again.",
+                Answer::WrongState,
+            )
+        };
+        let body = format!(
+            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Notelikeus</title></head>\
+             <body style=\"font-family:system-ui,sans-serif;text-align:center;padding:3rem\"><p>{message}</p></body></html>"
+        );
+        let _ = write!(
+            stream,
+            "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\n\
+             Referrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'\r\n\
+             Connection: close\r\n\r\n{body}",
+            body.len()
+        );
+        answer
+    }
+}
+
+enum Answer {
+    Token(String),
+    WrongState,
+    Ignored,
+}
+
+#[cfg(test)]
+mod loopback_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::sync::atomic::AtomicBool;
+
+    fn get(port: u16, target: &str) -> String {
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        write!(stream, "GET {target} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
+        let mut reply = String::new();
+        stream.read_to_string(&mut reply).unwrap();
+        reply
+    }
+
+    #[test]
+    fn the_token_comes_back_only_with_the_right_state() {
+        let loopback = Loopback::start().unwrap();
+        let port = loopback.port();
+        let url = loopback.challenge_url("https://notelikeus.example/captcha.html");
+        assert!(url.starts_with(&format!("https://notelikeus.example/captcha.html?port={port}&state=")));
+        let state = url.split("state=").nth(1).unwrap().to_string();
+        let client = std::thread::spawn(move || {
+            let favicon = get(port, "/favicon.ico");
+            let wrong = get(port, "/?state=someone-elses-state-value&token=forged");
+            let right = get(port, &format!("/?state={state}&token=tok%2Ben"));
+            (favicon, wrong, right)
+        });
+        let token = loopback.wait(std::time::Duration::from_secs(10), &AtomicBool::new(false)).unwrap();
+        let (favicon, wrong, right) = client.join().unwrap();
+        assert_eq!(token, "tok+en", "percent-decoded, as the other clients do");
+        assert!(favicon.starts_with("HTTP/1.1 404"));
+        assert!(wrong.starts_with("HTTP/1.1 400"));
+        assert!(right.starts_with("HTTP/1.1 200") && right.contains("close this tab"));
+    }
+
+    #[test]
+    fn too_many_wrong_states_fail_and_cancel_stops_waiting() {
+        let loopback = Loopback::start().unwrap();
+        let port = loopback.port();
+        let client = std::thread::spawn(move || {
+            for _ in 0..MAX_BAD_ATTEMPTS {
+                get(port, "/?state=wrong-state-value-0123456&token=x");
+            }
+        });
+        let result = loopback.wait(std::time::Duration::from_secs(10), &AtomicBool::new(false));
+        client.join().unwrap();
+        assert_eq!(result.unwrap_err(), "The security check didn't go through. Try again.");
+
+        let result = Loopback::start().unwrap().wait(std::time::Duration::from_secs(10), &AtomicBool::new(true));
+        assert_eq!(result.unwrap_err(), "The security check was cancelled.");
+        let result = Loopback::start().unwrap().wait(std::time::Duration::from_millis(100), &AtomicBool::new(false));
+        assert!(result.unwrap_err().contains("timed out"));
+    }
 }

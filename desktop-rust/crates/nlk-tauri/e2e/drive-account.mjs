@@ -2,7 +2,7 @@
 // Signs in through the window with an emailed code read from the local mail catcher, writes a note,
 // syncs, checks the row in the database, restarts, and signs out.
 //
-//   NLK_TEST_SUPABASE_URL=http://127.0.0.1:54321 NLK_TEST_SUPABASE_KEY=<local key> \
+//   NLK_TEST_SUPABASE_URL=http://127.0.0.1:54326 NLK_TEST_SUPABASE_KEY=<local key> \
 //   NLK_TEST_MAILPIT_URL=http://127.0.0.1:54324 node crates/nlk-tauri/e2e/drive-account.mjs [shots]
 //
 // The local stack sends at most two emails an hour; a run that hits the limit says so and exits 0.

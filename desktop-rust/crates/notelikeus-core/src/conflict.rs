@@ -173,3 +173,100 @@ pub fn owner_tag(owner_id: Option<&str>) -> String {
         }
     }
 }
+
+// --- Reviewing a conflicted copy (the web's `conflictReview.ts`) -------------------------------------
+
+/// The title the copy's original had, or None for an untitled copy (nothing to match on).
+pub fn original_title_of(copy_title: &str) -> Option<&str> {
+    copy_title.strip_suffix(COPY_SUFFIX)
+}
+
+/// The live note the copy was most likely split from: the one note, not trashed and not itself a copy,
+/// whose title is the copy's without the suffix. A copy carries no link to its original, so this is a
+/// best guess, and None when it is not unambiguous: better no pairing than the wrong one.
+pub fn find_original<'a>(copy: &Note, notes: impl IntoIterator<Item = &'a Note>) -> Option<&'a Note> {
+    let title = original_title_of(&copy.title).filter(|t| !t.trim().is_empty())?;
+    let mut candidates = notes
+        .into_iter()
+        .filter(|n| n.id != copy.id && !n.is_trashed && !is_conflicted_copy_title(&n.title) && n.title == title);
+    let first = candidates.next()?;
+    candidates.next().is_none().then_some(first)
+}
+
+/// One line of a version under review.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReviewLine {
+    pub text: String,
+    /// Not in the other version.
+    pub changed: bool,
+}
+
+fn review_lines(note: &Note) -> Vec<String> {
+    let mut lines: Vec<String> =
+        if note.content.is_empty() { Vec::new() } else { note.content.split('\n').map(str::to_string).collect() };
+    let mut items = note.checklist.clone();
+    items.sort_by_key(|i| i.position);
+    lines.extend(items.iter().map(|i| format!("{} {}", if i.is_checked { '☑' } else { '☐' }, i.text)));
+    lines
+}
+
+fn mark_against(lines: &[String], other: &[String]) -> Vec<ReviewLine> {
+    let mut left: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for line in other {
+        *left.entry(line.as_str()).or_default() += 1;
+    }
+    lines
+        .iter()
+        .map(|text| {
+            let unmatched = left.get_mut(text.as_str()).filter(|n| **n > 0);
+            let changed = match unmatched {
+                Some(n) => {
+                    *n -= 1;
+                    false
+                }
+                None => true,
+            };
+            ReviewLine { text: text.clone(), changed }
+        })
+        .collect()
+}
+
+/// Each version's lines (body, then checklist items), marked where the other version has no such line.
+/// Deliberately simple: "which lines are only here" is what someone comparing two versions needs.
+pub fn compare_versions(a: &Note, b: &Note) -> (Vec<ReviewLine>, Vec<ReviewLine>) {
+    let (lines_a, lines_b) = (review_lines(a), review_lines(b));
+    (mark_against(&lines_a, &lines_b), mark_against(&lines_b, &lines_a))
+}
+
+#[cfg(test)]
+mod review_tests {
+    use super::*;
+    use crate::model::ChecklistItem;
+
+    fn note(id: &str, title: &str, content: &str) -> Note {
+        Note { id: id.into(), title: title.into(), content: content.into(), ..Note::new(1, 0) }
+    }
+
+    #[test]
+    fn the_original_is_the_one_live_note_with_the_copys_title() {
+        let original = note("1", "Groceries", "milk");
+        let copy = note("2", "Groceries (conflicted copy)", "milk\neggs");
+        let trashed = Note { is_trashed: true, ..note("3", "Groceries", "") };
+        assert_eq!(find_original(&copy, [&original, &copy, &trashed]).map(|n| n.id.as_str()), Some("1"));
+        let twin = note("4", "Groceries", "");
+        assert!(find_original(&copy, [&original, &twin]).is_none(), "two candidates: no guess");
+        assert!(find_original(&note("5", "Conflicted copy", ""), [&original]).is_none(), "untitled copy");
+        assert_eq!(original_title_of("Trip (conflicted copy)"), Some("Trip"));
+    }
+
+    #[test]
+    fn lines_only_in_one_version_are_marked() {
+        let a = note("1", "T", "milk\neggs\nmilk");
+        let mut b = note("2", "T (conflicted copy)", "milk\nbread");
+        b.checklist = vec![ChecklistItem { text: "socks".into(), is_checked: true, position: 0 }];
+        let (left, right) = compare_versions(&a, &b);
+        let marks = |lines: &[ReviewLine]| lines.iter().map(|l| (l.text.clone(), l.changed)).collect::<Vec<_>>();
+        assert_eq!(marks(&left), [("milk".into(), false), ("eggs".into(), true), ("milk".into(), true)]);
+        assert_eq!(marks(&right), [("milk".into(), false), ("bread".into(), true), ("☑ socks".into(), true)]);
+    }
+}

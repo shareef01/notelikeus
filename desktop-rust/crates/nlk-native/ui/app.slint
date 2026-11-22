@@ -1,0 +1,2984 @@
+// The native Notelikeus window, laid out like the web app: a sidebar with Notes, Archive and Trash, a top
+// bar with search and a new-note button, a masonry grid of note cards in their colours, and the editor as a
+// floating sheet with its note options (colour, labels) and a checklist mode.
+//
+// Every interactive element carries an accessible role and label: screen readers use them, and so do the
+// headless UI tests (tests/ui.rs).
+
+import { AboutSlint, ScrollView } from "std-widgets.slint";
+import { Theme, Icons, Icon, IconButton } from "theme.slint";
+import "fonts/inter_regular.ttf";
+import "fonts/inter_medium.ttf";
+import "fonts/inter_semibold.ttf";
+import "fonts/inter_bold.ttf";
+
+export struct ChecklistLine {
+    text: string,
+    checked: bool,
+}
+
+/// One of a note's pictures, as the window shows it: drawn once `ready`, or why it can't be.
+export struct Picture {
+    id: string,
+    image: image,
+    ready: bool,
+    problem: string,
+}
+
+export struct NoteCard {
+    id: string,
+    cover: Picture,
+    has-cover: bool,
+    more-images: int,
+    title: string,
+    preview: string,
+    time: string,
+    reminder: string,
+    pinned: bool,
+    has-color: bool,
+    color-light: color,
+    color-dark: color,
+    labels: [string],
+    more-labels: int,
+    checklist: [ChecklistLine],
+    more-items: int,
+}
+
+export struct CardColumn {
+    cards: [NoteCard],
+}
+
+/// One checklist row in the editor. `position` is the item's stored position; `focus` asks the row to
+/// take focus when it appears (a row just added).
+export struct EditRow {
+    position: int,
+    text: string,
+    checked: bool,
+    focus: bool,
+}
+
+export struct Swatch {
+    name: string,
+    none: bool,
+    light: color,
+    dark: color,
+}
+
+export struct LabelChoice {
+    name: string,
+    on: bool,
+}
+
+/// One choice in the Filters sheet: a chip, on or off. `index` is what the callback reports.
+export struct Choice {
+    text: string,
+    on: bool,
+    index: int,
+}
+
+/// A row of chips, wrapped in Rust (Slint has no wrapping layout).
+export struct ChoiceRow {
+    items: [Choice],
+}
+
+/// One line of a version under conflict review; `changed` when the other version has no such line.
+export struct ReviewRow {
+    text: string,
+    changed: bool,
+}
+
+/// A smart view or a saved filter in the sidebar.
+export struct SidebarRow {
+    label: string,
+    count: int,
+    current: bool,
+}
+
+// The note views, as the web app's sidebar.
+export enum View { notes, archive, trash }
+
+component SectionLabel inherits Text {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.9px;
+    color: Theme.muted;
+}
+
+/// A chip that is on or off, as the web app's filter chips. Announced as a checkbox.
+component FilterChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> on;
+    callback clicked();
+    height: 32px;
+    width: chip-label.preferred-width + (root.on ? 42px : 26px);
+    border-radius: 16px;
+    background: root.on ? Theme.on-surface : (touch.has-hover ? Theme.hover : transparent);
+    border-width: focus-scope.has-focus ? 2px : (root.on ? 0 : 1px);
+    border-color: focus-scope.has-focus ? Theme.accent : Theme.outline;
+    forward-focus: focus-scope;
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-checked: root.on;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    HorizontalLayout {
+        padding-left: 13px;
+        padding-right: 13px;
+        spacing: 4px;
+        if root.on: Icon {
+            y: (parent.height - self.height) / 2;
+            width: 14px;
+            height: 14px;
+            path: Icons.check;
+            color: Theme.background;
+        }
+        chip-label := Text {
+            text: root.text;
+            vertical-alignment: center;
+            font-size: 13px;
+            font-weight: 500;
+            color: root.on ? Theme.background : Theme.on-surface-secondary;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { focus-scope.focus(); root.clicked(); }
+    }
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+/// One row of filter chips (rows are wrapped in Rust: Slint has no wrapping layout).
+component ChipRow inherits HorizontalLayout {
+    in property <[Choice]> items;
+    callback picked(Choice);
+    spacing: 8px;
+    alignment: start;
+    for choice in root.items: FilterChip {
+        text: choice.text;
+        on: choice.on;
+        clicked => { root.picked(choice); }
+    }
+}
+
+/// One version in the conflict review: when it was edited, its title, and its lines, those only in this
+/// version highlighted (and said so to a screen reader).
+component ReviewVersion inherits Rectangle {
+    in property <string> heading;
+    in property <string> edited;
+    in property <string> note-title;
+    in property <[ReviewRow]> lines;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.outline;
+    accessible-role: groupbox;
+    accessible-label: root.heading;
+    VerticalLayout {
+        padding: 14px;
+        spacing: 4px;
+        alignment: start;
+        Text {
+            text: root.heading;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.9px;
+            color: Theme.on-surface-secondary;
+        }
+        Text { text: root.edited; font-size: 12px; color: Theme.muted; }
+        if root.note-title != "": Text {
+            text: root.note-title;
+            font-size: 15px;
+            font-weight: 600;
+            color: Theme.on-surface;
+            wrap: word-wrap;
+        }
+        if root.lines.length == 0: Text { text: "(empty)"; font-size: 14px; color: Theme.muted; }
+        for line in root.lines: Rectangle {
+            border-radius: 4px;
+            background: line.changed ? #f59e0b.transparentize(0.8) : transparent;
+            accessible-role: text;
+            accessible-label: line.text + (line.changed ? " (only in this version)" : "");
+            HorizontalLayout {
+                padding-left: 4px;
+                padding-right: 4px;
+                Text {
+                    text: line.text == "" ? " " : line.text;
+                    font-size: 14px;
+                    font-weight: line.changed ? 500 : 400;
+                    color: Theme.on-surface;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+}
+
+/// A rounded text button. `strong` is the filled, primary look.
+component PillButton inherits Rectangle {
+    in property <string> text;
+    /// What a screen reader announces, when it should differ from what is shown.
+    in property <string> label: root.text;
+    in property <bool> strong: false;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 36px;
+    width: label.preferred-width + 28px;
+    border-radius: self.height / 2;
+    opacity: enabled ? 1 : 0.45;
+    background: strong ? (danger ? Theme.danger : Theme.on-surface) : (touch.has-hover && enabled ? Theme.hover : transparent);
+    border-width: focus-scope.has-focus ? 2px : (strong ? 0 : 1px);
+    border-color: focus-scope.has-focus ? Theme.accent : Theme.outline;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-enabled: enabled;
+    accessible-action-default => { if (root.enabled) { root.clicked(); } }
+    forward-focus: focus-scope;
+    public function focus-button() { focus-scope.focus(); }
+    label := Text {
+        text: root.text;
+        font-size: 13px;
+        font-weight: 600;
+        color: root.strong ? Theme.background : (root.danger ? Theme.danger : Theme.on-surface);
+    }
+    touch := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { if (root.enabled) { focus-scope.focus(); root.clicked(); } }
+    }
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if ((event.text == Key.Space || event.text == Key.Return) && root.enabled) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+/// A theme selector announced as a selected or unselected radio button.
+component ThemeOption inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    in property <int> option-index: -1;
+    callback clicked();
+    callback move-option(int);
+    height: 36px;
+    width: option-label.preferred-width + 28px;
+    border-radius: self.height / 2;
+    background: selected ? Theme.on-surface : (touch.has-hover ? Theme.hover : transparent);
+    border-width: focus-scope.has-focus ? 2px : (selected ? 0 : 1px);
+    border-color: focus-scope.has-focus ? Theme.accent : Theme.outline;
+    forward-focus: focus-scope;
+    public function focus-option() { focus-scope.focus(); }
+    accessible-role: radio-button;
+    accessible-checkable: true;
+    accessible-checked <=> selected;
+    accessible-label: text;
+    accessible-item-index: option-index;
+    accessible-action-default => { root.clicked(); }
+    option-label := Text {
+        text: root.text;
+        font-size: 13px;
+        font-weight: 600;
+        color: root.selected ? Theme.background : Theme.on-surface;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { focus-scope.focus(); root.clicked(); }
+    }
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            if (event.text == Key.LeftArrow || event.text == Key.UpArrow) {
+                root.move-option(root.option-index == 0 ? 2 : root.option-index - 1);
+                return accept;
+            }
+            if (event.text == Key.RightArrow || event.text == Key.DownArrow) {
+                root.move-option(root.option-index == 2 ? 0 : root.option-index + 1);
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+/// A checkbox: a rounded square with a tick.
+component CheckBox inherits Rectangle {
+    in property <bool> checked;
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <length> box: 20px;
+    callback toggled();
+    width: box;
+    height: box;
+    border-radius: 5px;
+    border-width: focus-scope.has-focus ? 2px : (checked ? 0 : 2px);
+    background: checked ? Theme.on-surface : transparent;
+    border-color: focus-scope.has-focus ? Theme.accent : Theme.muted;
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-checked: checked;
+    accessible-label: label;
+    accessible-action-default => { if (root.enabled) { root.toggled(); } }
+    forward-focus: focus-scope;
+    if root.checked: Icon {
+        width: root.box - 4px;
+        height: root.box - 4px;
+        path: Icons.check;
+        color: Theme.background;
+    }
+    TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { if (root.enabled) { focus-scope.focus(); root.toggled(); } }
+    }
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if ((event.text == Key.Space || event.text == Key.Return) && root.enabled) {
+                root.toggled();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+component NavItem inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <int> count: -1;
+    in property <bool> selected;
+    callback clicked();
+    height: 44px;
+    border-radius: Theme.radius-md;
+    background: selected ? Theme.surface-variant : (touch.has-hover ? Theme.hover : transparent);
+    border-width: focus-scope.has-focus ? 2px : 0;
+    border-color: Theme.accent;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus-scope;
+
+    // The web app's selection bar on the left edge.
+    if selected: Rectangle {
+        x: -12px;
+        width: 3px;
+        height: 24px;
+        border-radius: 2px;
+        background: Theme.on-surface;
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 14px;
+        Icon {
+            y: (parent.height - self.height) / 2;
+            path: root.icon;
+            color: root.selected ? Theme.on-surface : Theme.on-surface-secondary;
+        }
+        Text {
+            text: root.label;
+            vertical-alignment: center;
+            font-size: 14px;
+            font-weight: root.selected ? 600 : 500;
+            color: root.selected ? Theme.on-surface : Theme.on-surface-secondary;
+            horizontal-stretch: 1;
+        }
+        if root.count > 0: Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: max(20px, count-text.preferred-width + 10px);
+            height: 20px;
+            border-radius: 10px;
+            background: Theme.outline;
+            count-text := Text {
+                text: root.count;
+                font-size: 11px;
+                font-weight: 600;
+                color: Theme.on-surface;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { focus-scope.focus(); root.clicked(); }
+    }
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+component Chip inherits Rectangle {
+    in property <string> text;
+    height: 24px;
+    width: chip-text.preferred-width + 16px;
+    border-radius: 12px;
+    background: Theme.on-surface.transparentize(0.9);
+    chip-text := Text {
+        text: root.text;
+        font-size: 12px;
+        font-weight: 500;
+        color: Theme.on-surface-secondary;
+    }
+}
+
+component Card inherits Rectangle {
+    in property <NoteCard> card;
+    callback clicked();
+    border-radius: Theme.radius-note;
+    border-width: focus-scope.has-focus ? 2px : 1px;
+    border-color: focus-scope.has-focus ? Theme.accent : (card.has-color ? transparent : (touch.has-hover ? Theme.muted : Theme.outline));
+    background: card.has-color ? (Theme.dark ? card.color-dark : card.color-light) : Theme.surface;
+    accessible-role: button;
+    accessible-label: card.title != "" ? card.title : "Untitled note";
+    accessible-description: card.preview;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: focus-scope;
+
+    VerticalLayout {
+        padding: 20px;
+        spacing: 10px;
+        // The note's first picture leads the card, as on the web.
+        if card.has-cover: Rectangle {
+            height: 160px;
+            border-radius: Theme.radius-md;
+            clip: true;
+            background: Theme.surface-variant;
+            if card.cover.ready: Image {
+                width: parent.width;
+                height: parent.height;
+                source: card.cover.image;
+                image-fit: cover;
+                accessible-role: image;
+                accessible-label: "Picture";
+            }
+            if !card.cover.ready && card.cover.problem == "": Icon {
+                path: Icons.image;
+                color: Theme.muted;
+            }
+            if card.more-images > 0: Rectangle {
+                x: parent.width - self.width - 8px;
+                y: parent.height - self.height - 8px;
+                width: more-text.preferred-width + 14px;
+                height: 22px;
+                border-radius: 11px;
+                background: #000000aa;
+                more-text := Text {
+                    text: "+" + card.more-images;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #ffffff;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            if card.title != "": Text {
+                text: card.title;
+                font-size: 18px;
+                font-weight: 600;
+                letter-spacing: -0.3px;
+                color: Theme.on-surface;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+            if card.title == "": Rectangle { horizontal-stretch: 1; }
+            if card.pinned: Icon {
+                width: 16px;
+                height: 16px;
+                path: Icons.pin;
+                color: Theme.muted;
+                accessible-role: image;
+                accessible-label: "Pinned";
+            }
+        }
+        if card.preview != "": Text {
+            text: card.preview;
+            font-size: 15px;
+            color: card.title != "" ? Theme.on-surface-secondary : Theme.on-surface;
+            wrap: word-wrap;
+        }
+        for line in card.checklist: HorizontalLayout {
+            spacing: 10px;
+            CheckBox {
+                y: 2px;
+                box: 16px;
+                checked: line.checked;
+                enabled: false;
+                label: line.text;
+            }
+            Text {
+                text: line.text;
+                font-size: 15px;
+                color: line.checked ? Theme.muted : Theme.on-surface-secondary;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+        }
+        if card.more-items > 0: Text {
+            text: "+ " + card.more-items + (card.more-items == 1 ? " more item" : " more items");
+            font-size: 13px;
+            color: Theme.muted;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            for name in card.labels: Chip { text: name; }
+            if card.more-labels > 0: Chip { text: "+" + card.more-labels; }
+            Rectangle { horizontal-stretch: 1; }
+            if card.reminder != "": HorizontalLayout {
+                spacing: 4px;
+                Icon {
+                    width: 14px;
+                    height: 14px;
+                    path: Icons.notification;
+                    color: Theme.muted;
+                    accessible-role: image;
+                    accessible-label: "Reminder";
+                }
+                Text {
+                    text: card.reminder;
+                    vertical-alignment: center;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: Theme.muted;
+                }
+            }
+            Text {
+                text: card.time;
+                vertical-alignment: center;
+                font-size: 12px;
+                font-weight: 600;
+                color: Theme.muted;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { focus-scope.focus(); root.clicked(); }
+    }
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+component Sidebar inherits Rectangle {
+    in property <View> view;
+    /// False while a smart view or a saved filter is what is on screen: then that row is current.
+    in property <bool> library-current: true;
+    in property <int> count-notes;
+    in property <int> count-archive;
+    in property <int> count-trash;
+    in property <[SidebarRow]> views;
+    in property <[SidebarRow]> saved;
+    // The account area: 0 no sync in this build, 1 guest, 2 signed in.
+    in property <int> account-mode;
+    in property <string> account-email;
+    in property <string> account-initial;
+    in property <string> account-status;
+    in property <bool> account-problem;
+    in property <bool> syncing;
+    callback sign-in();
+    callback sync();
+    callback sign-out();
+    callback view-selected(View);
+    callback smart-view(int);
+    callback saved-applied(string);
+    callback saved-deleted(string);
+    callback edit-labels();
+    callback open-settings();
+    callback open-about();
+    callback export-json();
+    callback export-bundle();
+    callback import-backup();
+    width: Theme.sidebar-width;
+    background: Theme.surface;
+
+    VerticalLayout {
+        padding-top: 20px;
+        padding-bottom: 20px;
+        spacing: 0px;
+
+        // Brand.
+        HorizontalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-bottom: 20px;
+            spacing: 12px;
+            Rectangle {
+                width: 40px;
+                height: 40px;
+                border-radius: 20px;
+                background: Theme.on-surface;
+                Image {
+                    width: 28px;
+                    height: 28px;
+                    source: @image-url("images/icon.png");
+                    accessible-role: image;
+                    accessible-label: "Notelikeus";
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Text { text: "Notelikeus"; font-size: 16px; font-weight: 700; color: Theme.on-surface; }
+                Text { text: "Capture what matters"; font-size: 12px; color: Theme.on-surface-secondary; }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.outline; }
+
+        // Scrolls when many saved filters make it taller than the window.
+        nav-scroll := Flickable {
+            vertical-stretch: 1;
+            content-height: nav.preferred-height;
+            nav := VerticalLayout {
+                width: nav-scroll.width;
+                padding: 12px;
+                padding-top: 20px;
+                spacing: 4px;
+                alignment: start;
+                HorizontalLayout { padding-left: 12px; SectionLabel { text: "LIBRARY"; } }
+                Rectangle { height: 6px; }
+                NavItem {
+                    icon: Icons.notes;
+                    label: "Notes";
+                    count: root.count-notes;
+                    selected: root.library-current && root.view == View.notes;
+                    clicked => { root.view-selected(View.notes); }
+                }
+                NavItem {
+                    icon: Icons.archive;
+                    label: "Archive";
+                    count: root.count-archive;
+                    selected: root.library-current && root.view == View.archive;
+                    clicked => { root.view-selected(View.archive); }
+                }
+                NavItem {
+                    icon: Icons.trash;
+                    label: "Trash";
+                    count: root.count-trash;
+                    selected: root.library-current && root.view == View.trash;
+                    clicked => { root.view-selected(View.trash); }
+                }
+
+                // Smart views, as the web app's "Views": each is a search, typed into the box when chosen.
+                Rectangle { height: 20px; }
+                HorizontalLayout { padding-left: 12px; SectionLabel { text: "VIEWS"; } }
+                Rectangle { height: 6px; }
+                for row[index] in root.views: NavItem {
+                    icon: index == 0 ? Icons.notification : index == 1 ? Icons.checklist : Icons.label;
+                    label: row.label;
+                    count: row.count;
+                    selected: row.current;
+                    clicked => { root.smart-view(index); }
+                }
+
+                // Only when there are any, as the web app: an empty heading would show a hole.
+                if root.saved.length > 0: Rectangle { height: 20px; }
+                if root.saved.length > 0: HorizontalLayout { padding-left: 12px; SectionLabel { text: "SAVED"; } }
+                if root.saved.length > 0: Rectangle { height: 6px; }
+                for row in root.saved: HorizontalLayout {
+                    spacing: 2px;
+                    NavItem {
+                        horizontal-stretch: 1;
+                        icon: Icons.bookmark;
+                        label: row.label;
+                        selected: row.current;
+                        clicked => { root.saved-applied(row.label); }
+                    }
+                    IconButton {
+                        y: (parent.height - self.height) / 2;
+                        size: 32px;
+                        icon: Icons.close;
+                        label: "Delete saved filter " + row.label;
+                        clicked => { root.saved-deleted(row.label); }
+                    }
+                }
+
+                Rectangle { height: 20px; }
+                HorizontalLayout { padding-left: 12px; SectionLabel { text: "MANAGE"; } }
+                Rectangle { height: 6px; }
+                NavItem {
+                    icon: Icons.label;
+                    label: "Edit labels";
+                    clicked => { root.edit-labels(); }
+                }
+                NavItem {
+                    icon: Icons.settings;
+                    label: "Settings";
+                    clicked => { root.open-settings(); }
+                }
+                NavItem {
+                    icon: Icons.info;
+                    label: "About Notelikeus";
+                    clicked => { root.open-about(); }
+                }
+                NavItem {
+                    icon: Icons.notes;
+                    label: "Export JSON backup";
+                    clicked => { root.export-json(); }
+                }
+                NavItem {
+                    icon: Icons.archive;
+                    label: "Export backup with pictures";
+                    clicked => { root.export-bundle(); }
+                }
+                NavItem {
+                    icon: Icons.restore;
+                    label: "Import backup";
+                    clicked => { root.import-backup(); }
+                }
+            }
+        }
+
+        // The account: who is signed in and how sync is going, or a way to sign in.
+        Rectangle { height: 1px; background: Theme.outline; }
+        if root.account-mode == 0: HorizontalLayout {
+            padding: 16px;
+            padding-left: 24px;
+            Text {
+                text: "Notes stay on this device";
+                font-size: 12px;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+        }
+        if root.account-mode == 1: VerticalLayout {
+            padding: 16px;
+            padding-left: 20px;
+            padding-right: 20px;
+            spacing: 10px;
+            Text {
+                text: "Your notes are on this device. Sign in to sync them with your other devices.";
+                font-size: 12px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: start;
+                PillButton {
+                    text: "Sign in";
+                    strong: true;
+                    clicked => { root.sign-in(); }
+                }
+            }
+        }
+        if root.account-mode == 2: VerticalLayout {
+            padding: 14px;
+            padding-left: 16px;
+            padding-right: 16px;
+            spacing: 10px;
+            HorizontalLayout {
+                spacing: 10px;
+                Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    width: 34px;
+                    height: 34px;
+                    border-radius: 17px;
+                    background: Theme.surface-variant;
+                    Text {
+                        text: root.account-initial;
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: Theme.on-surface;
+                    }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+                    Text {
+                        text: root.account-email;
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: Theme.on-surface;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: root.account-status;
+                        font-size: 12px;
+                        color: root.account-problem ? Theme.danger : Theme.muted;
+                        wrap: word-wrap;
+                        accessible-role: text;
+                        accessible-label: "Sync status: " + root.account-status;
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                PillButton {
+                    text: root.syncing ? "Syncing…" : "Sync now";
+                    label: "Sync now";
+                    enabled: !root.syncing;
+                    clicked => { root.sync(); }
+                }
+                PillButton {
+                    text: "Sign out";
+                    clicked => { root.sign-out(); }
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.outline;
+    }
+}
+
+component SearchField inherits Rectangle {
+    in-out property <string> text;
+    callback edited(string);
+    forward-focus: input;
+    height: 48px;
+    border-radius: self.height / 2;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.muted : Theme.outline;
+
+    public function focus-search() {
+        input.focus();
+        input.select-all();
+    }
+
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 12px;
+        spacing: 8px;
+        Rectangle {
+            horizontal-stretch: 1;
+            if input.text == "": Text {
+                x: 0;
+                width: parent.width;
+                height: parent.height;
+                text: "Search notes";
+                font-size: 15px;
+                color: Theme.muted;
+                vertical-alignment: center;
+            }
+            input := TextInput {
+                text <=> root.text;
+                font-size: 15px;
+                color: Theme.on-surface;
+                vertical-alignment: center;
+                single-line: true;
+                accessible-role: text-input;
+                accessible-label: "Search notes";
+                edited => { root.edited(self.text); }
+            }
+        }
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: hint.preferred-width + 12px;
+            height: 22px;
+            border-radius: 6px;
+            background: Theme.surface-variant;
+            hint := Text {
+                text: "Ctrl K";
+                font-size: 11px;
+                font-weight: 600;
+                color: Theme.muted;
+            }
+        }
+    }
+}
+
+/// A plain single-line field with a placeholder, for the dialogs.
+component Field inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <string> label;
+    callback accepted();
+    callback edited();
+    forward-focus: input;
+    height: 40px;
+    border-radius: Theme.radius-sm;
+    background: Theme.surface-variant;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.muted : Theme.outline;
+    public function focus-field() { input.focus(); }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        Rectangle {
+            if input.text == "": Text {
+                x: 0;
+                width: parent.width;
+                height: parent.height;
+                text: root.placeholder;
+                font-size: 14px;
+                color: Theme.muted;
+                vertical-alignment: center;
+            }
+            input := TextInput {
+                text <=> root.text;
+                font-size: 14px;
+                color: Theme.on-surface;
+                vertical-alignment: center;
+                single-line: true;
+                accessible-role: text-input;
+                accessible-label: root.label;
+                accepted => { root.accepted(); }
+                edited => { root.edited(); }
+            }
+        }
+    }
+}
+
+/// A dialog card, centred over a scrim. Clicking the scrim does nothing: dialogs close by their buttons.
+component Dialog inherits Rectangle {
+    in property <string> title;
+    in property <length> card-width: 440px;
+    background: Theme.scrim;
+    TouchArea { }
+    card := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: max(40px, (parent.height - self.height) / 2);
+        width: min(root.card-width, parent.width - 48px);
+        height: min(content.preferred-height, parent.height - 80px);
+        border-radius: Theme.radius-sheet;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.outline;
+        drop-shadow-blur: 32px;
+        drop-shadow-color: #00000066;
+        accessible-role: groupbox;
+        accessible-label: root.title;
+        content := VerticalLayout {
+            padding: 24px;
+            spacing: 16px;
+            Text {
+                text: root.title;
+                font-size: 18px;
+                font-weight: 700;
+                color: Theme.on-surface;
+            }
+            @children
+        }
+    }
+}
+
+component EditorSheet inherits Rectangle {
+    in property <View> mode;
+    in-out property <string> title;
+    in-out property <string> body;
+    in property <bool> pinned;
+    in property <bool> reminder-set;
+    in property <string> footer;
+    in property <bool> can-act;
+    in property <bool> has-color;
+    in property <color> color-light;
+    in property <color> color-dark;
+    in property <[string]> labels;
+    in property <bool> is-checklist;
+    in property <[EditRow]> rows;
+    in property <bool> conflict;
+    in property <[Picture]> pictures;
+    callback add-image();
+    callback open-picture(int);
+    callback compare();
+    callback edited();
+    callback close();
+    callback toggle-pin();
+    callback archive();
+    callback trash();
+    callback restore();
+    callback delete-forever();
+    callback open-options();
+    callback open-reminder();
+    callback item-edited(int, string);
+    callback item-toggled(int);
+    callback item-removed(int);
+    callback item-added();
+    callback to-checklist();
+    callback to-text();
+    property <bool> read-only: root.mode == View.trash;
+    forward-focus: body-input;
+    border-radius: Theme.radius-sheet;
+    border-width: 1px;
+    border-color: Theme.outline;
+    background: has-color ? (Theme.dark ? color-dark : color-light) : Theme.surface;
+    drop-shadow-blur: 32px;
+    drop-shadow-color: #00000066;
+
+    public function focus-title() {
+        title-input.focus();
+    }
+
+    // Swallow clicks so they do not reach the scrim behind the sheet.
+    TouchArea { }
+
+    VerticalLayout {
+        // Header: what this note can do where it is.
+        HorizontalLayout {
+            padding: 16px;
+            padding-left: 24px;
+            padding-right: 24px;
+            spacing: 4px;
+            IconButton {
+                icon: Icons.back;
+                label: "Back to notes";
+                clicked => { root.close(); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            if root.mode != View.trash: IconButton {
+                icon: Icons.image;
+                label: "Add image";
+                clicked => { root.add-image(); }
+            }
+            if root.can-act && root.mode == View.notes: IconButton {
+                icon: Icons.notification;
+                label: root.reminder-set ? "Change reminder" : "Set reminder";
+                clicked => { root.open-reminder(); }
+            }
+            if root.can-act && root.mode != View.trash: IconButton {
+                icon: Icons.palette;
+                label: "Note options";
+                clicked => { root.open-options(); }
+            }
+            if root.can-act && root.mode == View.notes: IconButton {
+                icon: root.pinned ? Icons.pin-off : Icons.pin;
+                label: root.pinned ? "Unpin" : "Pin";
+                clicked => { root.toggle-pin(); }
+            }
+            if root.can-act && root.mode != View.trash: IconButton {
+                icon: root.mode == View.archive ? Icons.unarchive : Icons.archive;
+                label: root.mode == View.archive ? "Unarchive note" : "Archive note";
+                clicked => { root.archive(); }
+            }
+            if root.can-act && root.mode != View.trash: IconButton {
+                icon: Icons.trash;
+                label: "Move to trash";
+                clicked => { root.trash(); }
+            }
+            if root.mode == View.trash: IconButton {
+                icon: Icons.restore;
+                label: "Restore";
+                clicked => { root.restore(); }
+            }
+            if root.mode == View.trash: IconButton {
+                icon: Icons.delete-forever;
+                label: "Delete forever";
+                clicked => { root.delete-forever(); }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.outline; }
+
+        if root.read-only: Rectangle {
+            height: 40px;
+            background: Theme.danger.transparentize(0.88);
+            Text {
+                text: "This note is in the trash. Restore it to edit.";
+                font-size: 13px;
+                color: Theme.on-surface;
+            }
+        }
+
+        // As the web app's: a copy kept from a sync conflict says so, and offers the comparison.
+        if root.conflict && !root.read-only: Rectangle {
+            background: #f59e0b.transparentize(0.86);
+            HorizontalLayout {
+                padding: 10px;
+                padding-left: 40px;
+                padding-right: 40px;
+                spacing: 12px;
+                Text {
+                    text: "This note was kept from a sync conflict so neither version was lost.";
+                    vertical-alignment: center;
+                    font-size: 13px;
+                    color: Theme.on-surface;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                    accessible-role: text;
+                    accessible-label: self.text;
+                }
+                PillButton {
+                    y: (parent.height - self.height) / 2;
+                    text: "Compare versions";
+                    label: "Compare with the current note";
+                    clicked => { root.compare(); }
+                }
+            }
+        }
+
+        // Title, labels and body.
+        VerticalLayout {
+            padding: 40px;
+            padding-top: 28px;
+            padding-bottom: 12px;
+            spacing: 14px;
+            vertical-stretch: 1;
+
+            // The note's pictures, as the web's image strip: each opens in the viewer.
+            if root.pictures.length > 0: strip := Flickable {
+                height: 128px;
+                vertical-stretch: 0;
+                content-width: strip-row.preferred-width;
+                strip-row := HorizontalLayout {
+                    spacing: 10px;
+                    alignment: start;
+                    for picture[index] in root.pictures: Rectangle {
+                        width: 128px;
+                        height: 128px;
+                        border-radius: Theme.radius-md;
+                        clip: true;
+                        background: Theme.surface-variant;
+                        accessible-role: button;
+                        accessible-label: "Picture " + (index + 1) + " of " + root.pictures.length;
+                        accessible-action-default => { root.open-picture(index); }
+                        if picture.ready: Image {
+                            width: parent.width;
+                            height: parent.height;
+                            source: picture.image;
+                            image-fit: cover;
+                        }
+                        if !picture.ready && picture.problem == "": Icon {
+                            path: Icons.image;
+                            color: Theme.muted;
+                        }
+                        if picture.problem != "": Text {
+                            width: parent.width - 16px;
+                            text: picture.problem;
+                            font-size: 11px;
+                            color: Theme.muted;
+                            wrap: word-wrap;
+                            horizontal-alignment: center;
+                        }
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.open-picture(index); }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                height: max(title-input.preferred-height, 40px);
+                if title-input.text == "": Text {
+                    x: 0;
+                    y: 0;
+                    text: "Title";
+                    font-size: 32px;
+                    font-weight: 700;
+                    color: Theme.muted;
+                }
+                title-input := TextInput {
+                    y: 0;
+                    text <=> root.title;
+                    read-only: root.read-only;
+                    font-size: 32px;
+                    font-weight: 700;
+                    letter-spacing: -0.6px;
+                    color: Theme.on-surface;
+                    single-line: false;
+                    wrap: word-wrap;
+                    accessible-role: text-input;
+                    accessible-label: "Title";
+                    edited => { root.edited(); }
+                    key-pressed(event) => {
+                        if (event.text == Key.Return) {
+                            body-input.focus();
+                            return accept;
+                        }
+                        reject
+                    }
+                }
+            }
+
+            if root.labels.length > 0: HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                for name in root.labels: Chip { text: name; }
+            }
+
+            // Text mode: a toolbar (for now, the checklist switch) and the body.
+            if !root.is-checklist && !root.read-only: HorizontalLayout {
+                alignment: start;
+                Rectangle {
+                    height: 40px;
+                    width: tools.preferred-width;
+                    border-radius: Theme.radius-md;
+                    background: Theme.on-surface.transparentize(0.94);
+                    tools := HorizontalLayout {
+                        padding: 4px;
+                        IconButton {
+                            size: 32px;
+                            icon: Icons.checklist;
+                            label: "Make a checklist";
+                            clicked => { root.to-checklist(); }
+                        }
+                    }
+                }
+            }
+
+            // Always in the tree (focus and the title's Enter reach it); collapsed in checklist mode.
+            body-scroll := Flickable {
+                vertical-stretch: root.is-checklist ? 0 : 1;
+                max-height: root.is-checklist ? 0px : 100000px;
+                visible: !root.is-checklist;
+                content-height: max(self.height, body-input.preferred-height + 24px);
+                if body-input.text == "": Text {
+                    x: 0;
+                    y: 0;
+                    text: root.read-only ? "" : "Start writing…";
+                    font-size: 17px;
+                    color: Theme.muted;
+                }
+                body-input := TextInput {
+                    width: body-scroll.width;
+                    text <=> root.body;
+                    read-only: root.read-only;
+                    font-size: 17px;
+                    color: Theme.on-surface;
+                    single-line: false;
+                    wrap: word-wrap;
+                    accessible-role: text-input;
+                    accessible-label: "Note";
+                    edited => { root.edited(); }
+                    // Keep the caret in view as the note grows past the sheet.
+                    cursor-position-changed(position) => {
+                        if (position.y + 40px > body-scroll.height - body-scroll.content-y) {
+                            body-scroll.content-y = min(0px, body-scroll.height - position.y - 40px);
+                        } else if (position.y < -body-scroll.content-y) {
+                            body-scroll.content-y = -position.y;
+                        }
+                    }
+                }
+            }
+
+            // Checklist mode: unticked items first, as the web app sorts them.
+            if root.is-checklist: list-scroll := Flickable {
+                vertical-stretch: 1;
+                content-height: max(self.height, list.preferred-height + 24px);
+                list := VerticalLayout {
+                    width: list-scroll.width;
+                    alignment: start;
+                    spacing: 6px;
+                    for row in root.rows: HorizontalLayout {
+                        spacing: 12px;
+                        CheckBox {
+                            y: 4px;
+                            checked: row.checked;
+                            enabled: !root.read-only;
+                            label: row.text != "" ? row.text : "Checklist item";
+                            toggled => { root.item-toggled(row.position); }
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            // The text sits 3px down so its first line is centred on the 28px checkbox row.
+                            height: max(item-input.preferred-height + 3px, 28px);
+                            if item-input.text == "": Text {
+                                x: 0;
+                                y: 3px;
+                                text: "List item";
+                                font-size: 17px;
+                                color: Theme.muted;
+                            }
+                            item-input := TextInput {
+                                y: 3px;
+                                text: row.text;
+                                read-only: root.read-only;
+                                font-size: 17px;
+                                color: row.checked ? Theme.muted : Theme.on-surface;
+                                single-line: false;
+                                wrap: word-wrap;
+                                accessible-role: text-input;
+                                accessible-label: row.text != "" ? "Edit " + row.text : "Edit empty item";
+                                edited => { root.item-edited(row.position, self.text); }
+                                key-pressed(event) => {
+                                    if (event.text == Key.Return) {
+                                        root.item-added();
+                                        return accept;
+                                    }
+                                    reject
+                                }
+                                init => {
+                                    if (row.focus) {
+                                        self.focus();
+                                    }
+                                }
+                            }
+                        }
+                        if !root.read-only: IconButton {
+                            size: 28px;
+                            icon: Icons.close;
+                            label: row.text != "" ? "Remove " + row.text : "Remove empty item";
+                            clicked => { root.item-removed(row.position); }
+                        }
+                    }
+                    if !root.read-only: HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        padding-top: 6px;
+                        PillButton {
+                            text: "+ List item";
+                            clicked => { root.item-added(); }
+                        }
+                        PillButton {
+                            text: "Convert to text";
+                            clicked => { root.to-text(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle { height: 1px; background: Theme.outline; }
+        HorizontalLayout {
+            padding: 16px;
+            padding-left: 40px;
+            Text {
+                text: root.footer;
+                font-size: 13px;
+                font-weight: 600;
+                color: Theme.on-surface-secondary;
+                accessible-role: text;
+                accessible-label: "Save status";
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    in-out property <int> theme-mode <=> Theme.mode;
+
+    title: "Notelikeus";
+    icon: @image-url("images/icon.png");
+    preferred-width: 1280px;
+    preferred-height: 820px;
+    min-width: 640px;
+    min-height: 480px;
+    background: Theme.background;
+    default-font-family: "Inter";
+
+    // The view and its notes, from Rust.
+    in-out property <View> view: View.notes;
+    in property <[CardColumn]> columns;
+    in property <int> note-count;
+    in property <int> count-notes;
+    in property <int> count-archive;
+    in property <int> count-trash;
+    in property <bool> searching;
+    in-out property <string> query;
+
+    // Smart views and saved filters in the sidebar; under the search box, what the search could not use.
+    in property <bool> library-current: true;
+    in property <[SidebarRow]> smart-views;
+    in property <[SidebarRow]> saved-filters;
+    in property <string> notice-ignored;
+    in property <string> notice-fuzzy;
+
+    // The account and sync (see Sidebar for account-mode).
+    in property <int> account-mode;
+    in property <string> account-email;
+    in property <string> account-initial;
+    in property <string> account-status;
+    in property <bool> account-problem;
+    in property <bool> syncing;
+    in property <string> app-version;
+
+    // Settings, diagnostics, About and account deletion.
+    in-out property <bool> settings-open;
+    in-out property <bool> about-open;
+    in-out property <bool> diagnostics-open;
+    in property <string> diagnostics-report;
+    in-out property <bool> delete-account-open;
+    in-out property <string> delete-account-confirmation;
+    in property <bool> can-delete-account;
+    in property <bool> deleting-account;
+
+    // Signing in: step 0 email, 1 the browser's security check, 2 the code.
+    in-out property <bool> signin-open;
+    in property <int> signin-step;
+    in-out property <string> signin-email;
+    in-out property <string> signin-code;
+    in property <string> signin-error;
+    in property <string> signin-notice;
+    in property <bool> signin-busy;
+    in property <int> signin-resend-in;
+
+    // The open note's pictures, and the viewer.
+    in property <[Picture]> editor-pictures;
+    in-out property <bool> viewer-open;
+    in property <Picture> viewer-picture;
+    in property <int> viewer-index;
+    in property <int> viewer-count;
+    in property <bool> viewer-read-only;
+
+    // A copy kept from a sync conflict, beside the note it was split from.
+    in property <bool> editor-conflict;
+    in-out property <bool> review-open;
+    in property <bool> review-has-original;
+    in property <string> review-original-title;
+    in property <string> review-original-edited;
+    in property <[ReviewRow]> review-original-lines;
+    in property <string> review-copy-title;
+    in property <string> review-copy-edited;
+    in property <[ReviewRow]> review-copy-lines;
+
+    // The Filters sheet.
+    in-out property <bool> filters-open;
+    in property <bool> filters-active;
+    in property <int> filter-count;
+    in property <[bool]> filter-colors;
+    in property <[ChoiceRow]> filter-label-rows;
+    in property <int> filter-label-count;
+    in property <bool> filter-label-all;
+    in property <[ChoiceRow]> filter-flag-rows;
+    in property <[Choice]> filter-date-fields;
+    in property <[Choice]> filter-presets;
+    in-out property <bool> naming;
+    in-out property <string> filter-name;
+    in property <string> filter-name-hint;
+
+    // The editor.
+    in-out property <bool> editor-open;
+    in property <View> editor-mode;
+    in-out property <string> editor-title;
+    in-out property <string> editor-body;
+    in property <bool> editor-pinned;
+    in property <bool> editor-reminder-set;
+    in property <bool> editor-saved-once;
+    in property <string> editor-footer;
+    in property <bool> editor-has-color;
+    in property <color> editor-color-light;
+    in property <color> editor-color-dark;
+    in property <[string]> editor-labels;
+    in property <bool> editor-is-checklist;
+    in property <[EditRow]> editor-rows;
+    in-out property <bool> reminder-open;
+    in-out property <string> reminder-input;
+    in property <string> reminder-error;
+    in property <bool> reminder-set;
+
+    // Note options: colour and labels.
+    in-out property <bool> options-open;
+    in property <[Swatch]> swatches;
+    in property <int> editor-color-index;
+    in property <[LabelChoice]> label-choices;
+    in-out property <string> new-label;
+
+    // Edit labels.
+    in-out property <bool> labels-open;
+    in property <[string]> all-labels;
+    in-out property <string> labels-new;
+
+    // A confirmation (empty trash, delete forever).
+    in property <string> confirm-title;
+    in property <string> confirm-body;
+    in property <string> confirm-action;
+
+    // A short message with an optional action (Undo).
+    in property <string> toast-text;
+    in property <string> toast-action;
+
+    // How many card columns fit; Rust lays the cards out into that many.
+    out property <int> column-count: max(1, min(4, floor((scroll.visible-width - 48px + Theme.note-gap) / (Theme.card-min-width + Theme.note-gap))));
+    // Every column the same width, whatever its cards say.
+    property <length> column-width: (scroll.visible-width - 48px - (root.column-count - 1) * Theme.note-gap) / root.column-count;
+
+    callback columns-changed(int);
+    callback view-selected(View);
+    callback query-edited(string);
+    callback smart-view-picked(int);
+    callback saved-applied(string);
+    callback saved-deleted(string);
+    callback filter-color-toggled(int);
+    callback filter-label-toggled(string);
+    callback filter-label-match-toggled();
+    callback filter-flag-toggled(int);
+    callback filter-date-field-picked(int);
+    callback filter-preset-picked(int);
+    callback filters-cleared();
+    callback filter-name-edited(string);
+    callback filter-saved(string);
+    callback sync-requested();
+    callback sign-out-requested();
+    callback settings-requested();
+    callback theme-picked(int);
+    callback diagnostics-requested();
+    callback diagnostics-export-requested();
+    callback delete-account-opened();
+    callback delete-account-confirmed();
+    callback backup-export-json-requested();
+    callback backup-export-bundle-requested();
+    callback backup-import-requested();
+    callback signin-opened();
+    callback signin-send();
+    callback signin-resend();
+    callback signin-verify();
+    callback signin-change-email();
+    callback signin-cancelled();
+    callback review-opened();
+    callback review-keep-original();
+    callback review-keep-copy();
+    callback review-keep-both();
+    callback image-add-requested();
+    callback picture-opened(int);
+    callback viewer-moved(int);
+    callback picture-remove-requested();
+    callback open-reminder();
+    callback reminder-preset(int);
+    callback reminder-save();
+    callback reminder-remove();
+    callback reminder-cancel();
+    callback reminder-due();
+    // Raised by Rust: timers and the worker thread.
+    callback sync-due();
+    callback resend-tick();
+    callback background-done();
+    callback new-note();
+    callback open-note(string);
+    callback editor-edited();
+    callback close-editor();
+    callback toggle-pin();
+    callback archive-toggled();
+    callback trash-note();
+    callback restore-note();
+    callback delete-forever();
+    callback empty-trash();
+    callback open-options();
+    callback color-picked(int, bool);
+    callback label-toggled(string);
+    callback label-created(string);
+    callback item-edited(int, string);
+    callback item-toggled(int);
+    callback item-removed(int);
+    callback item-added();
+    callback to-checklist();
+    callback to-text();
+    callback open-labels();
+    callback label-renamed(string, string);
+    callback label-deleted(string);
+    callback labels-created(string);
+    callback confirm-accepted();
+    callback confirm-cancelled();
+    callback toast-acted();
+    // Raised by Rust timers, so their closures never hold the controller.
+    callback autosave-due();
+    callback toast-expired();
+
+    changed column-count => { root.columns-changed(self.column-count); }
+
+    public function focus-search() {
+        search.focus-search();
+    }
+
+    // Back to the window after the editor closes, so the shortcuts keep working.
+    public function focus-main() {
+        keys.focus();
+    }
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.modifiers.control && (event.text == "n" || event.text == "N")) {
+                root.new-note();
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "k" || event.text == "K" || event.text == "f" || event.text == "F")) {
+                if (!root.editor-open) {
+                    search.focus-search();
+                }
+                return accept;
+            }
+            if (event.text == Key.Escape) {
+                if (root.confirm-title != "") {
+                    root.confirm-cancelled();
+                } else if (root.viewer-open) {
+                    root.viewer-open = false;
+                } else if (root.review-open) {
+                    root.review-open = false;
+                } else if (root.signin-open) {
+                    root.signin-cancelled();
+                } else if (root.reminder-open) {
+                    root.reminder-cancel();
+                } else if (root.options-open) {
+                    root.options-open = false;
+                } else if (root.labels-open) {
+                    root.labels-open = false;
+                } else if (root.naming) {
+                    root.naming = false;
+                } else if (root.filters-open) {
+                    root.filters-open = false;
+                } else if (root.about-open) {
+                    root.about-open = false;
+                } else if (root.diagnostics-open) {
+                    root.diagnostics-open = false;
+                } else if (root.delete-account-open) {
+                    root.delete-account-open = false;
+                    root.delete-account-confirmation = "";
+                } else if (root.settings-open) {
+                    root.settings-open = false;
+                } else if (root.editor-open) {
+                    root.close-editor();
+                }
+                return accept;
+            }
+            reject
+        }
+
+        HorizontalLayout {
+            Sidebar {
+                view: root.view;
+                library-current: root.library-current;
+                count-notes: root.count-notes;
+                count-archive: root.count-archive;
+                count-trash: root.count-trash;
+                views: root.smart-views;
+                saved: root.saved-filters;
+                account-mode: root.account-mode;
+                account-email: root.account-email;
+                account-initial: root.account-initial;
+                account-status: root.account-status;
+                account-problem: root.account-problem;
+                syncing: root.syncing;
+                sign-in => { root.signin-opened(); }
+                sync => { root.sync-requested(); }
+                sign-out => { root.sign-out-requested(); }
+                view-selected(view) => { root.view-selected(view); }
+                smart-view(index) => { root.smart-view-picked(index); }
+                saved-applied(name) => { root.saved-applied(name); }
+                saved-deleted(name) => { root.saved-deleted(name); }
+                edit-labels => { root.open-labels(); }
+                export-json => { root.backup-export-json-requested(); }
+                export-bundle => { root.backup-export-bundle-requested(); }
+                import-backup => { root.backup-import-requested(); }
+                open-settings => { root.settings-requested(); }
+                open-about => { root.about-open = true; }
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+
+                // Top bar.
+                HorizontalLayout {
+                    padding: 24px;
+                    padding-top: 16px;
+                    padding-bottom: 16px;
+                    spacing: 12px;
+                    search := SearchField {
+                        horizontal-stretch: 1;
+                        text <=> root.query;
+                        edited(text) => { root.query-edited(text); }
+                    }
+                    IconButton {
+                        y: (parent.height - self.height) / 2;
+                        icon: Icons.add;
+                        label: "New note";
+                        filled: true;
+                        size: 44px;
+                        clicked => { root.new-note(); }
+                    }
+                }
+
+                // The filter row: the sheet's button with how many choices it holds, and a way out.
+                HorizontalLayout {
+                    padding-left: 24px;
+                    padding-right: 24px;
+                    padding-bottom: 12px;
+                    spacing: 8px;
+                    alignment: start;
+                    PillButton {
+                        text: root.filter-count > 0 ? "Filters · " + root.filter-count : "Filters";
+                        label: "Filters";
+                        clicked => { root.filters-open = true; }
+                    }
+                    if root.filters-active: PillButton {
+                        text: "Clear filters";
+                        clicked => { root.filters-cleared(); }
+                    }
+                }
+
+                // What the search could not use, and near matches, said rather than left to look like a match.
+                if root.notice-ignored != "": HorizontalLayout {
+                    padding-left: 28px;
+                    padding-right: 24px;
+                    padding-bottom: 8px;
+                    Text {
+                        text: root.notice-ignored;
+                        font-size: 13px;
+                        color: Theme.muted;
+                        wrap: word-wrap;
+                        accessible-role: text;
+                        accessible-label: self.text;
+                    }
+                }
+                if root.notice-fuzzy != "" && root.note-count > 0: HorizontalLayout {
+                    padding-left: 28px;
+                    padding-right: 24px;
+                    padding-bottom: 8px;
+                    Text {
+                        text: root.notice-fuzzy;
+                        font-size: 13px;
+                        color: Theme.muted;
+                        wrap: word-wrap;
+                        accessible-role: text;
+                        accessible-label: self.text;
+                    }
+                }
+
+                // The trash's banner, as the web app's.
+                if root.view == View.trash && root.count-trash > 0: Rectangle {
+                    height: 56px;
+                    background: Theme.danger.transparentize(0.9);
+                    HorizontalLayout {
+                        padding-left: 24px;
+                        padding-right: 24px;
+                        spacing: 16px;
+                        Text {
+                            text: "Notes in trash are removed permanently when you empty trash.";
+                            vertical-alignment: center;
+                            font-size: 13px;
+                            color: Theme.on-surface;
+                            horizontal-stretch: 1;
+                        }
+                        PillButton {
+                            y: (parent.height - self.height) / 2;
+                            text: "Empty trash";
+                            danger: true;
+                            clicked => { root.empty-trash(); }
+                        }
+                    }
+                }
+
+                // The grid, or what to say when there is nothing in it.
+                Rectangle {
+                    vertical-stretch: 1;
+                    scroll := ScrollView {
+                        visible: root.note-count > 0;
+                        content-width: self.visible-width;
+                        content-height: grid.preferred-height;
+                        grid := HorizontalLayout {
+                            width: scroll.visible-width;
+                            alignment: start;
+                            padding-left: 24px;
+                            padding-right: 24px;
+                            padding-top: 8px;
+                            padding-bottom: 24px;
+                            spacing: Theme.note-gap;
+                            for column in root.columns: VerticalLayout {
+                                alignment: start;
+                                spacing: Theme.note-gap;
+                                width: root.column-width;
+                                for card in column.cards: Card {
+                                    card: card;
+                                    clicked => { root.open-note(card.id); }
+                                }
+                            }
+                        }
+                    }
+                    if root.note-count == 0: VerticalLayout {
+                        alignment: center;
+                        spacing: 8px;
+                        Text {
+                            text: root.searching ? "No notes match your search"
+                                : root.view == View.archive ? "Archive is empty"
+                                : root.view == View.trash ? "Trash is empty"
+                                : "No notes yet";
+                            horizontal-alignment: center;
+                            font-size: 18px;
+                            font-weight: 600;
+                            color: Theme.on-surface;
+                        }
+                        Text {
+                            text: root.searching ? "Try other words, or clear the filters."
+                                : root.view == View.archive ? "Notes you archive appear here."
+                                : root.view == View.trash ? "Notes you move to the trash appear here."
+                                : "Press Ctrl+N, or the + button, to write one.";
+                            horizontal-alignment: center;
+                            font-size: 14px;
+                            color: Theme.on-surface-secondary;
+                        }
+                    }
+                }
+            }
+        }
+
+        // The editor floats over the grid, as the web app's "Float" mode.
+        if root.editor-open: Rectangle {
+            background: Theme.scrim;
+            TouchArea { clicked => { root.close-editor(); } }
+            sheet := EditorSheet {
+                x: (parent.width - self.width) / 2;
+                y: 40px;
+                width: min(960px, parent.width - 64px);
+                height: parent.height - 80px;
+                mode: root.editor-mode;
+                title <=> root.editor-title;
+                body <=> root.editor-body;
+                pinned: root.editor-pinned;
+                reminder-set: root.editor-reminder-set;
+                footer: root.editor-footer;
+                can-act: root.editor-saved-once;
+                has-color: root.editor-has-color;
+                color-light: root.editor-color-light;
+                color-dark: root.editor-color-dark;
+                labels: root.editor-labels;
+                is-checklist: root.editor-is-checklist;
+                rows: root.editor-rows;
+                conflict: root.editor-conflict;
+                pictures: root.editor-pictures;
+                add-image => { root.image-add-requested(); }
+                open-picture(index) => { root.picture-opened(index); }
+                compare => { root.review-opened(); }
+                edited => { root.editor-edited(); }
+                close => { root.close-editor(); }
+                toggle-pin => { root.toggle-pin(); }
+                archive => { root.archive-toggled(); }
+                trash => { root.trash-note(); }
+                restore => { root.restore-note(); }
+                delete-forever => { root.delete-forever(); }
+                open-options => { root.open-options(); }
+                open-reminder => { root.open-reminder(); }
+                item-edited(position, text) => { root.item-edited(position, text); }
+                item-toggled(position) => { root.item-toggled(position); }
+                item-removed(position) => { root.item-removed(position); }
+                item-added => { root.item-added(); }
+                to-checklist => { root.to-checklist(); }
+                to-text => { root.to-text(); }
+                init => {
+                    if (root.editor-title == "" && root.editor-mode != View.trash) {
+                        self.focus-title();
+                    } else {
+                        self.focus();
+                    }
+                }
+            }
+        }
+
+        // Filters, as the web app's sheet: every choice applies at once, the grid behind is the preview, and
+        // the button at the foot says how many notes it holds.
+        if root.filters-open: Rectangle {
+            background: Theme.scrim;
+            TouchArea { clicked => { root.filters-open = false; } }
+            filters-card := Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: 40px;
+                width: min(600px, parent.width - 48px);
+                height: parent.height - 80px;
+                border-radius: Theme.radius-sheet;
+                background: Theme.surface;
+                border-width: 1px;
+                border-color: Theme.outline;
+                drop-shadow-blur: 32px;
+                drop-shadow-color: #00000066;
+                accessible-role: groupbox;
+                accessible-label: "Filters";
+                TouchArea { }
+                VerticalLayout {
+                    HorizontalLayout {
+                        padding: 16px;
+                        padding-left: 24px;
+                        spacing: 10px;
+                        Icon {
+                            y: (parent.height - self.height) / 2;
+                            path: Icons.filter;
+                        }
+                        Text {
+                            text: "Filters";
+                            vertical-alignment: center;
+                            font-size: 18px;
+                            font-weight: 700;
+                            color: Theme.on-surface;
+                            horizontal-stretch: 1;
+                        }
+                        IconButton {
+                            icon: Icons.close;
+                            label: "Close filters";
+                            clicked => { root.filters-open = false; }
+                        }
+                    }
+                    Rectangle { height: 1px; background: Theme.outline; }
+
+                    filters-scroll := Flickable {
+                        vertical-stretch: 1;
+                        content-height: filters-body.preferred-height;
+                        filters-body := VerticalLayout {
+                            width: filters-scroll.width;
+                            padding: 24px;
+                            padding-top: 16px;
+                            spacing: 12px;
+                            alignment: start;
+
+                            SectionLabel { text: "WHERE"; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                FilterChip { text: "Notes"; on: root.view == View.notes; clicked => { root.view-selected(View.notes); } }
+                                FilterChip { text: "Archive"; on: root.view == View.archive; clicked => { root.view-selected(View.archive); } }
+                                FilterChip { text: "Trash"; on: root.view == View.trash; clicked => { root.view-selected(View.trash); } }
+                            }
+
+                            Rectangle { height: 1px; background: Theme.outline; }
+                            SectionLabel { text: "COLORS"; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                for swatch[index] in root.swatches: Rectangle {
+                                    property <bool> on: root.filter-colors[index];
+                                    width: 34px;
+                                    height: 34px;
+                                    border-radius: 17px;
+                                    background: swatch.none ? transparent : (Theme.dark ? swatch.dark : swatch.light);
+                                    border-width: self.on ? 2px : 1px;
+                                    border-color: self.on ? Theme.on-surface : Theme.outline;
+                                    accessible-role: checkbox;
+                                    accessible-checkable: true;
+                                    accessible-checked: self.on;
+                                    accessible-label: swatch.name;
+                                    accessible-action-default => { root.filter-color-toggled(index); }
+                                    if swatch.none && !root.filter-colors[index]: Path {
+                                        width: 20px;
+                                        height: 20px;
+                                        viewbox-width: 24;
+                                        viewbox-height: 24;
+                                        commands: "M5 19 L19 5";
+                                        stroke: Theme.muted;
+                                        stroke-width: 2px;
+                                    }
+                                    if root.filter-colors[index]: Icon {
+                                        width: 16px;
+                                        height: 16px;
+                                        path: Icons.check;
+                                        color: Theme.on-surface;
+                                    }
+                                    TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.filter-color-toggled(index); }
+                                    }
+                                }
+                            }
+
+                            if root.filter-label-rows.length > 0: Rectangle { height: 1px; background: Theme.outline; }
+                            if root.filter-label-rows.length > 0: HorizontalLayout {
+                                spacing: 8px;
+                                SectionLabel {
+                                    text: "LABELS";
+                                    vertical-alignment: center;
+                                    horizontal-stretch: 1;
+                                }
+                                // Any or all only means something once two labels are chosen.
+                                if root.filter-label-count > 1: FilterChip {
+                                    text: root.filter-label-all ? "All of these" : "Any of these";
+                                    on: root.filter-label-all;
+                                    clicked => { root.filter-label-match-toggled(); }
+                                }
+                            }
+                            if root.filter-label-rows.length > 0: VerticalLayout {
+                                spacing: 8px;
+                                for row in root.filter-label-rows: ChipRow {
+                                    items: row.items;
+                                    picked(choice) => { root.filter-label-toggled(choice.text); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: Theme.outline; }
+                            SectionLabel { text: "STATUS"; }
+                            VerticalLayout {
+                                spacing: 8px;
+                                for row in root.filter-flag-rows: ChipRow {
+                                    items: row.items;
+                                    picked(choice) => { root.filter-flag-toggled(choice.index); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: Theme.outline; }
+                            SectionLabel { text: "DATE"; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                for choice in root.filter-date-fields: FilterChip {
+                                    text: choice.text;
+                                    on: choice.on;
+                                    clicked => { root.filter-date-field-picked(choice.index); }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                for choice in root.filter-presets: FilterChip {
+                                    text: choice.text;
+                                    on: choice.on;
+                                    clicked => { root.filter-preset-picked(choice.index); }
+                                }
+                            }
+
+                            // Saved filters live here as well as in the sidebar: this is where they are made.
+                            if root.saved-filters.length > 0: Rectangle { height: 1px; background: Theme.outline; }
+                            if root.saved-filters.length > 0: SectionLabel { text: "SAVED"; }
+                            for row in root.saved-filters: HorizontalLayout {
+                                spacing: 4px;
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                    height: 40px;
+                                    border-radius: Theme.radius-md;
+                                    background: row.current ? Theme.surface-variant : (saved-touch.has-hover ? Theme.hover : transparent);
+                                    accessible-role: button;
+                                    accessible-label: row.label;
+                                    accessible-action-default => { root.saved-applied(row.label); }
+                                    HorizontalLayout {
+                                        padding-left: 12px;
+                                        spacing: 12px;
+                                        Icon {
+                                            y: (parent.height - self.height) / 2;
+                                            width: 18px;
+                                            height: 18px;
+                                            path: Icons.bookmark;
+                                            color: Theme.muted;
+                                        }
+                                        Text {
+                                            text: row.label;
+                                            vertical-alignment: center;
+                                            font-size: 14px;
+                                            font-weight: row.current ? 600 : 400;
+                                            color: Theme.on-surface;
+                                            horizontal-stretch: 1;
+                                        }
+                                    }
+                                    saved-touch := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.saved-applied(row.label); }
+                                    }
+                                }
+                                IconButton {
+                                    y: (parent.height - self.height) / 2;
+                                    size: 32px;
+                                    icon: Icons.close;
+                                    label: "Delete saved filter " + row.label;
+                                    clicked => { root.saved-deleted(row.label); }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Theme.outline; }
+                    // Naming a filter takes the footer's place, so the field and Save are always in view.
+                    if root.naming: VerticalLayout {
+                        padding: 16px;
+                        padding-left: 24px;
+                        padding-right: 24px;
+                        spacing: 8px;
+                        Text {
+                            text: "Name this filter";
+                            font-size: 14px;
+                            font-weight: 600;
+                            color: Theme.on-surface;
+                        }
+                        Field {
+                            text <=> root.filter-name;
+                            placeholder: "e.g. Invoices this month";
+                            label: "Filter name";
+                            edited => { root.filter-name-edited(self.text); }
+                            accepted => { root.filter-saved(root.filter-name); }
+                            init => { self.focus-field(); }
+                        }
+                        if root.filter-name-hint != "": Text {
+                            text: root.filter-name-hint;
+                            font-size: 12px;
+                            color: Theme.muted;
+                            wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: end;
+                            PillButton {
+                                text: "Cancel";
+                                clicked => { root.naming = false; }
+                            }
+                            // An unnamed filter is not saveable: a Save that does nothing is worse.
+                            PillButton {
+                                text: "Save";
+                                strong: true;
+                                enabled: root.filter-name != "";
+                                clicked => { root.filter-saved(root.filter-name); }
+                            }
+                        }
+                    }
+                    if !root.naming: HorizontalLayout {
+                        padding: 16px;
+                        padding-left: 24px;
+                        padding-right: 24px;
+                        spacing: 8px;
+                        // Nothing to save when nothing narrows: an unfiltered list is not a filter.
+                        PillButton {
+                            text: "Save these filters";
+                            enabled: root.filters-active;
+                            clicked => {
+                                root.filter-name = "";
+                                root.filter-name-edited("");
+                                root.naming = true;
+                            }
+                        }
+                        PillButton {
+                            text: "Clear all";
+                            enabled: root.filters-active;
+                            clicked => { root.filters-cleared(); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        PillButton {
+                            text: root.note-count == 1 ? "Show 1 note" : "Show " + root.note-count + " notes";
+                            strong: true;
+                            clicked => { root.filters-open = false; }
+                        }
+                    }
+                }
+            }
+        }
+
+        // A picture at full size, with the note's others a step away.
+        if root.viewer-open: Rectangle {
+            background: #000000e6;
+            accessible-role: groupbox;
+            accessible-label: "Picture " + (root.viewer-index + 1) + " of " + root.viewer-count;
+            TouchArea { clicked => { root.viewer-open = false; } }
+            if root.viewer-picture.ready: Image {
+                x: 72px;
+                y: 72px;
+                width: parent.width - 144px;
+                height: parent.height - 144px;
+                source: root.viewer-picture.image;
+                image-fit: contain;
+            }
+            if !root.viewer-picture.ready: Text {
+                text: root.viewer-picture.problem != "" ? root.viewer-picture.problem : "Loading…";
+                font-size: 15px;
+                color: #ffffffcc;
+            }
+            HorizontalLayout {
+                y: 16px;
+                height: 48px;
+                padding-left: 16px;
+                padding-right: 16px;
+                spacing: 8px;
+                Text {
+                    text: root.viewer-count > 1 ? (root.viewer-index + 1) + " of " + root.viewer-count : "";
+                    vertical-alignment: center;
+                    font-size: 14px;
+                    color: #ffffffcc;
+                    horizontal-stretch: 1;
+                }
+                if !root.viewer-read-only: PillButton {
+                    y: (parent.height - self.height) / 2;
+                    text: "Remove image";
+                    danger: true;
+                    clicked => { root.picture-remove-requested(); }
+                }
+                Rectangle {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 20px;
+                    background: close-touch.has-hover ? #ffffff26 : #ffffff14;
+                    accessible-role: button;
+                    accessible-label: "Close picture";
+                    accessible-action-default => { root.viewer-open = false; }
+                    Icon { path: Icons.close; color: #ffffff; }
+                    close-touch := TouchArea { clicked => { root.viewer-open = false; } }
+                }
+            }
+            if root.viewer-count > 1: Rectangle {
+                x: 16px;
+                y: (parent.height - self.height) / 2;
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                background: prev-touch.has-hover ? #ffffff26 : #ffffff14;
+                accessible-role: button;
+                accessible-label: "Previous picture";
+                accessible-action-default => { root.viewer-moved(-1); }
+                Icon { path: Icons.chevron-left; color: #ffffff; width: 28px; height: 28px; }
+                prev-touch := TouchArea { clicked => { root.viewer-moved(-1); } }
+            }
+            if root.viewer-count > 1: Rectangle {
+                x: parent.width - self.width - 16px;
+                y: (parent.height - self.height) / 2;
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                background: next-touch.has-hover ? #ffffff26 : #ffffff14;
+                accessible-role: button;
+                accessible-label: "Next picture";
+                accessible-action-default => { root.viewer-moved(1); }
+                Icon { path: Icons.chevron-right; color: #ffffff; width: 28px; height: 28px; }
+                next-touch := TouchArea { clicked => { root.viewer-moved(1); } }
+            }
+        }
+
+        // Sign in with an emailed code, as the web app's: no password.
+        if root.signin-open: Dialog {
+            title: root.signin-step == 2 ? "Enter your code" : "Sign in to Notelikeus";
+            card-width: 440px;
+            if root.signin-step == 0: Text {
+                text: "Notes are saved on this device. Sign in with your email to sync them across Android, Windows and the web.";
+                font-size: 14px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            if root.signin-step == 0: Field {
+                text <=> root.signin-email;
+                placeholder: "you@example.com";
+                label: "Email";
+                accepted => { root.signin-send(); }
+                init => { self.focus-field(); }
+            }
+            if root.signin-step == 0: Text {
+                text: "We'll email you a 6-digit code. No password needed.";
+                font-size: 12px;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            if root.signin-step == 1: Text {
+                text: "Finish the quick security check in your browser. Notelikeus carries on by itself when it's done.";
+                font-size: 14px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+                accessible-role: text;
+                accessible-label: self.text;
+            }
+            if root.signin-step == 2: Text {
+                text: "Sent to " + root.signin-email + ". Check spam if it hasn't arrived.";
+                font-size: 14px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            if root.signin-step == 2: Field {
+                text <=> root.signin-code;
+                placeholder: "000000";
+                label: "6-digit code";
+                accepted => { root.signin-verify(); }
+                init => { self.focus-field(); }
+            }
+            if root.signin-notice != "": Text {
+                text: root.signin-notice;
+                font-size: 13px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            if root.signin-error != "": Text {
+                text: root.signin-error;
+                font-size: 13px;
+                color: Theme.danger;
+                wrap: word-wrap;
+                accessible-role: text;
+                accessible-label: self.text;
+            }
+            if root.signin-step == 2: HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                PillButton {
+                    text: "Use a different email";
+                    enabled: !root.signin-busy;
+                    clicked => { root.signin-change-email(); }
+                }
+                PillButton {
+                    text: root.signin-resend-in > 0 ? "Resend code in " + root.signin-resend-in + "s" : "Resend code";
+                    label: "Resend code";
+                    enabled: !root.signin-busy && root.signin-resend-in == 0;
+                    clicked => { root.signin-resend(); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                PillButton {
+                    text: "Cancel";
+                    clicked => { root.signin-cancelled(); }
+                }
+                if root.signin-step == 0: PillButton {
+                    text: root.signin-busy ? "Sending code…" : "Send code";
+                    label: "Send code";
+                    strong: true;
+                    enabled: !root.signin-busy;
+                    clicked => { root.signin-send(); }
+                }
+                if root.signin-step == 2: PillButton {
+                    text: root.signin-busy ? "Checking code…" : "Sign in";
+                    label: "Sign in";
+                    strong: true;
+                    enabled: !root.signin-busy;
+                    clicked => { root.signin-verify(); }
+                }
+            }
+        }
+
+        // A conflicted copy beside the note it was split from. Nothing here deletes: a version not kept
+        // goes to the trash, where it can still be restored.
+        if root.review-open: Rectangle {
+            background: Theme.scrim;
+            TouchArea { }
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: 40px;
+                width: min(860px, parent.width - 48px);
+                // As tall as the versions need, up to the window.
+                height: min(parent.height - 80px, review-layout.preferred-height);
+                border-radius: Theme.radius-sheet;
+                background: Theme.surface;
+                border-width: 1px;
+                border-color: Theme.outline;
+                drop-shadow-blur: 32px;
+                drop-shadow-color: #00000066;
+                accessible-role: groupbox;
+                accessible-label: "This note changed on two devices";
+                review-layout := VerticalLayout {
+                    padding: 24px;
+                    spacing: 12px;
+                    Text {
+                        text: "This note changed on two devices";
+                        font-size: 18px;
+                        font-weight: 700;
+                        color: Theme.on-surface;
+                    }
+                    Text {
+                        text: "Nothing was lost. Pick what to keep. A version you don't keep goes to the trash, where you can still restore it.";
+                        font-size: 14px;
+                        color: Theme.on-surface-secondary;
+                        wrap: word-wrap;
+                    }
+                    if !root.review-has-original: Rectangle {
+                        border-radius: Theme.radius-md;
+                        background: Theme.surface-variant;
+                        HorizontalLayout {
+                            padding: 12px;
+                            Text {
+                                text: "The note this copy came from couldn't be identified. It may have been renamed or deleted. You can keep the copy as an ordinary note or move it to the trash.";
+                                font-size: 13px;
+                                color: Theme.on-surface;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                    review-scroll := Flickable {
+                        vertical-stretch: 1;
+                        preferred-height: versions.preferred-height;
+                        content-height: versions.preferred-height;
+                        versions := HorizontalLayout {
+                            width: review-scroll.width;
+                            spacing: 12px;
+                            alignment: stretch;
+                            if root.review-has-original: ReviewVersion {
+                                horizontal-stretch: 1;
+                                heading: "CURRENT NOTE";
+                                edited: root.review-original-edited;
+                                note-title: root.review-original-title;
+                                lines: root.review-original-lines;
+                            }
+                            ReviewVersion {
+                                horizontal-stretch: 1;
+                                heading: "CONFLICTED COPY";
+                                edited: root.review-copy-edited;
+                                note-title: root.review-copy-title;
+                                lines: root.review-copy-lines;
+                            }
+                        }
+                    }
+                    if root.review-has-original: HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle {
+                            y: (parent.height - self.height) / 2;
+                            width: 20px;
+                            height: 12px;
+                            border-radius: 3px;
+                            background: #f59e0b.transparentize(0.8);
+                        }
+                        Text {
+                            text: "Highlighted lines appear in only one version.";
+                            font-size: 12px;
+                            color: Theme.muted;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        PillButton {
+                            text: "Decide later";
+                            clicked => { root.review-open = false; }
+                        }
+                        if root.review-has-original: PillButton {
+                            text: "Keep current note";
+                            clicked => { root.review-keep-original(); }
+                        }
+                        if root.review-has-original: PillButton {
+                            text: "Keep conflicted copy";
+                            clicked => { root.review-keep-copy(); }
+                        }
+                        if !root.review-has-original: PillButton {
+                            text: "Move copy to Trash";
+                            clicked => { root.review-keep-original(); }
+                        }
+                        PillButton {
+                            text: "Keep both";
+                            strong: true;
+                            clicked => { root.review-keep-both(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Note options: colour and labels, as the web app's options sheet.
+        if root.options-open: Dialog {
+            title: "Note options";
+            card-width: 460px;
+            SectionLabel { text: "COLOR"; }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                for swatch[index] in root.swatches: Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: swatch.none ? transparent : (Theme.dark ? swatch.dark : swatch.light);
+                    border-width: index == root.editor-color-index ? 2px : 1px;
+                    border-color: index == root.editor-color-index ? Theme.on-surface : Theme.outline;
+                    accessible-role: radio-button;
+                    accessible-checkable: true;
+                    accessible-checked: index == root.editor-color-index;
+                    accessible-label: swatch.name;
+                    accessible-action-default => { root.color-picked(index, Theme.dark); }
+                    if swatch.none: Path {
+                        width: 22px;
+                        height: 22px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M5 19 L19 5";
+                        stroke: Theme.muted;
+                        stroke-width: 2px;
+                    }
+                    if index == root.editor-color-index && !swatch.none: Icon {
+                        width: 18px;
+                        height: 18px;
+                        path: Icons.check;
+                        color: Theme.on-surface;
+                    }
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.color-picked(index, Theme.dark); }
+                    }
+                }
+            }
+            Rectangle { height: 1px; background: Theme.outline; }
+            SectionLabel { text: "LABELS"; }
+            if root.label-choices.length == 0: Text {
+                text: "No labels yet. Add one below.";
+                font-size: 13px;
+                color: Theme.muted;
+            }
+            options-labels := Flickable {
+                height: min(260px, label-list.preferred-height);
+                content-height: label-list.preferred-height;
+                label-list := VerticalLayout {
+                    width: options-labels.width;
+                    spacing: 4px;
+                    for choice in root.label-choices: HorizontalLayout {
+                        spacing: 12px;
+                        height: 36px;
+                        CheckBox {
+                            y: (parent.height - self.height) / 2;
+                            checked: choice.on;
+                            label: choice.name;
+                            toggled => { root.label-toggled(choice.name); }
+                        }
+                        Text {
+                            text: choice.name;
+                            vertical-alignment: center;
+                            font-size: 15px;
+                            color: Theme.on-surface;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                new-label-field := Field {
+                    horizontal-stretch: 1;
+                    text <=> root.new-label;
+                    placeholder: "New label";
+                    label: "New label name";
+                    accepted => { root.label-created(root.new-label); }
+                }
+                PillButton {
+                    y: (parent.height - self.height) / 2;
+                    text: "Add";
+                    strong: true;
+                    enabled: root.new-label != "";
+                    clicked => { root.label-created(root.new-label); }
+                }
+            }
+            HorizontalLayout {
+                alignment: end;
+                PillButton {
+                    text: "Done";
+                    strong: true;
+                    clicked => { root.options-open = false; }
+                }
+            }
+        }
+
+        if root.reminder-open: Dialog {
+            title: "Set a reminder";
+            card-width: 460px;
+            Text {
+                text: root.reminder-set ? "Choose a new time or remove this reminder." : "Choose when to be reminded. Times use your local time zone.";
+                font-size: 13px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                PillButton { text: "In 1 hour"; clicked => { root.reminder-preset(0); } }
+                PillButton { text: "Tomorrow 9:00"; clicked => { root.reminder-preset(1); } }
+                PillButton { text: "Next week"; clicked => { root.reminder-preset(2); } }
+            }
+            Field {
+                text <=> root.reminder-input;
+                placeholder: "YYYY-MM-DD HH:MM";
+                label: "Reminder date and time in local time";
+                accepted => { root.reminder-save(); }
+            }
+            Text {
+                text: root.reminder-error != "" ? root.reminder-error : "Enter a local date and time, for example 2026-11-23 09:00.";
+                font-size: 12px;
+                color: root.reminder-error != "" ? Theme.danger : Theme.muted;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                if root.reminder-set: PillButton {
+                    text: "Remove reminder";
+                    danger: true;
+                    clicked => { root.reminder-remove(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                PillButton { text: "Cancel"; clicked => { root.reminder-cancel(); } }
+                PillButton {
+                    text: "Set reminder";
+                    strong: true;
+                    enabled: root.reminder-input != "";
+                    clicked => { root.reminder-save(); }
+                }
+            }
+        }
+
+        // Edit labels: create, rename (Enter) and delete, everywhere at once.
+        if root.labels-open: Dialog {
+            title: "Edit labels";
+            card-width: 460px;
+            HorizontalLayout {
+                spacing: 8px;
+                Field {
+                    horizontal-stretch: 1;
+                    text <=> root.labels-new;
+                    placeholder: "Create a label";
+                    label: "Create a label";
+                    accepted => { root.labels-created(root.labels-new); }
+                }
+                PillButton {
+                    y: (parent.height - self.height) / 2;
+                    text: "Create";
+                    strong: true;
+                    enabled: root.labels-new != "";
+                    clicked => { root.labels-created(root.labels-new); }
+                }
+            }
+            if root.all-labels.length == 0: Text {
+                text: "No labels yet.";
+                font-size: 13px;
+                color: Theme.muted;
+            }
+            edit-scroll := Flickable {
+                height: min(320px, edit-list.preferred-height);
+                content-height: edit-list.preferred-height;
+                edit-list := VerticalLayout {
+                    width: edit-scroll.width;
+                    spacing: 6px;
+                    for name in root.all-labels: HorizontalLayout {
+                        spacing: 8px;
+                        Icon {
+                            y: (parent.height - self.height) / 2;
+                            path: Icons.label;
+                            color: Theme.muted;
+                        }
+                        rename := Field {
+                            horizontal-stretch: 1;
+                            text: name;
+                            placeholder: name;
+                            label: "Rename " + name;
+                            accepted => {
+                                if (self.text != name && self.text != "") {
+                                    root.label-renamed(name, self.text);
+                                }
+                            }
+                        }
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            size: 36px;
+                            icon: Icons.trash;
+                            label: "Delete label " + name;
+                            clicked => { root.label-deleted(name); }
+                        }
+                    }
+                }
+            }
+            Text {
+                text: "Press Enter to rename. Deleting a label keeps its notes.";
+                font-size: 12px;
+                color: Theme.muted;
+            }
+            HorizontalLayout {
+                alignment: end;
+                PillButton {
+                    text: "Done";
+                    strong: true;
+                    clicked => { root.labels-open = false; }
+                }
+            }
+        }
+
+        if root.confirm-title != "": Dialog {
+            title: root.confirm-title;
+            init => { confirm-cancel.focus-button(); }
+            Text {
+                text: root.confirm-body;
+                font-size: 14px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                confirm-cancel := PillButton {
+                    text: "Cancel";
+                    clicked => { root.confirm-cancelled(); }
+                }
+                PillButton {
+                    text: root.confirm-action;
+                    strong: true;
+                    danger: true;
+                    clicked => { root.confirm-accepted(); }
+                }
+            }
+        }
+
+        if root.settings-open: Dialog {
+            title: "Settings";
+            card-width: 580px;
+            init => { theme-system.focus-option(); }
+            settings-scroll := Flickable {
+                height: min(520px, settings-content.preferred-height);
+                content-height: settings-content.preferred-height;
+                settings-content := VerticalLayout {
+                    width: settings-scroll.width;
+                    spacing: 14px;
+                    SectionLabel { text: "APPEARANCE"; }
+                    Text {
+                        text: "Theme";
+                        font-size: 14px;
+                        color: Theme.on-surface;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        accessible-role: radio-group;
+                        accessible-label: "Theme";
+                        theme-system := ThemeOption {
+                            text: "System"; option-index: 0; selected: root.theme-mode == 0;
+                            clicked => { root.theme-picked(0); }
+                            move-option(index) => {
+                                root.theme-picked(index);
+                                if (index == 0) { theme-system.focus-option(); }
+                                else if (index == 1) { theme-light.focus-option(); }
+                                else { theme-dark.focus-option(); }
+                            }
+                        }
+                        theme-light := ThemeOption {
+                            text: "Light"; option-index: 1; selected: root.theme-mode == 1;
+                            clicked => { root.theme-picked(1); }
+                            move-option(index) => {
+                                root.theme-picked(index);
+                                if (index == 0) { theme-system.focus-option(); }
+                                else if (index == 1) { theme-light.focus-option(); }
+                                else { theme-dark.focus-option(); }
+                            }
+                        }
+                        theme-dark := ThemeOption {
+                            text: "Dark"; option-index: 2; selected: root.theme-mode == 2;
+                            clicked => { root.theme-picked(2); }
+                            move-option(index) => {
+                                root.theme-picked(index);
+                                if (index == 0) { theme-system.focus-option(); }
+                                else if (index == 1) { theme-light.focus-option(); }
+                                else { theme-dark.focus-option(); }
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Theme.outline; }
+                    SectionLabel { text: "ACCOUNT"; }
+                    if root.account-mode == 0: Text {
+                        text: "Sync is not configured in this build. Notes stay on this device.";
+                        font-size: 13px;
+                        color: Theme.on-surface-secondary;
+                        wrap: word-wrap;
+                    }
+                    if root.account-mode == 1: VerticalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: "Guest mode. Notes stay on this device.";
+                            font-size: 13px;
+                            color: Theme.on-surface-secondary;
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            PillButton { text: "Sign in to sync"; strong: true; clicked => { root.signin-opened(); } }
+                        }
+                    }
+                    if root.account-mode == 2: VerticalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: root.account-email;
+                            font-size: 14px;
+                            font-weight: 600;
+                            color: Theme.on-surface;
+                        }
+                        Text {
+                            text: root.account-status;
+                            font-size: 13px;
+                            color: root.account-problem ? Theme.danger : Theme.on-surface-secondary;
+                            wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: 8px;
+                            PillButton { text: root.syncing ? "Syncing…" : "Sync now"; enabled: !root.syncing; clicked => { root.sync-requested(); } }
+                            PillButton { text: "Sign out"; clicked => { root.sign-out-requested(); } }
+                        }
+                    }
+                    Text {
+                        text: "Account deletion permanently removes the online account, its notes, and pictures.";
+                        font-size: 12px;
+                        color: Theme.muted;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        PillButton {
+                            text: "Delete account";
+                            danger: true;
+                            enabled: root.can-delete-account && root.account-mode == 2 && !root.deleting-account;
+                            clicked => { root.delete-account-opened(); }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Theme.outline; }
+                    SectionLabel { text: "SUPPORT"; }
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 8px;
+                        PillButton { text: "Diagnostics"; clicked => { root.diagnostics-requested(); } }
+                        PillButton { text: "About Notelikeus"; clicked => { root.about-open = true; } }
+                    }
+                }
+            }
+            HorizontalLayout {
+                alignment: end;
+                PillButton { text: "Done"; strong: true; clicked => { root.settings-open = false; } }
+            }
+        }
+
+        if root.diagnostics-open: Dialog {
+            title: "Diagnostics";
+            card-width: 600px;
+            init => { diagnostics-export.focus-button(); }
+            Text {
+                text: "This report contains app and sync counts only. It does not include note text, your email, or raw account identifiers.";
+                font-size: 13px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            diagnostics-scroll := Flickable {
+                height: min(360px, diagnostics-text.preferred-height);
+                content-height: diagnostics-text.preferred-height;
+                diagnostics-text := Text {
+                    width: diagnostics-scroll.width;
+                    text: root.diagnostics-report;
+                    font-size: 12px;
+                    color: Theme.on-surface;
+                    wrap: word-wrap;
+                }
+            }
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                diagnostics-export := PillButton { text: "Export report"; clicked => { root.diagnostics-export-requested(); } }
+                PillButton { text: "Done"; strong: true; clicked => { root.diagnostics-open = false; } }
+            }
+        }
+
+        if root.about-open: Dialog {
+            title: "About Notelikeus";
+            card-width: 460px;
+            init => { about-done.focus-button(); }
+            Text {
+                text: "Notelikeus Rust · " + root.app-version;
+                font-size: 14px;
+                color: Theme.on-surface;
+            }
+            AboutSlint { height: 90px; }
+            HorizontalLayout {
+                alignment: end;
+                about-done := PillButton { text: "Done"; strong: true; clicked => { root.about-open = false; } }
+            }
+        }
+
+        if root.delete-account-open: Dialog {
+            title: "Delete account?";
+            card-width: 480px;
+            Text {
+                text: "This permanently deletes your online account, synced notes, and pictures. It cannot be undone. Your separate guest notes stay on this device.";
+                font-size: 14px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            Text {
+                text: "Type DELETE to confirm. A recent sign-in is required.";
+                font-size: 13px;
+                font-weight: 600;
+                color: Theme.on-surface;
+            }
+            Field {
+                text <=> root.delete-account-confirmation;
+                placeholder: "DELETE";
+                label: "Type DELETE to confirm account deletion";
+            }
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                PillButton {
+                    text: "Cancel";
+                    enabled: !root.deleting-account;
+                    clicked => {
+                        root.delete-account-open = false;
+                        root.delete-account-confirmation = "";
+                    }
+                }
+                PillButton {
+                    text: root.deleting-account ? "Deleting…" : "Delete permanently";
+                    strong: true;
+                    danger: true;
+                    enabled: root.delete-account-confirmation == "DELETE" && !root.deleting-account;
+                    clicked => { root.delete-account-confirmed(); }
+                }
+            }
+        }
+
+        if root.toast-text != "": Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height - 32px;
+            width: toast-row.preferred-width;
+            height: 48px;
+            border-radius: Theme.radius-md;
+            background: Theme.on-surface;
+            accessible-role: text;
+            accessible-label: root.toast-text;
+            toast-row := HorizontalLayout {
+                padding-left: 18px;
+                padding-right: 8px;
+                spacing: 12px;
+                Text {
+                    text: root.toast-text;
+                    vertical-alignment: center;
+                    font-size: 14px;
+                    color: Theme.background;
+                }
+                if root.toast-action != "": Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    width: action-text.preferred-width + 20px;
+                    height: 34px;
+                    border-radius: Theme.radius-sm;
+                    background: action-touch.has-hover ? Theme.background.transparentize(0.85) : transparent;
+                    accessible-role: button;
+                    accessible-label: root.toast-action;
+                    accessible-action-default => { root.toast-acted(); }
+                    action-text := Text {
+                        text: root.toast-action;
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: Theme.background;
+                    }
+                    action-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.toast-acted(); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component TrayIcon inherits SystemTrayIcon {
+    icon: @image-url("images/icon.png");
+    title: "Notelikeus";
+    tooltip: "Notelikeus";
+    visible: true;
+
+    callback open-requested();
+    callback new-note-requested();
+    callback exit-requested();
+
+    clicked => { root.open-requested(); }
+
+    Menu {
+        MenuItem {
+            title: "Open Notelikeus";
+            activated => { root.open-requested(); }
+        }
+        MenuItem {
+            title: "New note";
+            activated => { root.new-note-requested(); }
+        }
+        MenuItem {
+            title: "Exit";
+            activated => { root.exit-requested(); }
+        }
+    }
+}

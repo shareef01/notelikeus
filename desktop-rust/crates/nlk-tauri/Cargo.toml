@@ -15,6 +15,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 notelikeus-core = { path = "../notelikeus-core", features = ["http"] }
+notelikeus-app = { path = "../notelikeus-app" }
 tauri = { version = "2", features = [] }
 serde.workspace = true
 serde_json.workspace = true

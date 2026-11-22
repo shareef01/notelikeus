@@ -172,3 +172,12 @@ fn a_missing_key_next_to_a_saved_session_is_refused() {
     assert!(matches!(SessionVault::open(&root, &p), Err(Error::KeyMissing(_))));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn state_written_before_the_label_registry_still_opens() {
+    let mut value = serde_json::to_value(state_with("owner", "old words")).unwrap();
+    value.as_object_mut().unwrap().remove("label_registry");
+    let old: LocalState = serde_json::from_value(value).unwrap();
+    assert!(old.label_registry.is_empty());
+    assert_eq!(old.notes["1"].content, "old words");
+}

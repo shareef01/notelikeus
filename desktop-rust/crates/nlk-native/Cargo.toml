@@ -1,0 +1,37 @@
+[package]
+name = "nlk-native"
+description = "The native Notelikeus app for Windows: a Slint UI over the Rust client's app logic."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "notelikeus"
+path = "src/main.rs"
+
+[dependencies]
+notelikeus-app = { path = "../notelikeus-app" }
+notelikeus-core = { path = "../notelikeus-core", features = ["http"] }
+# Royalty-free licence 2.0: the About screen displays Slint's required attribution widget.
+slint = { version = "=1.19.0", features = ["raw-window-handle-06"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Decoding and shrinking the pictures notes carry (the types the app attaches).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+sha2 = "0.10"
+serde_json.workspace = true
+zip = { version = "9.2.3", default-features = false, features = ["deflate"] }
+# The Windows file picker for adding a picture.
+rfd = "0.15"
+
+[target.'cfg(windows)'.dependencies]
+raw-window-handle = "0.6"
+windows-sys = { workspace = true, features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Shell"] }
+
+[build-dependencies]
+slint-build = "=1.19.0"
+
+[dev-dependencies]
+i-slint-backend-testing = "=1.19.0"
+ureq.workspace = true
+serde_json.workspace = true
