@@ -21,3 +21,14 @@ native-tls = "0.2"
 [profile.release]
 lto = true
 codegen-units = 1
+
+# Keep application code line-debuggable while avoiding full dependency symbols in dev/test builds.
+# Cargo's test profile inherits dev; debug assertions and overflow checks remain enabled.
+[profile.dev]
+debug = 1
+incremental = true
+debug-assertions = true
+overflow-checks = true
+
+[profile.dev.package."*"]
+debug = 0

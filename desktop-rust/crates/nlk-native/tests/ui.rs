@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use i_slint_backend_testing::ElementHandle;
 use nlk_native::AppWindow;
-use nlk_native::controller::Controller;
+use nlk_native::controller::{Controller, Mode};
 use notelikeus_app::{NotesService, SystemIds};
 use notelikeus_core::crypto::PlaintextKeyProtectorForTests;
 
@@ -21,7 +21,8 @@ fn open(dir: &Path) -> (AppWindow, std::rc::Rc<Controller>) {
     // Tall enough that the Filters sheet needs no scrolling: the element search skips what is scrolled out
     // of view, as it is not visible.
     slint::ComponentHandle::window(&ui).set_size(slint::LogicalSize::new(1280.0, 1600.0));
-    let controller = Controller::attach(&ui, service);
+    // Pictures load in the background; with no event loop here, jobs run inline instead.
+    let controller = Controller::attach_with(&ui, service, Mode::Inline);
     (ui, controller)
 }
 
@@ -86,6 +87,7 @@ fn the_native_window_end_to_end() {
     checklists();
     search_views_and_saved_filters();
     reviewing_a_conflicted_copy();
+    pictures_on_notes();
 }
 
 fn reviewing_a_conflicted_copy() {
@@ -483,5 +485,67 @@ fn checklists() {
     assert_eq!(rows(&ui), [(String::new(), false)]);
     press(&ui, "Back to notes");
     assert_eq!(ui.get_note_count(), 2);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn png(width: u32, height: u32) -> Vec<u8> {
+    let picture = image::RgbaImage::from_pixel(width, height, image::Rgba([200, 80, 40, 255]));
+    let mut bytes = Vec::new();
+    picture.write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png).unwrap();
+    bytes
+}
+
+fn pictures_on_notes() {
+    use slint::Model;
+    let dir = temp_dir("pictures");
+    let (ui, controller) = open(&dir);
+
+    // A draft gets a picture: it becomes a note, and the picture shows in the strip and on its card.
+    press(&ui, "New note");
+    controller.add_image_bytes(&png(1200, 800));
+    assert!(ui.get_editor_saved_once(), "the draft was saved so the picture has a note");
+    let strip = ui.get_editor_pictures();
+    assert_eq!(strip.row_count(), 1);
+    assert!(strip.row_data(0).unwrap().ready, "decoded and shown");
+    controller.add_image_bytes(b"%PDF-1.7 not a picture");
+    assert!(ui.get_toast_text().contains("PNG, JPEG, GIF or WebP"), "{}", ui.get_toast_text());
+    controller.add_image_bytes(&png(300, 300));
+    assert_eq!(ui.get_editor_pictures().row_count(), 2);
+    type_note(&ui, "Garden plan", "raised beds");
+    press(&ui, "Back to notes");
+    let card = ui.get_columns().iter().flat_map(|c| c.cards.iter().collect::<Vec<_>>()).next().unwrap();
+    assert!(card.has_cover && card.cover.ready, "the first picture leads the card");
+    assert_eq!(card.more_images, 1);
+
+    // The viewer: both pictures, one step apart; removing one asks first.
+    press(&ui, "Garden plan");
+    press(&ui, "Picture 1 of 2");
+    assert!(ui.get_viewer_open());
+    assert!(ui.get_viewer_picture().ready);
+    assert_eq!((ui.get_viewer_index(), ui.get_viewer_count()), (0, 2));
+    press(&ui, "Next picture");
+    assert_eq!(ui.get_viewer_index(), 1);
+    press(&ui, "Next picture");
+    assert_eq!(ui.get_viewer_index(), 0, "round to the first");
+    press(&ui, "Remove image");
+    assert_eq!(ui.get_confirm_title(), "Remove this image?");
+    ui.invoke_confirm_accepted();
+    assert!(!ui.get_viewer_open());
+    assert_eq!(ui.get_toast_text(), "Image removed");
+    assert_eq!(ui.get_editor_pictures().row_count(), 1);
+    press(&ui, "Back to notes");
+
+    // A restart keeps the picture; a trashed note's pictures can be looked at, not changed.
+    drop(ui);
+    let (ui, _controller) = open(&dir);
+    press(&ui, "Garden plan");
+    assert_eq!(ui.get_editor_pictures().row_count(), 1);
+    press(&ui, "Move to trash");
+    press(&ui, "Trash");
+    press(&ui, "Garden plan");
+    assert!(!has(&ui, "Add image"));
+    press(&ui, "Picture 1 of 1");
+    assert!(ui.get_viewer_open() && ui.get_viewer_read_only());
+    assert!(!has(&ui, "Remove image"));
     std::fs::remove_dir_all(dir).unwrap();
 }

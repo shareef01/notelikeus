@@ -5,7 +5,7 @@
 // Every interactive element carries an accessible role and label: screen readers use them, and so do the
 // headless UI tests (tests/ui.rs).
 
-import { ScrollView } from "std-widgets.slint";
+import { AboutSlint, ScrollView } from "std-widgets.slint";
 import { Theme, Icons, Icon, IconButton } from "theme.slint";
 import "fonts/inter_regular.ttf";
 import "fonts/inter_medium.ttf";
@@ -17,11 +17,23 @@ export struct ChecklistLine {
     checked: bool,
 }
 
+/// One of a note's pictures, as the window shows it: drawn once `ready`, or why it can't be.
+export struct Picture {
+    id: string,
+    image: image,
+    ready: bool,
+    problem: string,
+}
+
 export struct NoteCard {
     id: string,
+    cover: Picture,
+    has-cover: bool,
+    more-images: int,
     title: string,
     preview: string,
     time: string,
+    reminder: string,
     pinned: bool,
     has-color: bool,
     color-light: color,
@@ -101,8 +113,9 @@ component FilterChip inherits Rectangle {
     width: chip-label.preferred-width + (root.on ? 42px : 26px);
     border-radius: 16px;
     background: root.on ? Theme.on-surface : (touch.has-hover ? Theme.hover : transparent);
-    border-width: root.on ? 0 : 1px;
-    border-color: Theme.outline;
+    border-width: focus-scope.has-focus ? 2px : (root.on ? 0 : 1px);
+    border-color: focus-scope.has-focus ? Theme.accent : Theme.outline;
+    forward-focus: focus-scope;
     accessible-role: checkbox;
     accessible-checkable: true;
     accessible-checked: root.on;
@@ -129,7 +142,18 @@ component FilterChip inherits Rectangle {
     }
     touch := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { focus-scope.focus(); root.clicked(); }
+    }
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
     }
 }
 
@@ -212,12 +236,14 @@ component PillButton inherits Rectangle {
     border-radius: self.height / 2;
     opacity: enabled ? 1 : 0.45;
     background: strong ? (danger ? Theme.danger : Theme.on-surface) : (touch.has-hover && enabled ? Theme.hover : transparent);
-    border-width: strong ? 0 : 1px;
-    border-color: Theme.outline;
+    border-width: focus-scope.has-focus ? 2px : (strong ? 0 : 1px);
+    border-color: focus-scope.has-focus ? Theme.accent : Theme.outline;
     accessible-role: button;
     accessible-label: root.label;
     accessible-enabled: enabled;
     accessible-action-default => { if (root.enabled) { root.clicked(); } }
+    forward-focus: focus-scope;
+    public function focus-button() { focus-scope.focus(); }
     label := Text {
         text: root.text;
         font-size: 13px;
@@ -226,7 +252,71 @@ component PillButton inherits Rectangle {
     }
     touch := TouchArea {
         mouse-cursor: root.enabled ? pointer : default;
-        clicked => { if (root.enabled) { root.clicked(); } }
+        clicked => { if (root.enabled) { focus-scope.focus(); root.clicked(); } }
+    }
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if ((event.text == Key.Space || event.text == Key.Return) && root.enabled) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+/// A theme selector announced as a selected or unselected radio button.
+component ThemeOption inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    in property <int> option-index: -1;
+    callback clicked();
+    callback move-option(int);
+    height: 36px;
+    width: option-label.preferred-width + 28px;
+    border-radius: self.height / 2;
+    background: selected ? Theme.on-surface : (touch.has-hover ? Theme.hover : transparent);
+    border-width: focus-scope.has-focus ? 2px : (selected ? 0 : 1px);
+    border-color: focus-scope.has-focus ? Theme.accent : Theme.outline;
+    forward-focus: focus-scope;
+    public function focus-option() { focus-scope.focus(); }
+    accessible-role: radio-button;
+    accessible-checkable: true;
+    accessible-checked <=> selected;
+    accessible-label: text;
+    accessible-item-index: option-index;
+    accessible-action-default => { root.clicked(); }
+    option-label := Text {
+        text: root.text;
+        font-size: 13px;
+        font-weight: 600;
+        color: root.selected ? Theme.background : Theme.on-surface;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { focus-scope.focus(); root.clicked(); }
+    }
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            if (event.text == Key.LeftArrow || event.text == Key.UpArrow) {
+                root.move-option(root.option-index == 0 ? 2 : root.option-index - 1);
+                return accept;
+            }
+            if (event.text == Key.RightArrow || event.text == Key.DownArrow) {
+                root.move-option(root.option-index == 2 ? 0 : root.option-index + 1);
+                return accept;
+            }
+            reject
+        }
     }
 }
 
@@ -240,14 +330,15 @@ component CheckBox inherits Rectangle {
     width: box;
     height: box;
     border-radius: 5px;
-    border-width: checked ? 0 : 2px;
-    border-color: Theme.muted;
+    border-width: focus-scope.has-focus ? 2px : (checked ? 0 : 2px);
     background: checked ? Theme.on-surface : transparent;
+    border-color: focus-scope.has-focus ? Theme.accent : Theme.muted;
     accessible-role: checkbox;
     accessible-checkable: true;
     accessible-checked: checked;
     accessible-label: label;
     accessible-action-default => { if (root.enabled) { root.toggled(); } }
+    forward-focus: focus-scope;
     if root.checked: Icon {
         width: root.box - 4px;
         height: root.box - 4px;
@@ -256,7 +347,19 @@ component CheckBox inherits Rectangle {
     }
     TouchArea {
         mouse-cursor: root.enabled ? pointer : default;
-        clicked => { if (root.enabled) { root.toggled(); } }
+        clicked => { if (root.enabled) { focus-scope.focus(); root.toggled(); } }
+    }
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if ((event.text == Key.Space || event.text == Key.Return) && root.enabled) {
+                root.toggled();
+                return accept;
+            }
+            reject
+        }
     }
 }
 
@@ -269,9 +372,12 @@ component NavItem inherits Rectangle {
     height: 44px;
     border-radius: Theme.radius-md;
     background: selected ? Theme.surface-variant : (touch.has-hover ? Theme.hover : transparent);
+    border-width: focus-scope.has-focus ? 2px : 0;
+    border-color: Theme.accent;
     accessible-role: button;
     accessible-label: label;
     accessible-action-default => { root.clicked(); }
+    forward-focus: focus-scope;
 
     // The web app's selection bar on the left edge.
     if selected: Rectangle {
@@ -316,7 +422,18 @@ component NavItem inherits Rectangle {
 
     touch := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { focus-scope.focus(); root.clicked(); }
+    }
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
     }
 }
 
@@ -338,17 +455,51 @@ component Card inherits Rectangle {
     in property <NoteCard> card;
     callback clicked();
     border-radius: Theme.radius-note;
-    border-width: 1px;
-    border-color: card.has-color ? transparent : (touch.has-hover ? Theme.muted : Theme.outline);
+    border-width: focus-scope.has-focus ? 2px : 1px;
+    border-color: focus-scope.has-focus ? Theme.accent : (card.has-color ? transparent : (touch.has-hover ? Theme.muted : Theme.outline));
     background: card.has-color ? (Theme.dark ? card.color-dark : card.color-light) : Theme.surface;
     accessible-role: button;
     accessible-label: card.title != "" ? card.title : "Untitled note";
     accessible-description: card.preview;
     accessible-action-default => { root.clicked(); }
+    forward-focus: focus-scope;
 
     VerticalLayout {
         padding: 20px;
         spacing: 10px;
+        // The note's first picture leads the card, as on the web.
+        if card.has-cover: Rectangle {
+            height: 160px;
+            border-radius: Theme.radius-md;
+            clip: true;
+            background: Theme.surface-variant;
+            if card.cover.ready: Image {
+                width: parent.width;
+                height: parent.height;
+                source: card.cover.image;
+                image-fit: cover;
+                accessible-role: image;
+                accessible-label: "Picture";
+            }
+            if !card.cover.ready && card.cover.problem == "": Icon {
+                path: Icons.image;
+                color: Theme.muted;
+            }
+            if card.more-images > 0: Rectangle {
+                x: parent.width - self.width - 8px;
+                y: parent.height - self.height - 8px;
+                width: more-text.preferred-width + 14px;
+                height: 22px;
+                border-radius: 11px;
+                background: #000000aa;
+                more-text := Text {
+                    text: "+" + card.more-images;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #ffffff;
+                }
+            }
+        }
         HorizontalLayout {
             spacing: 8px;
             if card.title != "": Text {
@@ -403,6 +554,24 @@ component Card inherits Rectangle {
             for name in card.labels: Chip { text: name; }
             if card.more-labels > 0: Chip { text: "+" + card.more-labels; }
             Rectangle { horizontal-stretch: 1; }
+            if card.reminder != "": HorizontalLayout {
+                spacing: 4px;
+                Icon {
+                    width: 14px;
+                    height: 14px;
+                    path: Icons.notification;
+                    color: Theme.muted;
+                    accessible-role: image;
+                    accessible-label: "Reminder";
+                }
+                Text {
+                    text: card.reminder;
+                    vertical-alignment: center;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: Theme.muted;
+                }
+            }
             Text {
                 text: card.time;
                 vertical-alignment: center;
@@ -415,7 +584,18 @@ component Card inherits Rectangle {
 
     touch := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { focus-scope.focus(); root.clicked(); }
+    }
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
     }
 }
 
@@ -443,6 +623,11 @@ component Sidebar inherits Rectangle {
     callback saved-applied(string);
     callback saved-deleted(string);
     callback edit-labels();
+    callback open-settings();
+    callback open-about();
+    callback export-json();
+    callback export-bundle();
+    callback import-backup();
     width: Theme.sidebar-width;
     background: Theme.surface;
 
@@ -553,6 +738,31 @@ component Sidebar inherits Rectangle {
                     icon: Icons.label;
                     label: "Edit labels";
                     clicked => { root.edit-labels(); }
+                }
+                NavItem {
+                    icon: Icons.settings;
+                    label: "Settings";
+                    clicked => { root.open-settings(); }
+                }
+                NavItem {
+                    icon: Icons.info;
+                    label: "About Notelikeus";
+                    clicked => { root.open-about(); }
+                }
+                NavItem {
+                    icon: Icons.notes;
+                    label: "Export JSON backup";
+                    clicked => { root.export-json(); }
+                }
+                NavItem {
+                    icon: Icons.archive;
+                    label: "Export backup with pictures";
+                    clicked => { root.export-bundle(); }
+                }
+                NavItem {
+                    icon: Icons.restore;
+                    label: "Import backup";
+                    clicked => { root.import-backup(); }
                 }
             }
         }
@@ -791,6 +1001,7 @@ component EditorSheet inherits Rectangle {
     in-out property <string> title;
     in-out property <string> body;
     in property <bool> pinned;
+    in property <bool> reminder-set;
     in property <string> footer;
     in property <bool> can-act;
     in property <bool> has-color;
@@ -800,6 +1011,9 @@ component EditorSheet inherits Rectangle {
     in property <bool> is-checklist;
     in property <[EditRow]> rows;
     in property <bool> conflict;
+    in property <[Picture]> pictures;
+    callback add-image();
+    callback open-picture(int);
     callback compare();
     callback edited();
     callback close();
@@ -809,6 +1023,7 @@ component EditorSheet inherits Rectangle {
     callback restore();
     callback delete-forever();
     callback open-options();
+    callback open-reminder();
     callback item-edited(int, string);
     callback item-toggled(int);
     callback item-removed(int);
@@ -844,6 +1059,16 @@ component EditorSheet inherits Rectangle {
                 clicked => { root.close(); }
             }
             Rectangle { horizontal-stretch: 1; }
+            if root.mode != View.trash: IconButton {
+                icon: Icons.image;
+                label: "Add image";
+                clicked => { root.add-image(); }
+            }
+            if root.can-act && root.mode == View.notes: IconButton {
+                icon: Icons.notification;
+                label: root.reminder-set ? "Change reminder" : "Set reminder";
+                clicked => { root.open-reminder(); }
+            }
             if root.can-act && root.mode != View.trash: IconButton {
                 icon: Icons.palette;
                 label: "Note options";
@@ -921,6 +1146,49 @@ component EditorSheet inherits Rectangle {
             padding-bottom: 12px;
             spacing: 14px;
             vertical-stretch: 1;
+
+            // The note's pictures, as the web's image strip: each opens in the viewer.
+            if root.pictures.length > 0: strip := Flickable {
+                height: 128px;
+                vertical-stretch: 0;
+                content-width: strip-row.preferred-width;
+                strip-row := HorizontalLayout {
+                    spacing: 10px;
+                    alignment: start;
+                    for picture[index] in root.pictures: Rectangle {
+                        width: 128px;
+                        height: 128px;
+                        border-radius: Theme.radius-md;
+                        clip: true;
+                        background: Theme.surface-variant;
+                        accessible-role: button;
+                        accessible-label: "Picture " + (index + 1) + " of " + root.pictures.length;
+                        accessible-action-default => { root.open-picture(index); }
+                        if picture.ready: Image {
+                            width: parent.width;
+                            height: parent.height;
+                            source: picture.image;
+                            image-fit: cover;
+                        }
+                        if !picture.ready && picture.problem == "": Icon {
+                            path: Icons.image;
+                            color: Theme.muted;
+                        }
+                        if picture.problem != "": Text {
+                            width: parent.width - 16px;
+                            text: picture.problem;
+                            font-size: 11px;
+                            color: Theme.muted;
+                            wrap: word-wrap;
+                            horizontal-alignment: center;
+                        }
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.open-picture(index); }
+                        }
+                    }
+                }
+            }
 
             Rectangle {
                 height: max(title-input.preferred-height, 40px);
@@ -1110,6 +1378,8 @@ component EditorSheet inherits Rectangle {
 }
 
 export component AppWindow inherits Window {
+    in-out property <int> theme-mode <=> Theme.mode;
+
     title: "Notelikeus";
     icon: @image-url("images/icon.png");
     preferred-width: 1280px;
@@ -1143,6 +1413,17 @@ export component AppWindow inherits Window {
     in property <string> account-status;
     in property <bool> account-problem;
     in property <bool> syncing;
+    in property <string> app-version;
+
+    // Settings, diagnostics, About and account deletion.
+    in-out property <bool> settings-open;
+    in-out property <bool> about-open;
+    in-out property <bool> diagnostics-open;
+    in property <string> diagnostics-report;
+    in-out property <bool> delete-account-open;
+    in-out property <string> delete-account-confirmation;
+    in property <bool> can-delete-account;
+    in property <bool> deleting-account;
 
     // Signing in: step 0 email, 1 the browser's security check, 2 the code.
     in-out property <bool> signin-open;
@@ -1153,6 +1434,14 @@ export component AppWindow inherits Window {
     in property <string> signin-notice;
     in property <bool> signin-busy;
     in property <int> signin-resend-in;
+
+    // The open note's pictures, and the viewer.
+    in property <[Picture]> editor-pictures;
+    in-out property <bool> viewer-open;
+    in property <Picture> viewer-picture;
+    in property <int> viewer-index;
+    in property <int> viewer-count;
+    in property <bool> viewer-read-only;
 
     // A copy kept from a sync conflict, beside the note it was split from.
     in property <bool> editor-conflict;
@@ -1186,6 +1475,7 @@ export component AppWindow inherits Window {
     in-out property <string> editor-title;
     in-out property <string> editor-body;
     in property <bool> editor-pinned;
+    in property <bool> editor-reminder-set;
     in property <bool> editor-saved-once;
     in property <string> editor-footer;
     in property <bool> editor-has-color;
@@ -1194,6 +1484,10 @@ export component AppWindow inherits Window {
     in property <[string]> editor-labels;
     in property <bool> editor-is-checklist;
     in property <[EditRow]> editor-rows;
+    in-out property <bool> reminder-open;
+    in-out property <string> reminder-input;
+    in property <string> reminder-error;
+    in property <bool> reminder-set;
 
     // Note options: colour and labels.
     in-out property <bool> options-open;
@@ -1238,6 +1532,15 @@ export component AppWindow inherits Window {
     callback filter-saved(string);
     callback sync-requested();
     callback sign-out-requested();
+    callback settings-requested();
+    callback theme-picked(int);
+    callback diagnostics-requested();
+    callback diagnostics-export-requested();
+    callback delete-account-opened();
+    callback delete-account-confirmed();
+    callback backup-export-json-requested();
+    callback backup-export-bundle-requested();
+    callback backup-import-requested();
     callback signin-opened();
     callback signin-send();
     callback signin-resend();
@@ -1248,6 +1551,16 @@ export component AppWindow inherits Window {
     callback review-keep-original();
     callback review-keep-copy();
     callback review-keep-both();
+    callback image-add-requested();
+    callback picture-opened(int);
+    callback viewer-moved(int);
+    callback picture-remove-requested();
+    callback open-reminder();
+    callback reminder-preset(int);
+    callback reminder-save();
+    callback reminder-remove();
+    callback reminder-cancel();
+    callback reminder-due();
     // Raised by Rust: timers and the worker thread.
     callback sync-due();
     callback resend-tick();
@@ -1309,10 +1622,14 @@ export component AppWindow inherits Window {
             if (event.text == Key.Escape) {
                 if (root.confirm-title != "") {
                     root.confirm-cancelled();
+                } else if (root.viewer-open) {
+                    root.viewer-open = false;
                 } else if (root.review-open) {
                     root.review-open = false;
                 } else if (root.signin-open) {
                     root.signin-cancelled();
+                } else if (root.reminder-open) {
+                    root.reminder-cancel();
                 } else if (root.options-open) {
                     root.options-open = false;
                 } else if (root.labels-open) {
@@ -1321,6 +1638,15 @@ export component AppWindow inherits Window {
                     root.naming = false;
                 } else if (root.filters-open) {
                     root.filters-open = false;
+                } else if (root.about-open) {
+                    root.about-open = false;
+                } else if (root.diagnostics-open) {
+                    root.diagnostics-open = false;
+                } else if (root.delete-account-open) {
+                    root.delete-account-open = false;
+                    root.delete-account-confirmation = "";
+                } else if (root.settings-open) {
+                    root.settings-open = false;
                 } else if (root.editor-open) {
                     root.close-editor();
                 }
@@ -1352,6 +1678,11 @@ export component AppWindow inherits Window {
                 saved-applied(name) => { root.saved-applied(name); }
                 saved-deleted(name) => { root.saved-deleted(name); }
                 edit-labels => { root.open-labels(); }
+                export-json => { root.backup-export-json-requested(); }
+                export-bundle => { root.backup-export-bundle-requested(); }
+                import-backup => { root.backup-import-requested(); }
+                open-settings => { root.settings-requested(); }
+                open-about => { root.about-open = true; }
             }
 
             VerticalLayout {
@@ -1514,6 +1845,7 @@ export component AppWindow inherits Window {
                 title <=> root.editor-title;
                 body <=> root.editor-body;
                 pinned: root.editor-pinned;
+                reminder-set: root.editor-reminder-set;
                 footer: root.editor-footer;
                 can-act: root.editor-saved-once;
                 has-color: root.editor-has-color;
@@ -1523,6 +1855,9 @@ export component AppWindow inherits Window {
                 is-checklist: root.editor-is-checklist;
                 rows: root.editor-rows;
                 conflict: root.editor-conflict;
+                pictures: root.editor-pictures;
+                add-image => { root.image-add-requested(); }
+                open-picture(index) => { root.picture-opened(index); }
                 compare => { root.review-opened(); }
                 edited => { root.editor-edited(); }
                 close => { root.close-editor(); }
@@ -1532,6 +1867,7 @@ export component AppWindow inherits Window {
                 restore => { root.restore-note(); }
                 delete-forever => { root.delete-forever(); }
                 open-options => { root.open-options(); }
+                open-reminder => { root.open-reminder(); }
                 item-edited(position, text) => { root.item-edited(position, text); }
                 item-toggled(position) => { root.item-toggled(position); }
                 item-removed(position) => { root.item-removed(position); }
@@ -1824,6 +2160,84 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
+            }
+        }
+
+        // A picture at full size, with the note's others a step away.
+        if root.viewer-open: Rectangle {
+            background: #000000e6;
+            accessible-role: groupbox;
+            accessible-label: "Picture " + (root.viewer-index + 1) + " of " + root.viewer-count;
+            TouchArea { clicked => { root.viewer-open = false; } }
+            if root.viewer-picture.ready: Image {
+                x: 72px;
+                y: 72px;
+                width: parent.width - 144px;
+                height: parent.height - 144px;
+                source: root.viewer-picture.image;
+                image-fit: contain;
+            }
+            if !root.viewer-picture.ready: Text {
+                text: root.viewer-picture.problem != "" ? root.viewer-picture.problem : "Loading…";
+                font-size: 15px;
+                color: #ffffffcc;
+            }
+            HorizontalLayout {
+                y: 16px;
+                height: 48px;
+                padding-left: 16px;
+                padding-right: 16px;
+                spacing: 8px;
+                Text {
+                    text: root.viewer-count > 1 ? (root.viewer-index + 1) + " of " + root.viewer-count : "";
+                    vertical-alignment: center;
+                    font-size: 14px;
+                    color: #ffffffcc;
+                    horizontal-stretch: 1;
+                }
+                if !root.viewer-read-only: PillButton {
+                    y: (parent.height - self.height) / 2;
+                    text: "Remove image";
+                    danger: true;
+                    clicked => { root.picture-remove-requested(); }
+                }
+                Rectangle {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 20px;
+                    background: close-touch.has-hover ? #ffffff26 : #ffffff14;
+                    accessible-role: button;
+                    accessible-label: "Close picture";
+                    accessible-action-default => { root.viewer-open = false; }
+                    Icon { path: Icons.close; color: #ffffff; }
+                    close-touch := TouchArea { clicked => { root.viewer-open = false; } }
+                }
+            }
+            if root.viewer-count > 1: Rectangle {
+                x: 16px;
+                y: (parent.height - self.height) / 2;
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                background: prev-touch.has-hover ? #ffffff26 : #ffffff14;
+                accessible-role: button;
+                accessible-label: "Previous picture";
+                accessible-action-default => { root.viewer-moved(-1); }
+                Icon { path: Icons.chevron-left; color: #ffffff; width: 28px; height: 28px; }
+                prev-touch := TouchArea { clicked => { root.viewer-moved(-1); } }
+            }
+            if root.viewer-count > 1: Rectangle {
+                x: parent.width - self.width - 16px;
+                y: (parent.height - self.height) / 2;
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                background: next-touch.has-hover ? #ffffff26 : #ffffff14;
+                accessible-role: button;
+                accessible-label: "Next picture";
+                accessible-action-default => { root.viewer-moved(1); }
+                Icon { path: Icons.chevron-right; color: #ffffff; width: 28px; height: 28px; }
+                next-touch := TouchArea { clicked => { root.viewer-moved(1); } }
             }
         }
 
@@ -2139,6 +2553,52 @@ export component AppWindow inherits Window {
             }
         }
 
+        if root.reminder-open: Dialog {
+            title: "Set a reminder";
+            card-width: 460px;
+            Text {
+                text: root.reminder-set ? "Choose a new time or remove this reminder." : "Choose when to be reminded. Times use your local time zone.";
+                font-size: 13px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                PillButton { text: "In 1 hour"; clicked => { root.reminder-preset(0); } }
+                PillButton { text: "Tomorrow 9:00"; clicked => { root.reminder-preset(1); } }
+                PillButton { text: "Next week"; clicked => { root.reminder-preset(2); } }
+            }
+            Field {
+                text <=> root.reminder-input;
+                placeholder: "YYYY-MM-DD HH:MM";
+                label: "Reminder date and time in local time";
+                accepted => { root.reminder-save(); }
+            }
+            Text {
+                text: root.reminder-error != "" ? root.reminder-error : "Enter a local date and time, for example 2026-11-23 09:00.";
+                font-size: 12px;
+                color: root.reminder-error != "" ? Theme.danger : Theme.muted;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                if root.reminder-set: PillButton {
+                    text: "Remove reminder";
+                    danger: true;
+                    clicked => { root.reminder-remove(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                PillButton { text: "Cancel"; clicked => { root.reminder-cancel(); } }
+                PillButton {
+                    text: "Set reminder";
+                    strong: true;
+                    enabled: root.reminder-input != "";
+                    clicked => { root.reminder-save(); }
+                }
+            }
+        }
+
         // Edit labels: create, rename (Enter) and delete, everywhere at once.
         if root.labels-open: Dialog {
             title: "Edit labels";
@@ -2216,6 +2676,7 @@ export component AppWindow inherits Window {
 
         if root.confirm-title != "": Dialog {
             title: root.confirm-title;
+            init => { confirm-cancel.focus-button(); }
             Text {
                 text: root.confirm-body;
                 font-size: 14px;
@@ -2225,7 +2686,7 @@ export component AppWindow inherits Window {
             HorizontalLayout {
                 alignment: end;
                 spacing: 8px;
-                PillButton {
+                confirm-cancel := PillButton {
                     text: "Cancel";
                     clicked => { root.confirm-cancelled(); }
                 }
@@ -2234,6 +2695,218 @@ export component AppWindow inherits Window {
                     strong: true;
                     danger: true;
                     clicked => { root.confirm-accepted(); }
+                }
+            }
+        }
+
+        if root.settings-open: Dialog {
+            title: "Settings";
+            card-width: 580px;
+            init => { theme-system.focus-option(); }
+            settings-scroll := Flickable {
+                height: min(520px, settings-content.preferred-height);
+                content-height: settings-content.preferred-height;
+                settings-content := VerticalLayout {
+                    width: settings-scroll.width;
+                    spacing: 14px;
+                    SectionLabel { text: "APPEARANCE"; }
+                    Text {
+                        text: "Theme";
+                        font-size: 14px;
+                        color: Theme.on-surface;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        accessible-role: radio-group;
+                        accessible-label: "Theme";
+                        theme-system := ThemeOption {
+                            text: "System"; option-index: 0; selected: root.theme-mode == 0;
+                            clicked => { root.theme-picked(0); }
+                            move-option(index) => {
+                                root.theme-picked(index);
+                                if (index == 0) { theme-system.focus-option(); }
+                                else if (index == 1) { theme-light.focus-option(); }
+                                else { theme-dark.focus-option(); }
+                            }
+                        }
+                        theme-light := ThemeOption {
+                            text: "Light"; option-index: 1; selected: root.theme-mode == 1;
+                            clicked => { root.theme-picked(1); }
+                            move-option(index) => {
+                                root.theme-picked(index);
+                                if (index == 0) { theme-system.focus-option(); }
+                                else if (index == 1) { theme-light.focus-option(); }
+                                else { theme-dark.focus-option(); }
+                            }
+                        }
+                        theme-dark := ThemeOption {
+                            text: "Dark"; option-index: 2; selected: root.theme-mode == 2;
+                            clicked => { root.theme-picked(2); }
+                            move-option(index) => {
+                                root.theme-picked(index);
+                                if (index == 0) { theme-system.focus-option(); }
+                                else if (index == 1) { theme-light.focus-option(); }
+                                else { theme-dark.focus-option(); }
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Theme.outline; }
+                    SectionLabel { text: "ACCOUNT"; }
+                    if root.account-mode == 0: Text {
+                        text: "Sync is not configured in this build. Notes stay on this device.";
+                        font-size: 13px;
+                        color: Theme.on-surface-secondary;
+                        wrap: word-wrap;
+                    }
+                    if root.account-mode == 1: VerticalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: "Guest mode. Notes stay on this device.";
+                            font-size: 13px;
+                            color: Theme.on-surface-secondary;
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            PillButton { text: "Sign in to sync"; strong: true; clicked => { root.signin-opened(); } }
+                        }
+                    }
+                    if root.account-mode == 2: VerticalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: root.account-email;
+                            font-size: 14px;
+                            font-weight: 600;
+                            color: Theme.on-surface;
+                        }
+                        Text {
+                            text: root.account-status;
+                            font-size: 13px;
+                            color: root.account-problem ? Theme.danger : Theme.on-surface-secondary;
+                            wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: 8px;
+                            PillButton { text: root.syncing ? "Syncing…" : "Sync now"; enabled: !root.syncing; clicked => { root.sync-requested(); } }
+                            PillButton { text: "Sign out"; clicked => { root.sign-out-requested(); } }
+                        }
+                    }
+                    Text {
+                        text: "Account deletion permanently removes the online account, its notes, and pictures.";
+                        font-size: 12px;
+                        color: Theme.muted;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        PillButton {
+                            text: "Delete account";
+                            danger: true;
+                            enabled: root.can-delete-account && root.account-mode == 2 && !root.deleting-account;
+                            clicked => { root.delete-account-opened(); }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Theme.outline; }
+                    SectionLabel { text: "SUPPORT"; }
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 8px;
+                        PillButton { text: "Diagnostics"; clicked => { root.diagnostics-requested(); } }
+                        PillButton { text: "About Notelikeus"; clicked => { root.about-open = true; } }
+                    }
+                }
+            }
+            HorizontalLayout {
+                alignment: end;
+                PillButton { text: "Done"; strong: true; clicked => { root.settings-open = false; } }
+            }
+        }
+
+        if root.diagnostics-open: Dialog {
+            title: "Diagnostics";
+            card-width: 600px;
+            init => { diagnostics-export.focus-button(); }
+            Text {
+                text: "This report contains app and sync counts only. It does not include note text, your email, or raw account identifiers.";
+                font-size: 13px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            diagnostics-scroll := Flickable {
+                height: min(360px, diagnostics-text.preferred-height);
+                content-height: diagnostics-text.preferred-height;
+                diagnostics-text := Text {
+                    width: diagnostics-scroll.width;
+                    text: root.diagnostics-report;
+                    font-size: 12px;
+                    color: Theme.on-surface;
+                    wrap: word-wrap;
+                }
+            }
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                diagnostics-export := PillButton { text: "Export report"; clicked => { root.diagnostics-export-requested(); } }
+                PillButton { text: "Done"; strong: true; clicked => { root.diagnostics-open = false; } }
+            }
+        }
+
+        if root.about-open: Dialog {
+            title: "About Notelikeus";
+            card-width: 460px;
+            init => { about-done.focus-button(); }
+            Text {
+                text: "Notelikeus Rust · " + root.app-version;
+                font-size: 14px;
+                color: Theme.on-surface;
+            }
+            AboutSlint { height: 90px; }
+            HorizontalLayout {
+                alignment: end;
+                about-done := PillButton { text: "Done"; strong: true; clicked => { root.about-open = false; } }
+            }
+        }
+
+        if root.delete-account-open: Dialog {
+            title: "Delete account?";
+            card-width: 480px;
+            Text {
+                text: "This permanently deletes your online account, synced notes, and pictures. It cannot be undone. Your separate guest notes stay on this device.";
+                font-size: 14px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            Text {
+                text: "Type DELETE to confirm. A recent sign-in is required.";
+                font-size: 13px;
+                font-weight: 600;
+                color: Theme.on-surface;
+            }
+            Field {
+                text <=> root.delete-account-confirmation;
+                placeholder: "DELETE";
+                label: "Type DELETE to confirm account deletion";
+            }
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                PillButton {
+                    text: "Cancel";
+                    enabled: !root.deleting-account;
+                    clicked => {
+                        root.delete-account-open = false;
+                        root.delete-account-confirmation = "";
+                    }
+                }
+                PillButton {
+                    text: root.deleting-account ? "Deleting…" : "Delete permanently";
+                    strong: true;
+                    danger: true;
+                    enabled: root.delete-account-confirmation == "DELETE" && !root.deleting-account;
+                    clicked => { root.delete-account-confirmed(); }
                 }
             }
         }
@@ -2278,6 +2951,34 @@ export component AppWindow inherits Window {
                     }
                 }
             }
+        }
+    }
+}
+
+export component TrayIcon inherits SystemTrayIcon {
+    icon: @image-url("images/icon.png");
+    title: "Notelikeus";
+    tooltip: "Notelikeus";
+    visible: true;
+
+    callback open-requested();
+    callback new-note-requested();
+    callback exit-requested();
+
+    clicked => { root.open-requested(); }
+
+    Menu {
+        MenuItem {
+            title: "Open Notelikeus";
+            activated => { root.open-requested(); }
+        }
+        MenuItem {
+            title: "New note";
+            activated => { root.new-note-requested(); }
+        }
+        MenuItem {
+            title: "Exit";
+            activated => { root.exit-requested(); }
         }
     }
 }

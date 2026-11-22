@@ -6,12 +6,20 @@
 //! Signing in switches to the account's store and signing out switches back: notes written as a guest
 //! are not merged into an account, and an account's notes stay sealed on disk after sign-out.
 
+mod backup;
+mod diagnostics;
+mod settings;
+
+pub use backup::{BackupAttachmentSource, BackupImportReport};
+pub use settings::DeleteAccountReport;
+
 use std::path::{Path, PathBuf};
 
+use notelikeus_core::attachments::{self, Attachment, Location, MAX_ATTACHMENT_BYTES};
 use notelikeus_core::auth::{AuthClient, AuthError};
 use notelikeus_core::conflict;
 use notelikeus_core::crypto::KeyProtector;
-use notelikeus_core::http::SupabaseTransport;
+use notelikeus_core::http::{AttachmentError, AttachmentsClient, SupabaseTransport};
 use notelikeus_core::model::{ChecklistItem, Note};
 use notelikeus_core::query::{self, Filters, NoteScope, SavedFilter};
 
@@ -33,6 +41,8 @@ pub struct SyncConfig {
     /// The web app's Turnstile challenge page (`NLK_CAPTCHA_PAGE_URL`), which the hosted project
     /// requires before it emails a code. None for a local stack, which has no captcha.
     pub captcha_page_url: Option<String>,
+    /// The attachments Worker (`NLK_ATTACHMENTS_URL`). None: images stay on this device.
+    pub attachments_url: Option<String>,
 }
 
 impl SyncConfig {
@@ -47,10 +57,15 @@ impl SyncConfig {
             .ok()
             .or(option_env!("NLK_CAPTCHA_PAGE_URL").map(str::to_string))
             .filter(|page| !page.trim().is_empty());
+        let attachments_url = std::env::var("NLK_ATTACHMENTS_URL")
+            .ok()
+            .or(option_env!("NLK_ATTACHMENTS_URL").map(str::to_string))
+            .filter(|url| !url.trim().is_empty());
         (!url.trim().is_empty() && !publishable_key.trim().is_empty()).then_some(SyncConfig {
             url,
             publishable_key,
             captcha_page_url,
+            attachments_url,
         })
     }
 }
@@ -64,6 +79,8 @@ pub struct NoteView {
     pub title: String,
     pub content: String,
     pub timestamp: i64,
+    /// When this note should remind the user, in epoch milliseconds.
+    pub reminder_timestamp: Option<i64>,
     pub is_pinned: bool,
     /// Saved here but not confirmed by the cloud. Always true in guest mode, which never syncs.
     pub unsynced: bool,
@@ -74,6 +91,45 @@ pub struct NoteView {
     pub labels: Vec<String>,
     /// A note is text or a checklist: when this is non-empty, `content` is empty.
     pub checklist: Vec<ChecklistItem>,
+    /// The note's images, in the order they were added.
+    pub images: Vec<ImageView>,
+}
+
+/// One image on a note.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageView {
+    pub id: String,
+    pub mime_type: String,
+    pub size_bytes: u64,
+    /// Only on this device so far (a guest's images always are).
+    pub pending: bool,
+}
+
+/// What a background thread needs to show an image without holding the notes: this account's sealed
+/// files, and the Worker to fetch an uploaded image this device has not got yet.
+#[derive(Clone, Debug)]
+pub struct ImageSource {
+    blobs: notelikeus_core::attachments::Blobs,
+    worker: Option<(String, String)>,
+}
+
+impl ImageSource {
+    /// The image's bytes: from this device, or fetched from the Worker and kept (sealed) for next time.
+    pub fn bytes(&self, note_id: &str, image_id: &str) -> Result<Vec<u8>, String> {
+        if let Some(bytes) = self.blobs.get(image_id).map_err(|e| e.to_string())? {
+            return Ok(bytes);
+        }
+        let (url, token) = self.worker.as_ref().ok_or("This image is on another device and sync isn't on.")?;
+        let client = AttachmentsClient::new(url, token).map_err(|e| e.to_string())?;
+        let bytes = client.download(note_id, image_id).map_err(|e| match e {
+            AttachmentError::Network(_) => "Offline: this image will show once you're back online.".to_string(),
+            other => other.to_string(),
+        })?;
+        // A copy that cannot be kept still shows.
+        let _ = self.blobs.put_cached(image_id, &bytes);
+        Ok(bytes)
+    }
 }
 
 /// What a search shows: the notes, whether they are near misses, and what the box could not use.
@@ -161,6 +217,8 @@ pub struct SyncSummary {
     pub conflicted_copies: usize,
     pub deleted_elsewhere: usize,
     pub restored_by_cloud: usize,
+    /// Images still only on this device: not uploaded yet, or no image service in this build.
+    pub images_waiting: usize,
 }
 
 pub struct SystemIds;
@@ -265,6 +323,7 @@ impl NotesService {
             title: note.title.clone(),
             content: note.content.clone(),
             timestamp: note.timestamp,
+            reminder_timestamp: note.reminder_timestamp,
             is_pinned: note.is_pinned,
             unsynced: self.state.pending.contains_key(&note.id),
             color: note.color,
@@ -272,7 +331,182 @@ impl NotesService {
             is_trashed: note.is_trashed,
             labels: note.labels.clone(),
             checklist: note.checklist.clone(),
+            images: self
+                .state
+                .attachments
+                .get(&note.id)
+                .map(|images| {
+                    images
+                        .iter()
+                        .map(|a| ImageView {
+                            id: a.id.clone(),
+                            mime_type: a.mime_type.clone(),
+                            size_bytes: a.size_bytes,
+                            pending: a.is_pending(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
         }
+    }
+
+    // --- Images -------------------------------------------------------------------------------------------
+
+    /// Adds an image to a note: its type is read from the bytes, at most 10 MB, sealed on this device
+    /// until a sync uploads it. Adding an image is an edit, so the note syncs too.
+    pub fn add_image(&mut self, id: &str, bytes: &[u8]) -> Result<NoteView, String> {
+        if !self.state.notes.contains_key(id) {
+            return Err("That note no longer exists.".into());
+        }
+        if bytes.len() > MAX_ATTACHMENT_BYTES {
+            return Err("That image is larger than 10 MB.".into());
+        }
+        let mime_type = attachments::sniff_mime(bytes)
+            .filter(|m| attachments::can_preview(m))
+            .ok_or("That file isn't a picture Notelikeus can attach. Use PNG, JPEG, GIF or WebP.")?;
+        let image_id = attachments::new_attachment_id().map_err(|e| e.to_string())?;
+        let blobs = self.store.blobs();
+        blobs.put_pending(&image_id, bytes).map_err(|e| format!("Could not keep the image: {e}"))?;
+        let before = self.state.clone();
+        self.state.attachments.entry(id.to_string()).or_default().push(Attachment {
+            id: image_id.clone(),
+            mime_type: mime_type.to_string(),
+            size_bytes: bytes.len() as u64,
+            location: Location::Pending,
+        });
+        let now = self.ids.now_millis();
+        let result = sync::edit_note(&mut self.state, id, now, |_| {})
+            .map_err(|e| e.to_string())
+            .and_then(|()| self.commit(before));
+        if let Err(message) = result {
+            let _ = blobs.remove(&image_id);
+            return Err(message);
+        }
+        Ok(self.view(&self.state.notes[id]))
+    }
+
+    /// Takes an image off a note. An uploaded one is deleted from the cloud at the next sync, and kept
+    /// out of the note until then.
+    pub fn remove_image(&mut self, id: &str, image_id: &str) -> Result<NoteView, String> {
+        let position = self
+            .state
+            .attachments
+            .get(id)
+            .and_then(|images| images.iter().position(|a| a.id == image_id))
+            .ok_or("That image is no longer on the note.")?;
+        let before = self.state.clone();
+        let removed = self.state.attachments.get_mut(id).map(|images| images.remove(position));
+        if self.state.attachments.get(id).is_some_and(Vec::is_empty) {
+            self.state.attachments.remove(id);
+        }
+        if let Some(removed) = &removed
+            && !removed.is_pending()
+        {
+            self.state.attachment_removals.entry(id.to_string()).or_default().push(removed.id.clone());
+        }
+        let now = self.ids.now_millis();
+        sync::edit_note(&mut self.state, id, now, |_| {}).map_err(|e| e.to_string())?;
+        self.commit(before)?;
+        let _ = self.store.blobs().remove(image_id);
+        Ok(self.view(&self.state.notes[id]))
+    }
+
+    /// For showing images off the window's thread.
+    pub fn image_source(&self) -> ImageSource {
+        let worker = match (&self.config, &self.session) {
+            (Some(config), Some(session)) => {
+                config.attachments_url.clone().map(|url| (url, session.access_token.clone()))
+            }
+            _ => None,
+        };
+        ImageSource { blobs: self.store.blobs(), worker }
+    }
+
+    /// A note's images go when the note is deleted for good: this device's copies now, the cloud's at
+    /// the next sync.
+    fn forget_images_of(&mut self, id: &str) -> Vec<String> {
+        let images = self.state.attachments.remove(id).unwrap_or_default();
+        let uploaded: Vec<String> = images.iter().filter(|a| !a.is_pending()).map(|a| a.id.clone()).collect();
+        if !uploaded.is_empty() {
+            self.state.attachment_removals.entry(id.to_string()).or_default().extend(uploaded);
+        }
+        images.into_iter().map(|a| a.id).collect()
+    }
+
+    /// Uploads this account's pending images, then deletes the ones removed here, before a sync pushes
+    /// the notes that name them. A failure leaves that image as it was, to retry next time. Returns how
+    /// many images could not be uploaded.
+    fn sync_images(&mut self, client: &AttachmentsClient) -> Result<usize, AttachmentError> {
+        let blobs = self.store.blobs();
+        let mut uploaded_ids = Vec::new();
+        let mut failed = 0;
+        let pending: Vec<(String, Attachment)> = self
+            .state
+            .attachments
+            .iter()
+            .flat_map(|(note, images)| images.iter().filter(|a| a.is_pending()).map(move |a| (note.clone(), a.clone())))
+            .collect();
+        for (note_id, image) in pending {
+            let Ok(Some(bytes)) = blobs.get_pending(&image.id) else {
+                failed += 1;
+                continue;
+            };
+            match client.upload(&note_id, &image.id, &image.mime_type, &bytes) {
+                Ok(reply) => {
+                    let object_key = reply
+                        .object_key
+                        .unwrap_or_else(|| format!("owners/{}/notes/{note_id}/{}", self.state.owner_id, image.id));
+                    if let Some(entry) = self
+                        .state
+                        .attachments
+                        .get_mut(&note_id)
+                        .and_then(|images| images.iter_mut().find(|a| a.id == image.id))
+                    {
+                        entry.location = Location::Uploaded { object_key };
+                        entry.size_bytes = reply.size_bytes.unwrap_or(entry.size_bytes);
+                    }
+                    // The note's next push names the upload, which is what makes it permanent.
+                    if self.state.notes.contains_key(&note_id) && !self.state.pending.contains_key(&note_id) {
+                        let now = self.ids.now_millis();
+                        let _ = sync::edit_note(&mut self.state, &note_id, now, |_| {});
+                    }
+                    uploaded_ids.push(image.id.clone());
+                }
+                Err(AttachmentError::Unauthorized) => return Err(AttachmentError::Unauthorized),
+                Err(_) => failed += 1,
+            }
+        }
+        // The pending copies go only once the state that points at the uploads is on disk (AUD-011).
+        if self.store.save(&self.state).is_ok() {
+            for id in &uploaded_ids {
+                let _ = blobs.release_pending(id);
+            }
+        }
+        let removals = std::mem::take(&mut self.state.attachment_removals);
+        for (note_id, ids) in removals {
+            for id in ids {
+                // Kept for the next sync when the delete did not go through.
+                if client.delete(&note_id, &id).is_err() {
+                    self.state.attachment_removals.entry(note_id.clone()).or_default().push(id);
+                }
+            }
+        }
+        Ok(failed)
+    }
+
+    /// Rebuilds each note's images from the account's committed uploads, keeping what only this device has.
+    fn hydrate_images(&mut self, transport: &SupabaseTransport) -> Result<(), String> {
+        let remote = transport.list_user_attachments().map_err(|e| e.to_string())?;
+        let awaiting: std::collections::BTreeSet<String> = self.state.pending.keys().cloned().collect();
+        let live: std::collections::BTreeSet<String> = self.state.notes.keys().cloned().collect();
+        self.state.attachments = attachments::merge_listing(
+            &self.state.attachments,
+            &remote,
+            &self.state.attachment_removals,
+            &awaiting,
+            &live,
+        );
+        Ok(())
     }
 
     fn in_scope(note: &Note, scope: Scope) -> bool {
@@ -438,6 +672,27 @@ impl NotesService {
         }
     }
 
+    /// Schedules a reminder for an active note. Delivery is handled by the running desktop app.
+    pub fn set_reminder_timestamp(&mut self, id: &str, timestamp: i64) -> Result<NoteView, String> {
+        if timestamp <= self.ids.now_millis() {
+            return Err("Choose a time in the future.".into());
+        }
+        match self.state.notes.get(id) {
+            Some(note) if note.is_archived || note.is_trashed => Err("Only notes in Notes can have reminders.".into()),
+            Some(note) if note.reminder_timestamp == Some(timestamp) => Ok(self.view(note)),
+            Some(_) => self.modify(id, |n| n.reminder_timestamp = Some(timestamp)),
+            None => Err("That note no longer exists.".into()),
+        }
+    }
+
+    pub fn clear_reminder(&mut self, id: &str) -> Result<NoteView, String> {
+        match self.state.notes.get(id) {
+            Some(note) if note.reminder_timestamp.is_none() => Ok(self.view(note)),
+            Some(_) => self.modify(id, |n| n.reminder_timestamp = None),
+            None => Err("That note no longer exists.".into()),
+        }
+    }
+
     pub fn set_archived(&mut self, id: &str, archived: bool) -> Result<NoteView, String> {
         self.modify(id, |n| n.is_archived = archived)
     }
@@ -459,10 +714,16 @@ impl NotesService {
         }
         let before = self.state.clone();
         let now = self.ids.now_millis();
+        let mut images = Vec::new();
         for id in &trashed {
             sync::delete_note(&mut self.state, id, now).map_err(|e| e.to_string())?;
+            images.extend(self.forget_images_of(id));
         }
         self.commit(before)?;
+        let blobs = self.store.blobs();
+        for image in images {
+            let _ = blobs.remove(&image);
+        }
         Ok(trashed.len())
     }
 
@@ -693,7 +954,12 @@ impl NotesService {
         let before = self.state.clone();
         let now = self.ids.now_millis();
         sync::delete_note(&mut self.state, id, now).map_err(|e| e.to_string())?;
+        let images = self.forget_images_of(id);
         self.commit(before)?;
+        let blobs = self.store.blobs();
+        for image in images {
+            let _ = blobs.remove(&image);
+        }
         Ok(removed)
     }
 
@@ -798,11 +1064,30 @@ impl NotesService {
         }
         let mut transport = SupabaseTransport::new(&config.url, &config.publishable_key, &session.access_token)
             .map_err(|e| e.to_string())?;
+        // Images first, so the note pushes that follow can name the uploads.
+        let images_waiting = if let Some(url) = &config.attachments_url {
+            let mut client = AttachmentsClient::new(url, &session.access_token).map_err(|e| e.to_string())?;
+            match self.sync_images(&client) {
+                Err(AttachmentError::Unauthorized) => {
+                    session = self.refreshed(&auth)?;
+                    transport.set_access_token(&session.access_token);
+                    client.set_access_token(&session.access_token);
+                    self.sync_images(&client).unwrap_or(0)
+                }
+                other => other.unwrap_or(0),
+            }
+        } else {
+            self.state.attachments.values().flatten().filter(|a| a.is_pending()).count()
+        };
         let mut result = sync::sync(&mut self.state, &mut transport, self.ids.as_mut());
         if matches!(result, Err(SyncError::Transport(TransportError::Unauthorized))) {
             session = self.refreshed(&auth)?;
             transport.set_access_token(&session.access_token);
             result = sync::sync(&mut self.state, &mut transport, self.ids.as_mut());
+        }
+        // Images added on other devices, and uploads now committed. A listing that fails changes nothing.
+        if result.is_ok() {
+            let _ = self.hydrate_images(&transport);
         }
         // Saved whatever happened: a half-finished run's confirmed pushes must not be forgotten.
         let saved = self.store.save(&self.state).map_err(|e| format!("Could not save: {e}"));
@@ -817,6 +1102,7 @@ impl NotesService {
                     conflicted_copies: report.conflicted_copies.len(),
                     deleted_elsewhere: report.deleted_remotely.len(),
                     restored_by_cloud: report.restored_by_cloud.len(),
+                    images_waiting,
                 })
             }
             Err(error) => {
@@ -871,6 +1157,49 @@ mod tests {
     fn the_service_can_move_to_a_worker_thread() {
         fn is_send<T: Send>() {}
         is_send::<NotesService>();
+    }
+
+    /// A real 1x1 PNG.
+    pub(crate) const TINY_PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00,
+        0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+        0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0xF8, 0xCF, 0xC0, 0xF0, 0x1F, 0x00, 0x05, 0x00, 0x01, 0xFF,
+        0x89, 0x99, 0x3D, 0x1D, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+
+    #[test]
+    fn images_are_kept_sealed_on_the_note_and_go_with_it() {
+        let dir = root("images");
+        let mut service = open(&dir);
+        let note = service.create("Garden", "beds").unwrap();
+        assert!(service.add_image(&note.id, b"%PDF-1.7 not a picture").unwrap_err().contains("PNG, JPEG, GIF or WebP"));
+        assert!(service.add_image(&note.id, &vec![0u8; MAX_ATTACHMENT_BYTES + 1]).unwrap_err().contains("10 MB"));
+        let with = service.add_image(&note.id, TINY_PNG).unwrap();
+        assert_eq!(with.images.len(), 1);
+        assert_eq!((with.images[0].mime_type.as_str(), with.images[0].pending), ("image/png", true));
+        let image = with.images[0].id.clone();
+        assert_eq!(service.image_source().bytes(&note.id, &image).unwrap(), TINY_PNG, "readable here, offline");
+
+        // After a restart it is still there; removing it forgets the bytes too.
+        drop(service);
+        let mut service = open(&dir);
+        assert_eq!(service.note(&note.id).unwrap().images.len(), 1);
+        let without = service.remove_image(&note.id, &image).unwrap();
+        assert!(without.images.is_empty());
+        assert!(service.image_source().bytes(&note.id, &image).is_err());
+        assert!(service.state.attachment_removals.is_empty(), "a pending image has nothing in the cloud to delete");
+
+        // Deleting a note for good takes its images; an uploaded one is queued for the cloud's delete.
+        let second = service.add_image(&note.id, TINY_PNG).unwrap().images[0].id.clone();
+        if let Some(images) = service.state.attachments.get_mut(&note.id) {
+            images[0].location = Location::Uploaded { object_key: "owners/x/notes/n/i".into() };
+        }
+        service.move_to_trash(&note.id).unwrap();
+        service.empty_trash().unwrap();
+        assert!(service.state.attachments.is_empty());
+        assert_eq!(service.state.attachment_removals.get(&note.id), Some(&vec![second.clone()]));
+        assert!(service.image_source().bytes(&note.id, &second).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -1030,6 +1359,7 @@ mod tests {
             url: "http://127.0.0.1:9".into(),
             publishable_key: "k".into(),
             captcha_page_url: Some("https://notelikeus.pages.dev/captcha".into()),
+            attachments_url: None,
         };
         let service = open_with(&dir, Some(config), Box::new(TestIds(1)));
         assert_eq!(service.captcha_page_url().as_deref(), Some("https://notelikeus.pages.dev/captcha"));
@@ -1057,7 +1387,12 @@ mod tests {
     fn live_config() -> Option<SyncConfig> {
         let url = std::env::var("NLK_TEST_SUPABASE_URL").ok()?;
         assert!(url.starts_with("http://127.0.0.1:") || url.starts_with("http://localhost:"));
-        Some(SyncConfig { url, publishable_key: std::env::var("NLK_TEST_SUPABASE_KEY").ok()?, captcha_page_url: None })
+        Some(SyncConfig {
+            url,
+            publishable_key: std::env::var("NLK_TEST_SUPABASE_KEY").ok()?,
+            captcha_page_url: None,
+            attachments_url: std::env::var("NLK_TEST_ATTACHMENTS_URL").ok(),
+        })
     }
 
     #[test]
@@ -1098,6 +1433,63 @@ mod tests {
         laptop.sign_out().unwrap();
         assert_eq!(laptop.list().iter().map(|n| n.title.as_str()).collect::<Vec<_>>(), ["written as a guest"]);
 
+        std::fs::remove_dir_all(dir_a).unwrap();
+        std::fs::remove_dir_all(dir_b).unwrap();
+    }
+
+    #[test]
+    fn signed_in_images_upload_between_installs_and_delete_through_local_worker() {
+        let Some(config) = live_config() else {
+            eprintln!("skipped: set NLK_TEST_SUPABASE_URL and NLK_TEST_SUPABASE_KEY");
+            return;
+        };
+        let Some(worker) = config.attachments_url.as_deref() else {
+            eprintln!("skipped: set NLK_TEST_ATTACHMENTS_URL to a local attachments Worker");
+            return;
+        };
+        assert!(
+            worker.starts_with("http://127.0.0.1:") || worker.starts_with("http://localhost:"),
+            "this test uploads and deletes data, so it only runs against a local Worker, not {worker}"
+        );
+
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let email = format!("nlk-native-images-{nanos}@example.test");
+        let auth = AuthClient::new(&config.url, &config.publishable_key).unwrap();
+        auth.sign_up(&email, "a-long-test-password-1").unwrap();
+
+        let (dir_a, dir_b) = (root("images-live-a"), root("images-live-b"));
+        let mut laptop = open_with(&dir_a, Some(config.clone()), Box::new(TestIds(1_000_000)));
+        laptop.sign_in_with_password(&email, "a-long-test-password-1").unwrap();
+        let note = laptop.create("A picture", "kept sealed on each device").unwrap();
+        laptop.sync_now().unwrap(); // The Worker only accepts uploads for a note that already exists.
+        let with_image = laptop.add_image(&note.id, TINY_PNG).unwrap();
+        let image_id = with_image.images[0].id.clone();
+        assert!(with_image.images[0].pending);
+
+        let uploaded = laptop.sync_now().unwrap();
+        assert_eq!(uploaded.images_waiting, 0, "the Worker accepted the image");
+        assert!(!laptop.note(&note.id).unwrap().images[0].pending, "the upload is sealed in the local cache");
+
+        let mut desktop = open_with(&dir_b, Some(config.clone()), Box::new(TestIds(9_000_000)));
+        desktop.sign_in_with_password(&email, "a-long-test-password-1").unwrap();
+        desktop.sync_now().unwrap();
+        let remote_image = desktop.note(&note.id).unwrap().images[0].clone();
+        assert_eq!(remote_image.id, image_id);
+        assert!(!remote_image.pending, "the other install got the committed image listing");
+        assert_eq!(desktop.image_source().bytes(&note.id, &image_id).unwrap(), TINY_PNG);
+
+        // Check the Worker itself after the app cached a copy, then remove through the other install.
+        let access_token = desktop.session.as_ref().unwrap().access_token.clone();
+        let client = AttachmentsClient::new(worker, &access_token).unwrap();
+        assert_eq!(client.download(&note.id, &image_id).unwrap(), TINY_PNG);
+        desktop.remove_image(&note.id, &image_id).unwrap();
+        desktop.sync_now().unwrap();
+        assert_eq!(client.download(&note.id, &image_id).unwrap_err(), AttachmentError::NotFound);
+        assert!(desktop.note(&note.id).unwrap().images.is_empty());
+
+        laptop.delete(&note.id).unwrap();
+        laptop.sync_now().unwrap();
+        drop((laptop, desktop));
         std::fs::remove_dir_all(dir_a).unwrap();
         std::fs::remove_dir_all(dir_b).unwrap();
     }

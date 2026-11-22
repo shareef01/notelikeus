@@ -32,14 +32,15 @@ logic (`crates/notelikeus-app`). The Tauri app stays as an earlier experiment.
 
 - **Look:** laid out like the web app: a sidebar, a search bar with a `Ctrl K` hint and a round + button, a masonry
   grid of rounded cards, and the editor as a floating sheet. It uses the web app's icons and the design tokens in
-  `docs/design/tokens.json`, follows the Windows light or dark setting, and is set in Inter (OFL, `licenses/`).
+  `docs/design/tokens.json`, follows the Windows theme by default, and is set in Inter (OFL, `licenses/`).
 - **Data:** `%APPDATA%\NotelikeusRust` (override: `NLK_RUST_DATA_DIR`), sealed with the DPAPI-wrapped key like the
   rest of the Rust client. It never opens the Kotlin app's `~/.notelikeus` or the Tauri app's folder.
-- **Licence:** Slint is used under its Royalty-free licence 2.0. A distributed build must show the "Made with
-  Slint" attribution (planned for the About screen in step 8).
+- **Licence:** Slint is used under its Royalty-free licence 2.0. The About screen displays the required "Made with
+  Slint" attribution widget.
 - **Tests:** `view.rs` unit tests (previews, card times, search, masonry), and `tests/ui.rs`, which drives the real
   window headlessly through its accessible labels (create, edit, reopen after a restart, empty drafts, pin, search,
-  delete and Undo). Debug builds embed element debug info for that.
+  delete and Undo, add and view pictures, remove a picture, and read pictures from Trash). Debug builds embed
+  element debug info for that.
 
 **Roadmap.** One step at a time, each reviewed before the next:
 
@@ -49,11 +50,11 @@ logic (`crates/notelikeus-app`). The Tauri app stays as an earlier experiment.
 | 2 | Note features: colours (the shared palette, `contracts/design/note-colors.json`), archive, trash with Restore / Delete forever / Empty trash, labels (note options and Edit labels), checklists | **Done** |
 | 3 | Search operators (`contracts/query/parser-vectors.json`), word-prefix matching with relevance and near matches, the Filters sheet, saved filters, smart views | **Done** |
 | 4 | Sign-in with an emailed code (the security check opens in the browser and returns over 127.0.0.1, as the Kotlin desktop app does), sync on a worker thread (after a change, every 2 minutes, on request), sign-out, conflict review | **Done** |
-| 5 | Images: staging, upload through the attachments Worker, thumbnails | Next |
-| 6 | Reminders: Windows notifications, tray | |
-| 7 | Backups: v3 JSON and v4 `.nlkbak` against `contracts/backup` | |
-| 8 | Settings: themes, account, diagnostics, delete account, About (Slint attribution) | |
-| 9 | Packaging and polish: installer, accessibility review, performance | |
+| 5 | Images: staging, upload through the attachments Worker, thumbnails | **Done** |
+| 6 | Reminders: Windows notifications, tray | **Done** |
+| 7 | Backups: v3 JSON and v4 `.nlkbak` against `contracts/backup` | **Done** |
+| 8 | Settings: themes, account, diagnostics, delete account, About (Slint attribution) | **Done** |
+| 9 | Packaging and polish: installer, accessibility review, performance | **In progress** (per-user package and accessibility semantics added; runtime screen-reader review and startup/memory comparison remain) |
 
 ```
 cargo run -p nlk-native                      # the app
@@ -96,6 +97,27 @@ desktop-rust/
     - **Containment:** the window gets no app permissions, may only navigate within the page's own site, cancels
       when closed and gives up after five minutes.
     - **Without the setting** nothing changes, which is what a local stack (no captcha) expects.
+
+- **Native settings:** theme choice (system, light, or dark) is saved per app install. Settings includes the
+  existing sign-in, sync, and sign-out actions, plus an exportable diagnostics report with counts and error
+  categories rather than note text, email, or raw account identifiers. Account deletion requires typing `DELETE`
+  and a recent sign-in; after the server accepts deletion, the app clears the account's local sealed data and
+  returns to the separate guest notes. About displays the Slint attribution widget required by its licence.
+- **Native Windows package:** from `desktop-rust`, run
+  `powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/native/package.ps1`. It builds the MSVC release
+  executable and writes `target/native-packages/NotelikeusRust-<version>-<target>.zip`. The archive has a per-user
+  installer, Start menu shortcut, Installed apps entry, dependency notices, and an uninstaller that preserves the
+  separate `%APPDATA%\NotelikeusRust` notes and settings folder. The archive is unsigned and remains for local
+  evaluation until a trusted release signing identity is available.
+
+- **Native runtime review (2026-11-22, one run per app):** the Rust release opened its first window in 181 ms and
+  used 78.5 MiB working set / 114.8 MiB private memory after 30 seconds idle. The installed Kotlin desktop app took
+  4,190 ms to its first window and used 311.7 MiB / 438.6 MiB at the same idle point (main process plus launcher).
+  Both ran with isolated empty data. These are single-run measurements with uncontrolled OS file caches.
+- **Keyboard and accessibility review:** Settings, Diagnostics and About expose labeled groups and controls in the
+  Windows accessibility tree. Tab, arrow keys, Space and Enter worked in the theme selector, and the dialogs showed
+  focus on their first action. The accessibility snapshot continued to report Search notes as focused while the
+  screenshot showed focus on the dialog control; spoken screen-reader announcements were not independently checked.
 
 - **Tauri 2 app** (guest mode): a notes list with search, an editor that autosaves, pin, delete with Undo,
   keyboard shortcuts (Ctrl+N new, Ctrl+F search, Ctrl+S save now), light and dark themes from
@@ -162,21 +184,26 @@ measurement; the Kotlin app was not measured alongside it).
   always-pass **test** site key (`1x00000000000000000000AA`). That covers the real Turnstile widget and the whole
   hand-back. The local stack does not verify the token, and the production page and project were not used.
 
-Without the stack's variables these tests skip themselves, so CI runs 53 Rust tests either way.
+**Native image attachments (2026-11-22):**
+- `service::tests::signed_in_images_upload_between_installs_and_delete_through_local_worker` passes against an
+  isolated local Supabase stack and Wrangler Worker: upload, commit, list and download on a second install, then
+  remove the remote object.
+- The headless window test covers adding pictures to a draft, thumbnail display on the card, opening and navigating
+  the viewer, removal, persistence across a restart, and read-only viewing from Trash.
+
+Without local-stack variables, the live integration tests return early; CI runs the remaining Rust tests.
 
 ## Not done: parity gates before replacing Kotlin
 
-1. **UI parity.** No labels, colours, checklists, images, reminders, archive or trash, or settings. The interface
-   is new and small. It does not yet reuse the web app's React components; that's the next step if the experiment
-   continues.
+1. **UI parity.** The interface is new and small. It does not yet reuse the web app's React components. Settings
+   remain to be built.
 2. **Hosted sign-in, untried:** the security check is implemented and tested end to end with a test key, but it has
    never run against `https://notelikeus.pages.dev/captcha` and the hosted project together. Try that with a
    throwaway address, by a person, before relying on it.
 3. **First download**: `fetch_snapshot_page` with the unexplained-missing-ids guard. The engine only pulls with
    `pull_changes`, which is safe for an empty device but has no snapshot consistency check.
-4. **Attachments** (R2 Worker), **realtime** wake-ups, **reminders and the tray**, **backups** (v3 JSON, v4
-   `.nlkbak`), **restore and undo** (`restore_note`), **digest-verified deletes** of notes whose revision was never
-   known, the **re-upload after a wipe** flow, **account deletion**, **search operators**.
+4. **Realtime** wake-ups, **restore and undo** (`restore_note`), **digest-verified deletes** of notes whose revision was never known, the **re-upload after a wipe**
+   flow, and **account deletion**.
 5. **A hosted project has never been used.** The transport and sign-in are verified against the local stack only.
    Never point the tests at production; they create accounts, and refuse any URL that is not this machine.
 6. **Sync runs under the store's lock.** Edits made during a slow sync wait for it to finish. That's fine locally;
@@ -184,7 +211,34 @@ Without the stack's variables these tests skip themselves, so CI runs 53 Rust te
 7. **Migration path**: importing a Kotlin backup (`.nlkbak`) is the only supported way to bring data across. Direct
    reading of the Room/SQLCipher database is deliberately not planned.
 
+## Native reminders (2026-11-22)
+
+- Active notes can be scheduled with the one-hour, tomorrow-at-9, and next-week presets, or a local date and time.
+  Reminder timestamps use the same synced note field as the other clients.
+- Closing the main window hides it in the system tray, so reminders keep running. Choose **Exit** from the tray menu
+  to stop the process; reminders are delivered only while the app is running.
+- Windows reminder balloons use a generic title and message, so note text is not shown in system notifications.
+
+## Native backups (2026-11-22)
+
+- **Export JSON backup** writes all local notes, including archived and trashed notes, in the v3 format. **Export backup with pictures** writes a v4 `.nlkbak` ZIP bundle whose manifest embeds the exact v3 JSON bytes.
+- Bundle export includes only picture bytes already on this device. Cloud-only, unreadable, invalid-id, or oversized images are skipped and counted; it never downloads from the Worker.
+- **Import backup** accepts v3 JSON and v4 `.nlkbak`. It asks before importing because every import adds copies. Note and attachment IDs are re-minted, positions are assigned after active notes, labels match case-insensitively, and reminders that have passed are cleared.
+- Bundle imports reject duplicate ZIP entry names, derive media paths from validated attachment IDs, and verify each image's declared size and SHA-256. A missing or invalid picture is skipped while its note is kept.
+- The shared limits are in `contracts/backup/import-limits.json`; JSON exports are capped at 25 MB, bundle files at 256 MB, and each picture at 10 MB.
+
 ## Build
+
+### Efficient local workflow
+
+Run Cargo commands from this `desktop-rust` workspace root so `.cargo/config.toml` applies its three-job limit.
+
+- For routine edits, run `cargo fmt --check` and `cargo check -p <affected-crate>`. `cargo check` catches compile errors without linking the app or running tests.
+- For changed behavior, run the narrowest relevant test, such as `cargo test -p notelikeus-core --lib <filter>`. For Slint/native UI changes, use a targeted native test or launch the app once after the related edits.
+- Run `cargo test --workspace --all-features` for release gates or changes that cross crates/features; it is not the default edit loop. Build release artifacts when packaging or checking release-only behavior.
+- Before a full compile, check C: free space with `Get-Volume -DriveLetter C`. Reuse `target` between sessions; routine cleanup forces dependency recompilation.
+- Use the active stable MSVC toolchain for Windows work. GNU and MSVC builds share this workspace target; if you intentionally use GNU, set `CARGO_TARGET_DIR` in your user environment to a separate location rather than versioning a machine-specific path.
+- Do not delete release binaries, dependency caches, or development artifacts without explicit authorization.
 
 With the MSVC Build Tools and Windows SDK installed (the Tauri app needs them; WebView2 ships with Windows 11):
 
@@ -198,11 +252,18 @@ Against a local Supabase stack (`npx supabase start` from the repository root; D
 
 ```
 # from `npx supabase status -o env`: API_URL, and ANON_KEY or PUBLISHABLE_KEY
-NLK_SUPABASE_URL=http://127.0.0.1:54321 NLK_SUPABASE_KEY=<key> cargo run -p nlk-tauri
-NLK_TEST_SUPABASE_URL=http://127.0.0.1:54321 NLK_TEST_SUPABASE_KEY=<key> NLK_TEST_MAILPIT_URL=http://127.0.0.1:54324 \
+NLK_SUPABASE_URL=http://127.0.0.1:54326 NLK_SUPABASE_KEY=<key> cargo run -p nlk-tauri
+NLK_TEST_SUPABASE_URL=http://127.0.0.1:54326 NLK_TEST_SUPABASE_KEY=<key> NLK_TEST_MAILPIT_URL=http://127.0.0.1:54324 \
   cargo test --workspace --all-features -- --test-threads=1
 NLK_TEST_SUPABASE_URL=... NLK_TEST_SUPABASE_KEY=... NLK_TEST_MAILPIT_URL=... node crates/nlk-tauri/e2e/drive-account.mjs
 ```
+
+For the native image round trip, run the attachments Worker locally with `SUPABASE_URL` and `SUPABASE_ANON_KEY`
+from the local stack in `workers/attachments/.dev.vars`. Set `NLK_TEST_SUPABASE_URL` and
+`NLK_TEST_SUPABASE_KEY` from `npx supabase status -o env`, plus
+`NLK_TEST_ATTACHMENTS_URL=http://127.0.0.1:8787`, when running
+`cargo test -p notelikeus-app --lib signed_in_images_upload_between_installs_and_delete_through_local_worker`.
+This live test refuses non-local Supabase and Worker URLs.
 
 To include the security check, serve the web app's challenge page with Turnstile's test key and point the driver at
 it:

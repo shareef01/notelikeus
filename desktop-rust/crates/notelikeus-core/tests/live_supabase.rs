@@ -4,7 +4,7 @@
 //! Only for a LOCAL stack (`npx supabase start`). It creates throwaway accounts, so it refuses any URL
 //! that is not this machine. Without the variables below every test returns early and says so.
 //!
-//!   NLK_TEST_SUPABASE_URL=http://127.0.0.1:54321
+//!   NLK_TEST_SUPABASE_URL=http://127.0.0.1:54326
 //!   NLK_TEST_SUPABASE_KEY=<local anon or publishable key>
 //!   NLK_TEST_MAILPIT_URL=http://127.0.0.1:54324      (for the emailed-code test)
 //!

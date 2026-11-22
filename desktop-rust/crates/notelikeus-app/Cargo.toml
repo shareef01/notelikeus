@@ -9,4 +9,5 @@ publish.workspace = true
 [dependencies]
 notelikeus-core = { path = "../notelikeus-core", features = ["http"] }
 serde.workspace = true
+serde_json.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

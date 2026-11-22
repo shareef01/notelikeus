@@ -212,7 +212,14 @@ fn push_one(
         None => {}
     }
 
-    let args = ApplyNoteChangeArgs::new(&local, pending.base_revision, Vec::new(), state.wipe_generation);
+    // R19.2: exactly the uploaded images this note version references, so the commit promotes those
+    // provisional uploads and no others. A pending image has no server row to name.
+    let attachment_ids: Vec<String> = state
+        .attachments
+        .get(&local.id)
+        .map(|images| images.iter().filter(|a| !a.is_pending()).map(|a| a.id.clone()).collect())
+        .unwrap_or_default();
+    let args = ApplyNoteChangeArgs::new(&local, pending.base_revision, attachment_ids, state.wipe_generation);
     let mut outcome = transport.apply_note_change(&args)?;
     if outcome == ApplyOutcome::NotFound {
         // Nothing in the cloud to conflict with — no row, no tombstone — so this is a create.

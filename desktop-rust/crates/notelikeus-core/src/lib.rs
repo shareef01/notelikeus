@@ -8,6 +8,7 @@
 //!
 //! See `desktop-rust/README.md` for what is and is not done.
 
+pub mod attachments;
 pub mod conflict;
 pub mod crypto;
 pub mod model;

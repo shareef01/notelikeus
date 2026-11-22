@@ -84,6 +84,15 @@ impl SupabaseTransport {
             Err(ureq::Error::Transport(t)) => Err(TransportError::Network(t.to_string())),
         }
     }
+
+    /// Whether the authenticated account has entered the deletion flow (NL003).
+    pub fn account_is_deleted(&self) -> Result<bool, TransportError> {
+        match self.rpc("get_sync_generation", &json!({})) {
+            Ok(_) => Ok(false),
+            Err(TransportError::AccountDeleted) => Ok(true),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 /// Maps a PostgREST error to what the engine needs to know. Matches on the SQLSTATE `code`, never on
@@ -180,5 +189,235 @@ impl Transport for SupabaseTransport {
     fn pull_changes(&mut self, after_revision: i64, limit: u32) -> Result<PullPage, TransportError> {
         let body = json!({ "p_after_revision": after_revision, "p_limit": limit });
         parse_pull_reply(self.rpc("pull_changes", &body)?)
+    }
+}
+
+impl SupabaseTransport {
+    /// The account's committed images (`list_user_attachments`): every note's, in upload order.
+    pub fn list_user_attachments(&self) -> Result<Vec<crate::attachments::RemoteAttachment>, TransportError> {
+        let value = self.rpc("list_user_attachments", &json!({}))?;
+        let rows: Vec<crate::attachments::RemoteAttachment> = serde_json::from_value(value)
+            .map_err(|e| TransportError::Server(format!("unreadable attachment list: {e}")))?;
+        Ok(rows.into_iter().filter(|r| !r.attachment_id.is_empty() && !r.note_id.is_empty()).collect())
+    }
+}
+
+// --- The attachments Worker -----------------------------------------------------------------------------
+
+/// What can go wrong talking to the attachments Worker.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AttachmentError {
+    #[error("the sign-in was refused")]
+    Unauthorized,
+    #[error("the image is not there")]
+    NotFound,
+    #[error("{0}")]
+    Refused(String),
+    #[error("network: {0}")]
+    Network(String),
+}
+
+/// The account-deletion Worker can refuse before deletion, require recent sign-in, or leave an
+/// ambiguous network outcome that must be checked through Supabase before local data is cleared.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AccountDeletionError {
+    #[error("the sign-in has ended; sign in again to delete your account")]
+    Unauthorized,
+    #[error("sign in again to confirm account deletion, then retry")]
+    ReauthenticationRequired,
+    #[error("account deletion was refused (HTTP {0}); nothing was deleted")]
+    Refused(u16),
+    #[error("the deletion request may have reached the server")]
+    OutcomeUnknown,
+}
+
+/// The Worker's answer to an upload.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadReply {
+    pub object_key: Option<String>,
+    pub size_bytes: Option<u64>,
+    pub mime_type: Option<String>,
+}
+
+/// The attachments Worker (`workers/attachments`): `PUT /v2/attachments/<note>/<id>` stores an image as a
+/// provisional upload, `GET`/`DELETE /v1/attachments/<note>/<id>` read and delete it. Authorized by the
+/// user's Supabase access token; the Worker derives the owner from it.
+pub struct AttachmentsClient {
+    base_url: String,
+    access_token: String,
+    agent: ureq::Agent,
+    /// Waits before each retry of a request the Worker throttled (429) without a usable Retry-After.
+    pub rate_limit_waits: Vec<std::time::Duration>,
+}
+
+const MAX_RATE_LIMIT_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+
+fn worker_path(version: &str, note_id: &str, attachment_id: &str) -> Result<String, AttachmentError> {
+    if !crate::attachments::valid_segment(note_id) || !crate::attachments::valid_segment(attachment_id) {
+        return Err(AttachmentError::Refused("invalid attachment path".into()));
+    }
+    Ok(format!("/{version}/attachments/{note_id}/{attachment_id}"))
+}
+
+impl AttachmentsClient {
+    /// `base_url` must be `https://`, or plain HTTP to this machine (a local Worker).
+    pub fn new(base_url: &str, access_token: &str) -> Result<Self, AttachmentError> {
+        let base = checked_base_url(base_url).map_err(AttachmentError::Refused)?;
+        let agent = tls_agent().map_err(AttachmentError::Network)?;
+        Ok(AttachmentsClient {
+            base_url: base,
+            access_token: access_token.to_string(),
+            agent,
+            rate_limit_waits: vec![std::time::Duration::from_secs(15), std::time::Duration::from_secs(45)],
+        })
+    }
+
+    pub fn set_access_token(&mut self, token: &str) {
+        self.access_token = token.to_string();
+    }
+
+    /// Deletes the authenticated account through the Worker. Network and server errors remain
+    /// ambiguous so the app can ask `get_sync_generation` before removing local data.
+    pub fn delete_account(&self) -> Result<(), AccountDeletionError> {
+        let url = format!("{}/v1/account", self.base_url);
+        let mut waits = self.rate_limit_waits.iter();
+        loop {
+            match self.agent.delete(&url).set("Authorization", &format!("Bearer {}", self.access_token)).call() {
+                Ok(response) => {
+                    let status = response.status();
+                    if status != 200 && status != 202 {
+                        return Err(AccountDeletionError::Refused(status));
+                    }
+                    let reply = response.into_json::<Value>().map_err(|_| AccountDeletionError::OutcomeUnknown)?;
+                    match reply.get("status").and_then(Value::as_str) {
+                        Some("deleted" | "pending") => return Ok(()),
+                        _ => return Err(AccountDeletionError::OutcomeUnknown),
+                    }
+                }
+                Err(ureq::Error::Status(429, response)) => match waits.next() {
+                    Some(fallback) => {
+                        let wait = response
+                            .header("Retry-After")
+                            .and_then(|value| value.trim().parse::<u64>().ok())
+                            .filter(|seconds| *seconds > 0)
+                            .map_or(*fallback, std::time::Duration::from_secs)
+                            .min(MAX_RATE_LIMIT_WAIT);
+                        std::thread::sleep(wait);
+                    }
+                    None => return Err(AccountDeletionError::Refused(429)),
+                },
+                Err(ureq::Error::Status(401, _)) => return Err(AccountDeletionError::Unauthorized),
+                Err(ureq::Error::Status(403, response)) => {
+                    let body = response.into_string().unwrap_or_default();
+                    if body.contains("reauthentication_required") {
+                        return Err(AccountDeletionError::ReauthenticationRequired);
+                    }
+                    return Err(AccountDeletionError::Refused(403));
+                }
+                Err(ureq::Error::Status(status, _)) if status >= 500 => {
+                    return Err(AccountDeletionError::OutcomeUnknown);
+                }
+                Err(ureq::Error::Status(status, _)) => return Err(AccountDeletionError::Refused(status)),
+                Err(ureq::Error::Transport(_)) => return Err(AccountDeletionError::OutcomeUnknown),
+            }
+        }
+    }
+
+    /// Sends a request, waiting and sending it again when the Worker answers 429, at most twice.
+    fn send(
+        &self,
+        request: impl Fn() -> Result<ureq::Response, Box<ureq::Error>>,
+    ) -> Result<ureq::Response, AttachmentError> {
+        let mut waits = self.rate_limit_waits.iter();
+        loop {
+            match request() {
+                Ok(response) => return Ok(response),
+                Err(error) => match *error {
+                    ureq::Error::Status(429, response) => match waits.next() {
+                        Some(fallback) => {
+                            let wait = response
+                                .header("Retry-After")
+                                .and_then(|s| s.trim().parse::<u64>().ok())
+                                .filter(|s| *s > 0)
+                                .map_or(*fallback, std::time::Duration::from_secs)
+                                .min(MAX_RATE_LIMIT_WAIT);
+                            std::thread::sleep(wait);
+                        }
+                        None => {
+                            return Err(AttachmentError::Refused(
+                                "Too many image requests right now. Try again in a minute.".into(),
+                            ));
+                        }
+                    },
+                    ureq::Error::Status(status, _) => {
+                        return Err(match status {
+                            401 => AttachmentError::Unauthorized,
+                            404 => AttachmentError::NotFound,
+                            409 => AttachmentError::Refused("That image was deleted.".into()),
+                            413 => AttachmentError::Refused("The image is larger than 10 MB.".into()),
+                            415 => AttachmentError::Refused("That kind of file can't be attached.".into()),
+                            403 => {
+                                AttachmentError::Refused("The image was refused (storage limit or permission).".into())
+                            }
+                            other => AttachmentError::Refused(format!("The image service answered HTTP {other}.")),
+                        });
+                    }
+                    ureq::Error::Transport(t) => return Err(AttachmentError::Network(t.to_string())),
+                },
+            }
+        }
+    }
+
+    /// Stores an image as a provisional upload; the note commit that names it makes it permanent.
+    pub fn upload(
+        &self,
+        note_id: &str,
+        attachment_id: &str,
+        mime_type: &str,
+        bytes: &[u8],
+    ) -> Result<UploadReply, AttachmentError> {
+        let url = format!("{}{}", self.base_url, worker_path("v2", note_id, attachment_id)?);
+        let response = self.send(|| {
+            self.agent
+                .put(&url)
+                .set("Authorization", &format!("Bearer {}", self.access_token))
+                .set("Content-Type", mime_type)
+                .send_bytes(bytes)
+                .map_err(Box::new)
+        })?;
+        response.into_json::<UploadReply>().map_err(|e| AttachmentError::Network(format!("unreadable reply: {e}")))
+    }
+
+    pub fn download(&self, note_id: &str, attachment_id: &str) -> Result<Vec<u8>, AttachmentError> {
+        let url = format!("{}{}", self.base_url, worker_path("v1", note_id, attachment_id)?);
+        let response = self.send(|| {
+            self.agent.get(&url).set("Authorization", &format!("Bearer {}", self.access_token)).call().map_err(Box::new)
+        })?;
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(
+            &mut std::io::Read::take(response.into_reader(), crate::attachments::MAX_ATTACHMENT_BYTES as u64 + 1),
+            &mut bytes,
+        )
+        .map_err(|e| AttachmentError::Network(e.to_string()))?;
+        if bytes.len() > crate::attachments::MAX_ATTACHMENT_BYTES {
+            return Err(AttachmentError::Refused("The image is larger than 10 MB.".into()));
+        }
+        Ok(bytes)
+    }
+
+    pub fn delete(&self, note_id: &str, attachment_id: &str) -> Result<(), AttachmentError> {
+        let url = format!("{}{}", self.base_url, worker_path("v1", note_id, attachment_id)?);
+        match self.send(|| {
+            self.agent
+                .delete(&url)
+                .set("Authorization", &format!("Bearer {}", self.access_token))
+                .call()
+                .map_err(Box::new)
+        }) {
+            // Already gone is what a delete wants.
+            Ok(_) | Err(AttachmentError::NotFound) => Ok(()),
+            Err(other) => Err(other),
+        }
     }
 }

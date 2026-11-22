@@ -4,7 +4,7 @@
 //! Only for a LOCAL stack (`npx supabase start`): it creates a throwaway account, so it refuses any URL
 //! that is not this machine. Without the variables below it returns early and says so.
 //!
-//!   NLK_TEST_SUPABASE_URL=http://127.0.0.1:54321
+//!   NLK_TEST_SUPABASE_URL=http://127.0.0.1:54326
 //!   NLK_TEST_SUPABASE_KEY=<local anon or publishable key>
 //!   NLK_TEST_MAILPIT_URL=http://127.0.0.1:54324
 
@@ -101,7 +101,12 @@ fn signing_in_syncing_and_reviewing_a_conflict_through_the_window() {
     auth.sign_up(&email, PASSWORD).unwrap();
 
     let dir: PathBuf = std::env::temp_dir().join(format!("nlk-native-live-{nanos}"));
-    let config = SyncConfig { url: url.clone(), publishable_key: key.clone(), captcha_page_url: None };
+    let config = SyncConfig {
+        url: url.clone(),
+        publishable_key: key.clone(),
+        captcha_page_url: None,
+        attachments_url: std::env::var("NLK_TEST_ATTACHMENTS_URL").ok(),
+    };
     let service =
         NotesService::open(&dir, Box::new(PlaintextKeyProtectorForTests), Box::new(SystemIds), Some(config)).unwrap();
     let ui = AppWindow::new().unwrap();

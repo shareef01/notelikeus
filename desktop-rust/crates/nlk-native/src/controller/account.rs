@@ -55,6 +55,15 @@ pub(super) struct AccountState {
     review: RefCell<Option<(String, Option<String>)>>,
 }
 
+impl AccountState {
+    pub(super) fn reset_after_deletion(&self) {
+        self.soon.stop();
+        self.every.stop();
+        self.sync_again.set(false);
+        self.syncing.set(false);
+    }
+}
+
 fn edits(count: usize) -> String {
     if count == 1 { "1 edit".into() } else { format!("{count} edits") }
 }
@@ -158,7 +167,9 @@ impl Controller {
             ui.set_account_problem(false);
             return;
         }
-        let account = self.svc().account();
+        let service = self.svc();
+        let account = service.account();
+        ui.set_can_delete_account(service.can_delete_account());
         ui.set_account_mode(if !account.sync_available {
             mode::NO_SYNC
         } else if account.signed_in {

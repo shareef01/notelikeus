@@ -5,17 +5,22 @@
 
 mod account;
 mod background;
+mod pictures;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
+use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
+
+use chrono::{TimeZone, Timelike};
 
 pub use background::Mode;
 
 use notelikeus_app::clock::LocalDays;
 use notelikeus_app::query::{self, DateField, DatePreset, Filters, LabelMatch, NoteFlag, NoteScope, SMART_VIEWS};
-use notelikeus_app::{ChecklistItem, NoteView, NotesService, label_key};
+use notelikeus_app::{ChecklistItem, NoteView, NotesService, Scope, label_key};
 use notelikeus_core::palette;
 use slint::{Color, ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
@@ -51,6 +56,8 @@ enum Confirm {
     EmptyTrash,
     DeleteForever(String),
     SignOut,
+    RemoveImage(String, String),
+    ImportBackup(PathBuf),
 }
 
 #[derive(Default)]
@@ -70,8 +77,16 @@ pub struct Controller {
     state: RefCell<State>,
     autosave: Timer,
     toast: Timer,
+    reminder_timer: Timer,
+    notification_timer: Timer,
+    fired_reminders: RefCell<HashSet<(String, i64)>>,
+    reminders_initialized: Cell<bool>,
+    scheduled_reminder: Cell<Option<i64>>,
     jobs: background::Jobs,
     account: account::AccountState,
+    pictures: pictures::PicturesState,
+    /// While the grid is being built (a picture arriving then waits for it to finish).
+    refreshing: Cell<bool>,
 }
 
 fn scope_of(view: View) -> NoteScope {
@@ -92,6 +107,50 @@ fn view_of_scope(scope: NoteScope) -> View {
 
 fn now_millis() -> i64 {
     chrono::Local::now().timestamp_millis()
+}
+
+fn reminder_time_input(timestamp: i64) -> String {
+    chrono::Local
+        .timestamp_millis_opt(timestamp)
+        .single()
+        .map(|time| time.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_default()
+}
+
+fn reminder_card_time(timestamp: i64) -> String {
+    chrono::Local
+        .timestamp_millis_opt(timestamp)
+        .single()
+        .map(|time| time.format("%b %-d, %-I:%M %p").to_string())
+        .unwrap_or_default()
+}
+
+/// Resolves local wall time through DST gaps and repeated hours.
+fn resolve_local_time(mut local: chrono::NaiveDateTime) -> Option<chrono::DateTime<chrono::Local>> {
+    for _ in 0..=180 {
+        match chrono::Local.from_local_datetime(&local) {
+            chrono::LocalResult::Single(time) => return Some(time),
+            chrono::LocalResult::Ambiguous(first, second) => {
+                return Some(if first.timestamp_millis() <= second.timestamp_millis() { first } else { second });
+            }
+            chrono::LocalResult::None => {
+                local = local.checked_add_signed(chrono::Duration::minutes(1))?;
+            }
+        }
+    }
+    None
+}
+
+fn reminder_preset_time(index: usize) -> Option<i64> {
+    use chrono::NaiveTime;
+    let now = chrono::Local::now();
+    let local = match index {
+        0 => return Some((now + chrono::Duration::hours(1)).timestamp_millis()),
+        1 => now.date_naive().checked_add_days(chrono::Days::new(1))?.and_time(NaiveTime::from_hms_opt(9, 0, 0)?),
+        2 => now.date_naive().checked_add_days(chrono::Days::new(7))?.and_hms_opt(now.hour(), now.minute(), 0)?,
+        _ => return None,
+    };
+    resolve_local_time(local).map(|time| time.timestamp_millis())
 }
 
 /// Chips wrapped into rows that fit the Filters sheet; `index` is each chip's place in `items`.
@@ -154,8 +213,15 @@ impl Controller {
             state: RefCell::default(),
             autosave: Timer::default(),
             toast: Timer::default(),
+            reminder_timer: Timer::default(),
+            notification_timer: Timer::default(),
+            fired_reminders: RefCell::default(),
+            reminders_initialized: Cell::new(false),
+            scheduled_reminder: Cell::new(None),
             jobs: background::Jobs::new(mode),
             account: account::AccountState::default(),
+            pictures: pictures::PicturesState::default(),
+            refreshing: Cell::new(false),
         });
         ui.set_swatches(model(
             palette::NOTE_COLORS
@@ -163,6 +229,8 @@ impl Controller {
                 .map(|c| Swatch { name: c.name.into(), none: c.light == 0, light: argb(c.light), dark: argb(c.dark) })
                 .collect(),
         ));
+        ui.set_theme_mode(crate::settings::load_theme_mode());
+        ui.set_app_version(env!("CARGO_PKG_VERSION").into());
 
         // While a worker holds the notes (a sync, a sign-in), what the window asks for waits in a queue
         // and runs when the worker is done, so the window never blocks on it.
@@ -238,6 +306,9 @@ impl Controller {
         wire!(on_filter_saved, |c, name| c.save_filter(&name));
         wire!(on_sync_requested, |c| c.sync_now());
         wire!(on_sign_out_requested, |c| c.ask_sign_out());
+        wire!(on_backup_export_json_requested, |c| c.export_json_backup());
+        wire!(on_backup_export_bundle_requested, |c| c.export_bundle_backup());
+        wire!(on_backup_import_requested, |c| c.pick_backup_to_import());
         wire!(on_signin_opened, |c| c.open_sign_in());
         wire!(on_signin_send, |c| c.send_code(false));
         wire!(on_signin_resend, |c| c.send_code(true));
@@ -248,8 +319,24 @@ impl Controller {
         wire!(on_review_keep_original, |c| c.review_keep_original());
         wire!(on_review_keep_copy, |c| c.review_keep_copy());
         wire!(on_review_keep_both, |c| c.review_keep_both());
+        wire!(on_settings_requested, |c| c.open_settings());
+        wire!(on_theme_picked, |c, mode| c.pick_theme(mode));
+        wire!(on_diagnostics_requested, |c| c.open_diagnostics());
+        wire!(on_diagnostics_export_requested, |c| c.export_diagnostics());
+        wire!(on_delete_account_opened, |c| c.open_delete_account());
+        wire!(on_delete_account_confirmed, |c| c.delete_account_confirmed());
         wire!(on_sync_due, |c| c.sync_now());
         wire!(on_resend_tick, |c| c.resend_tick());
+        wire!(on_image_add_requested, |c| c.pick_image());
+        wire!(on_picture_opened, |c, index| c.open_picture(index.max(0) as usize));
+        wire!(on_viewer_moved, |c, step| c.move_viewer(step));
+        wire!(on_picture_remove_requested, |c| c.ask_remove_picture());
+        wire!(on_open_reminder, |c| c.open_reminder());
+        wire!(on_reminder_preset, |c, index| c.reminder_preset(index as usize));
+        wire!(on_reminder_save, |c| c.save_reminder_input());
+        wire!(on_reminder_remove, |c| c.remove_reminder());
+        wire!(on_reminder_cancel, |c| c.cancel_reminder_dialog());
+        wire!(on_reminder_due, |c| c.deliver_due_reminders());
         {
             // Never deferred: this is how a worker's result comes back.
             let weak = Rc::downgrade(&controller);
@@ -285,18 +372,120 @@ impl Controller {
         self.ui.upgrade()
     }
 
+    /// Opens Settings after saving any words currently in the editor.
+    pub fn open_settings(&self) {
+        self.save_now();
+        let Some(ui) = self.ui() else { return };
+        ui.set_can_delete_account(self.svc().can_delete_account());
+        ui.set_deleting_account(false);
+        ui.set_settings_open(true);
+    }
+
+    /// Applies a theme choice immediately and remembers it for the next launch.
+    pub fn pick_theme(&self, mode: i32) {
+        let mode = mode.clamp(crate::settings::THEME_SYSTEM, crate::settings::THEME_DARK);
+        let Some(ui) = self.ui() else { return };
+        ui.set_theme_mode(mode);
+        if let Err(message) = crate::settings::save_theme_mode(mode) {
+            self.show_toast(&message, None, None);
+        }
+    }
+
+    pub fn open_diagnostics(&self) {
+        let Some(ui) = self.ui() else { return };
+        let report = self.svc().diagnostics_json();
+        ui.set_diagnostics_report(report.into());
+        ui.set_diagnostics_open(true);
+    }
+
+    pub fn export_diagnostics(&self) {
+        let filename = format!("Notelikeus-diagnostics-{}.json", chrono::Local::now().format("%Y-%m-%d"));
+        let Some(path) = rfd::FileDialog::new()
+            .set_title("Export diagnostics")
+            .set_file_name(filename)
+            .add_filter("JSON report", &["json"])
+            .save_file()
+        else {
+            return;
+        };
+        let report = self.svc().diagnostics_json();
+        match std::fs::write(path, report) {
+            Ok(()) => self.show_toast("Diagnostics report saved", None, None),
+            Err(error) => self.show_toast(&format!("Couldn't save diagnostics: {error}"), None, None),
+        }
+    }
+
+    pub fn open_delete_account(&self) {
+        let Some(ui) = self.ui() else { return };
+        if !self.svc().can_delete_account() {
+            self.show_toast("Account deletion isn't available in this build.", None, None);
+            return;
+        }
+        ui.set_delete_account_confirmation("".into());
+        ui.set_deleting_account(false);
+        ui.set_delete_account_open(true);
+    }
+
+    pub fn delete_account_confirmed(&self) {
+        let Some(ui) = self.ui() else { return };
+        if ui.get_delete_account_confirmation().as_str() != "DELETE" || !self.svc().can_delete_account() {
+            return;
+        }
+        self.save_now();
+        ui.set_deleting_account(true);
+        self.with_notes_in_background(
+            |service| service.delete_account(),
+            |controller, result| {
+                controller.delete_account_finished(result);
+            },
+        );
+    }
+
+    fn delete_account_finished(&self, result: Result<notelikeus_app::DeleteAccountReport, String>) {
+        let Some(ui) = self.ui() else { return };
+        ui.set_deleting_account(false);
+        match result {
+            Ok(report) => {
+                self.account.reset_after_deletion();
+                self.pictures.clear();
+                ui.set_delete_account_open(false);
+                ui.set_delete_account_confirmation("".into());
+                ui.set_settings_open(false);
+                self.close_sheet();
+                self.show_account();
+                if let Some(warning) = report.warning {
+                    self.show_toast(&warning, None, None);
+                } else {
+                    self.show_toast("Account deleted. Guest notes remain on this device.", None, None);
+                }
+            }
+            Err(message) if message.to_ascii_lowercase().contains("sign in again") => {
+                ui.set_delete_account_open(false);
+                ui.set_delete_account_confirmation("".into());
+                ui.set_settings_open(false);
+                self.show_toast(&message, None, None);
+            }
+            Err(message) => self.show_toast(&message, None, None),
+        }
+    }
+
     fn editing_id(&self) -> Option<String> {
         self.state.borrow().editing.as_ref().and_then(|e| e.id.clone())
     }
 
-    fn card(note: &NoteView, now: &chrono::DateTime<chrono::Local>) -> NoteCard {
+    fn card(&self, note: &NoteView, now: &chrono::DateTime<chrono::Local>) -> NoteCard {
         let labels = sorted_labels(&note.labels);
         let items = sorted_items(&note.checklist);
+        let cover = note.images.first().map(|image| self.picture(&note.id, image));
         NoteCard {
             id: note.id.as_str().into(),
+            has_cover: cover.is_some(),
+            cover: cover.unwrap_or_default(),
+            more_images: note.images.len().saturating_sub(1) as i32,
             title: note.title.trim().into(),
             preview: if note.checklist.is_empty() { view::preview(&note.content).into() } else { SharedString::new() },
             time: view::card_time(note.timestamp, now).into(),
+            reminder: note.reminder_timestamp.map_or_else(String::new, reminder_card_time).into(),
             pinned: note.is_pinned,
             has_color: note.color != 0,
             color_light: argb(palette::for_theme(note.color, false)),
@@ -317,6 +506,22 @@ impl Controller {
     /// Rebuilds everything the filters decide: the grid (laid out in as many columns as fit), the notices,
     /// the sidebar's counts, views and saved filters, and the Filters sheet's choices.
     pub fn refresh(&self) {
+        // A picture can arrive while the grid is built (at once, when jobs run inline): build again
+        // after, rather than inside, this build.
+        if self.refreshing.replace(true) {
+            self.mark_pictures_dirty();
+            return;
+        }
+        loop {
+            self.build_grid();
+            if !self.take_pictures_dirty() {
+                break;
+            }
+        }
+        self.refreshing.set(false);
+    }
+
+    fn build_grid(&self) {
         let Some(ui) = self.ui() else { return };
         let filters = self.state.borrow().filters.clone();
         let now = now_millis();
@@ -326,7 +531,19 @@ impl Controller {
         let view_counts = service.smart_view_counts(now);
         let saved = service.saved_filters().to_vec();
         let labels = service.label_names();
+        let reminders = service
+            .list()
+            .into_iter()
+            .filter_map(|note| note.reminder_timestamp.map(|timestamp| (note.id, timestamp, !note.is_archived)))
+            .chain(
+                service
+                    .list_in(Scope::Trash)
+                    .into_iter()
+                    .filter_map(|note| note.reminder_timestamp.map(|timestamp| (note.id, timestamp, false))),
+            )
+            .collect::<Vec<_>>();
         drop(service);
+        self.schedule_reminders(reminders);
 
         ui.set_count_notes(counts.notes as i32);
         ui.set_count_archive(counts.archive as i32);
@@ -335,7 +552,7 @@ impl Controller {
         let shown = found.notes.len();
         let columns = view::masonry(found.notes, ui.get_column_count().max(1) as usize, view::card_height)
             .into_iter()
-            .map(|column| CardColumn { cards: model(column.iter().map(|n| Self::card(n, &local_now)).collect()) })
+            .map(|column| CardColumn { cards: model(column.iter().map(|n| self.card(n, &local_now)).collect()) })
             .collect::<Vec<_>>();
         ui.set_note_count(shown as i32);
         ui.set_searching(filters.has_active());
@@ -512,6 +729,8 @@ impl Controller {
     fn show_note_details(&self, ui: &AppWindow, note: &NoteView) {
         ui.set_editor_mode(view_of(note));
         ui.set_editor_pinned(note.is_pinned);
+        ui.set_editor_reminder_set(note.reminder_timestamp.is_some());
+        ui.set_reminder_set(note.reminder_timestamp.is_some());
         ui.set_editor_has_color(note.color != 0);
         ui.set_editor_color_light(argb(palette::for_theme(note.color, false)));
         ui.set_editor_color_dark(argb(palette::for_theme(note.color, true)));
@@ -521,6 +740,7 @@ impl Controller {
         ));
         ui.set_editor_footer(Self::saved_footer(note.timestamp));
         ui.set_editor_conflict(notelikeus_core::conflict::is_conflicted_copy_title(&note.title));
+        self.show_pictures(ui, note);
     }
 
     fn show_rows(&self, ui: &AppWindow, focus: Option<i64>) {
@@ -549,14 +769,19 @@ impl Controller {
             None => {
                 ui.set_editor_mode(View::Notes);
                 ui.set_editor_pinned(false);
+                ui.set_editor_reminder_set(false);
+                ui.set_reminder_set(false);
                 ui.set_editor_has_color(false);
                 ui.set_editor_color_index(0);
                 ui.set_editor_labels(model(Vec::new()));
+                ui.set_editor_pictures(model(Vec::new()));
+                ui.set_editor_conflict(false);
                 ui.set_editor_footer("Not saved yet".into());
             }
         }
         self.show_rows(ui, None);
         ui.set_options_open(false);
+        ui.set_reminder_open(false);
         ui.set_editor_open(true);
     }
 
@@ -656,10 +881,184 @@ impl Controller {
         self.save_editor(false);
     }
 
+    pub fn open_reminder(&self) {
+        self.save_now();
+        let Some(ui) = self.ui() else { return };
+        let Some(id) = self.editing_id() else {
+            self.show_toast("Save the note before setting a reminder.", None, None);
+            return;
+        };
+        let Some(note) = self.svc().note(&id) else { return };
+        let input = note
+            .reminder_timestamp
+            .map(reminder_time_input)
+            .or_else(|| reminder_preset_time(1).map(reminder_time_input))
+            .unwrap_or_default();
+        ui.set_reminder_input(input.into());
+        ui.set_reminder_error("".into());
+        ui.set_reminder_open(true);
+    }
+
+    pub fn reminder_preset(&self, index: usize) {
+        let Some(timestamp) = reminder_preset_time(index) else { return };
+        self.set_reminder(timestamp);
+    }
+
+    pub fn save_reminder_input(&self) {
+        let Some(ui) = self.ui() else { return };
+        let input = ui.get_reminder_input().to_string();
+        let Ok(local) = chrono::NaiveDateTime::parse_from_str(input.trim(), "%Y-%m-%d %H:%M") else {
+            ui.set_reminder_error("Use YYYY-MM-DD HH:MM in your local time.".into());
+            return;
+        };
+        let Some(time) = resolve_local_time(local) else {
+            ui.set_reminder_error("That local time could not be resolved.".into());
+            return;
+        };
+        let existing = self
+            .editing_id()
+            .and_then(|id| self.svc().note(&id))
+            .and_then(|note| note.reminder_timestamp)
+            .and_then(|timestamp| chrono::Local.timestamp_millis_opt(timestamp).single())
+            .filter(|existing| {
+                let current = existing.naive_local();
+                current.date() == local.date() && current.hour() == local.hour() && current.minute() == local.minute()
+            });
+        let timestamp = existing.map_or_else(|| time.timestamp_millis(), |existing| existing.timestamp_millis());
+        if timestamp <= now_millis() {
+            ui.set_reminder_error("Choose a time in the future.".into());
+            return;
+        }
+        self.set_reminder(timestamp);
+    }
+
+    fn set_reminder(&self, timestamp: i64) {
+        let Some(ui) = self.ui() else { return };
+        let Some(id) = self.editing_id() else {
+            self.show_toast("Save the note before setting a reminder.", None, None);
+            return;
+        };
+        match self.svc().set_reminder_timestamp(&id, timestamp) {
+            Ok(note) => {
+                self.show_note_details(&ui, &note);
+                ui.set_reminder_open(false);
+                self.show_toast("Reminder set.", None, None);
+                self.refresh();
+            }
+            Err(message) => ui.set_reminder_error(message.into()),
+        }
+    }
+
+    pub fn remove_reminder(&self) {
+        let Some(ui) = self.ui() else { return };
+        let Some(id) = self.editing_id() else { return };
+        match self.svc().clear_reminder(&id) {
+            Ok(note) => {
+                self.show_note_details(&ui, &note);
+                ui.set_reminder_open(false);
+                self.show_toast("Reminder removed.", None, None);
+                self.refresh();
+            }
+            Err(message) => ui.set_reminder_error(message.into()),
+        }
+    }
+
+    pub fn cancel_reminder_dialog(&self) {
+        if let Some(ui) = self.ui() {
+            ui.set_reminder_open(false);
+        }
+    }
+
+    fn schedule_reminders(&self, reminders: Vec<(String, i64, bool)>) {
+        let now = now_millis();
+        let known: HashSet<(String, i64)> = reminders.iter().map(|(id, time, _)| (id.clone(), *time)).collect();
+        let mut fired = self.fired_reminders.borrow_mut();
+        fired.retain(|reminder| known.contains(reminder));
+        if !self.reminders_initialized.replace(true) {
+            fired.extend(
+                reminders.iter().filter(|(_, timestamp, _)| *timestamp <= now).map(|(id, time, _)| (id.clone(), *time)),
+            );
+        } else {
+            fired.extend(
+                reminders
+                    .iter()
+                    .filter(|(_, timestamp, active)| !active && *timestamp <= now)
+                    .map(|(id, time, _)| (id.clone(), *time)),
+            );
+        }
+        let next = reminders
+            .iter()
+            .filter(|(id, timestamp, _)| !fired.contains(&(id.clone(), *timestamp)))
+            .min_by_key(|(_, timestamp, _)| *timestamp)
+            .map(|(id, timestamp, _)| (id.clone(), *timestamp));
+        drop(fired);
+
+        let next_timestamp = next.as_ref().map(|(_, timestamp)| *timestamp);
+        if self.scheduled_reminder.get() == next_timestamp {
+            return;
+        }
+        self.reminder_timer.stop();
+        self.scheduled_reminder.set(next_timestamp);
+        let Some(timestamp) = next_timestamp else { return };
+        let weak = self.ui.clone();
+        self.reminder_timer.start(
+            TimerMode::SingleShot,
+            Duration::from_millis(timestamp.saturating_sub(now).max(0) as u64),
+            move || {
+                if let Some(ui) = weak.upgrade() {
+                    ui.invoke_reminder_due();
+                }
+            },
+        );
+    }
+
+    fn deliver_due_reminders(&self) {
+        self.scheduled_reminder.set(None);
+        let now = now_millis();
+        let reminders = {
+            let service = self.svc();
+            service
+                .list()
+                .into_iter()
+                .filter_map(|note| note.reminder_timestamp.map(|timestamp| (note.id, timestamp, !note.is_archived)))
+                .chain(
+                    service
+                        .list_in(Scope::Trash)
+                        .into_iter()
+                        .filter_map(|note| note.reminder_timestamp.map(|timestamp| (note.id, timestamp, false))),
+                )
+                .collect::<Vec<_>>()
+        };
+        let due = reminders
+            .iter()
+            .filter(|(id, timestamp, active)| {
+                *active && *timestamp <= now && !self.fired_reminders.borrow().contains(&(id.clone(), *timestamp))
+            })
+            .map(|(id, timestamp, _)| (id.clone(), *timestamp))
+            .collect::<Vec<_>>();
+        if !due.is_empty() {
+            self.fired_reminders.borrow_mut().extend(due);
+            self.show_reminder_notification();
+        }
+        self.schedule_reminders(reminders);
+    }
+
+    fn show_reminder_notification(&self) {
+        #[cfg(windows)]
+        if let Some(ui) = self.ui() {
+            if let Some(hwnd) = crate::win_notify::show_for_window(&ui) {
+                self.notification_timer.start(TimerMode::SingleShot, Duration::from_secs(20), move || {
+                    crate::win_notify::remove(hwnd);
+                });
+            }
+        }
+    }
+
     fn close_sheet(&self) {
         self.state.borrow_mut().editing = None;
         if let Some(ui) = self.ui() {
             ui.set_options_open(false);
+            ui.set_reminder_open(false);
             ui.set_editor_open(false);
             ui.invoke_focus_main();
         }
@@ -785,7 +1184,98 @@ impl Controller {
                 self.refresh();
             }
             Some(Confirm::SignOut) => self.sign_out(),
+            Some(Confirm::RemoveImage(note, image)) => self.remove_picture(&note, &image),
+            Some(Confirm::ImportBackup(path)) => self.import_backup(&path),
             None => {}
+        }
+    }
+
+    pub fn export_json_backup(&self) {
+        let filename = format!("Notelikeus-backup-{}.json", chrono::Local::now().format("%Y-%m-%d"));
+        let Some(path) = rfd::FileDialog::new()
+            .set_title("Export JSON backup")
+            .set_file_name(filename)
+            .add_filter("JSON backup", &["json"])
+            .save_file()
+        else {
+            return;
+        };
+        let result = crate::backup::export_json(&self.svc(), &path);
+        match result {
+            Ok(()) => self.show_toast("JSON backup saved", None, None),
+            Err(message) => self.show_toast(&message, None, None),
+        }
+    }
+
+    pub fn export_bundle_backup(&self) {
+        let filename = format!("Notelikeus-backup-{}.nlkbak", chrono::Local::now().format("%Y-%m-%d"));
+        let Some(path) = rfd::FileDialog::new()
+            .set_title("Export backup with pictures")
+            .set_file_name(filename)
+            .add_filter("Notelikeus backup bundle", &["nlkbak"])
+            .save_file()
+        else {
+            return;
+        };
+        let result = crate::backup::export_bundle(&self.svc(), &path);
+        match result {
+            Ok(report) if report.images_skipped == 0 => self.show_toast(
+                &format!(
+                    "Backup saved with {} picture{}",
+                    report.images_included,
+                    if report.images_included == 1 { "" } else { "s" }
+                ),
+                None,
+                None,
+            ),
+            Ok(report) => self.show_toast(
+                &format!(
+                    "Backup saved with {} picture{}; {} skipped because local bytes were unavailable or over the limit",
+                    report.images_included,
+                    if report.images_included == 1 { "" } else { "s" },
+                    report.images_skipped
+                ),
+                None,
+                None,
+            ),
+            Err(message) => self.show_toast(&message, None, None),
+        }
+    }
+
+    pub fn pick_backup_to_import(&self) {
+        let Some(path) = rfd::FileDialog::new()
+            .set_title("Import a backup")
+            .add_filter("Notelikeus backups", &["json", "nlkbak"])
+            .pick_file()
+        else {
+            return;
+        };
+        self.ask(
+            "Import this backup?",
+            "This adds copies of its notes. Importing the same backup again adds more copies. Some pictures may be skipped if their files are missing or invalid.",
+            "Import copies",
+            Confirm::ImportBackup(path),
+        );
+    }
+
+    fn import_backup(&self, path: &std::path::Path) {
+        let result = crate::backup::import_file(&mut self.svc(), path);
+        match result {
+            Ok(report) if report.notes_imported == 0 => {
+                self.show_toast("No notes were found in that backup", None, None)
+            }
+            Ok(report) => {
+                self.refresh();
+                let message = if report.attachments_skipped > 0 {
+                    format!("Imported {} notes; {} pictures skipped", report.notes_imported, report.attachments_skipped)
+                } else if report.attachments_imported > 0 {
+                    format!("Imported {} notes and {} pictures", report.notes_imported, report.attachments_imported)
+                } else {
+                    format!("Imported {} notes", report.notes_imported)
+                };
+                self.show_toast(&message, None, None);
+            }
+            Err(message) => self.show_toast(&message, None, None),
         }
     }
 

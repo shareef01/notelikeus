@@ -109,7 +109,13 @@ pub fn card_height(note: &NoteView) -> usize {
     // A checklist card shows up to six items and a "+ n more" line; labels take one row of chips.
     let items = note.checklist.len().min(6) + usize::from(note.checklist.len() > 6);
     let labels = usize::from(!note.labels.is_empty()) * 2;
-    estimated_height(&note.title, &preview(&note.content)) + items + labels
+    // The first picture leads the card, 160 px tall.
+    let cover = usize::from(!note.images.is_empty()) * 8;
+    estimated_height(&note.title, &preview(&note.content))
+        + items
+        + labels
+        + cover
+        + usize::from(note.reminder_timestamp.is_some())
 }
 
 #[cfg(test)]
@@ -123,6 +129,7 @@ mod tests {
             title: title.into(),
             content: content.into(),
             timestamp: 0,
+            reminder_timestamp: None,
             is_pinned: false,
             unsynced: true,
             color: 0,
@@ -130,6 +137,7 @@ mod tests {
             is_trashed: false,
             labels: Vec::new(),
             checklist: Vec::new(),
+            images: Vec::new(),
         }
     }
 

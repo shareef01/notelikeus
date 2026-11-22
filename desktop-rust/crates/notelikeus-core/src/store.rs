@@ -69,6 +69,13 @@ pub struct LocalState {
     /// Filters the user named, newest first. Device-local like the other clients' copies; defaulted.
     #[serde(default)]
     pub saved_filters: Vec<crate::query::SavedFilter>,
+    /// Each note's images (note id → images). Defaulted.
+    #[serde(default)]
+    pub attachments: BTreeMap<String, Vec<crate::attachments::Attachment>>,
+    /// Uploaded images removed here whose remote delete has not gone through yet (note id → ids): kept
+    /// out of the next listing until it has. Defaulted.
+    #[serde(default)]
+    pub attachment_removals: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -171,8 +178,26 @@ impl Store {
         Ok(())
     }
 
+    /// The account's sealed image files.
+    pub fn blobs(&self) -> crate::attachments::Blobs {
+        crate::attachments::Blobs::new(self.dir.join("attachments"), &self.owner_id, self.key)
+    }
+
     pub fn state_path(&self) -> PathBuf {
         self.dir.join(STATE_FILE)
+    }
+
+    /// Removes this account's sealed notes and image blobs after the server accepted account deletion.
+    /// Guest data is never removed by this operation.
+    pub fn remove_account_data(&self) -> Result<(), Error> {
+        if self.owner_id == "__guest__" {
+            return Err(Error::InvalidInput("refusing to remove guest data as an account".into()));
+        }
+        match fs::remove_dir_all(&self.dir) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
     }
 }
 

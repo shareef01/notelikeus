@@ -7,7 +7,8 @@ pub mod service;
 pub use notelikeus_core::model::ChecklistItem;
 pub use notelikeus_core::query;
 pub use service::{
-    AccountView, AppInfo, ConflictReview, GUEST, MAX_CHECKLIST_ITEMS, MAX_CONTENT_CHARS, MAX_LABEL_CHARS,
-    MAX_LABELS_PER_NOTE, MAX_TITLE_CHARS, NoteView, NotesService, Scope, ScopeCounts, SearchView, SyncConfig,
-    SyncSummary, SystemIds, data_dir_named, default_data_dir, label_key,
+    AccountView, AppInfo, BackupAttachmentSource, BackupImportReport, ConflictReview, DeleteAccountReport, GUEST,
+    ImageSource, ImageView, MAX_CHECKLIST_ITEMS, MAX_CONTENT_CHARS, MAX_LABEL_CHARS, MAX_LABELS_PER_NOTE,
+    MAX_TITLE_CHARS, NoteView, NotesService, Scope, ScopeCounts, SearchView, SyncConfig, SyncSummary, SystemIds,
+    data_dir_named, default_data_dir, label_key,
 };

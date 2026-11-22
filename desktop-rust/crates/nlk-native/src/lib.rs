@@ -4,8 +4,13 @@
 
 slint::include_modules!();
 
+pub mod backup;
 pub mod controller;
+pub mod images;
 pub mod view;
+mod settings;
+#[cfg(windows)]
+mod win_notify;
 
 use std::rc::Rc;
 
