@@ -18,6 +18,9 @@ fn temp_dir(name: &str) -> PathBuf {
 fn open(dir: &Path) -> (AppWindow, std::rc::Rc<Controller>) {
     let service = NotesService::open(dir, Box::new(PlaintextKeyProtectorForTests), Box::new(SystemIds), None).unwrap();
     let ui = AppWindow::new().unwrap();
+    // Tall enough that the Filters sheet needs no scrolling: the element search skips what is scrolled out
+    // of view, as it is not visible.
+    slint::ComponentHandle::window(&ui).set_size(slint::LogicalSize::new(1280.0, 1600.0));
     let controller = Controller::attach(&ui, service);
     (ui, controller)
 }
@@ -81,6 +84,105 @@ fn the_native_window_end_to_end() {
     archive_trash_restore_and_empty();
     colours_and_labels();
     checklists();
+    search_views_and_saved_filters();
+}
+
+fn search(ui: &AppWindow, text: &str) {
+    ui.set_query(text.into());
+    ui.invoke_query_edited(text.into());
+}
+
+fn sorted_titles(ui: &AppWindow) -> Vec<String> {
+    let mut titles = card_titles(ui);
+    titles.sort();
+    titles
+}
+
+fn search_views_and_saved_filters() {
+    use slint::Model;
+    let dir = temp_dir("search");
+    let (ui, _controller) = open(&dir);
+    press(&ui, "New note");
+    type_note(&ui, "Quarterly report", "slides for monday");
+    ui.invoke_autosave_due();
+    press(&ui, "Note options");
+    ui.invoke_label_created("Work".into());
+    press(&ui, "Done");
+    press(&ui, "Back to notes");
+    press(&ui, "New note");
+    type_note(&ui, "Packing", "passport\ncharger");
+    press(&ui, "Make a checklist");
+    press(&ui, "Back to notes");
+    press(&ui, "New note");
+    type_note(&ui, "Receipts", "scanned");
+    ui.invoke_autosave_due();
+    press(&ui, "Archive note");
+
+    // Operators narrow; what the box cannot use is named; a typo shows near matches and says so.
+    search(&ui, "label:work");
+    assert_eq!(card_titles(&ui), ["Quarterly report"]);
+    search(&ui, "in:all");
+    assert_eq!(sorted_titles(&ui), ["Packing", "Quarterly report", "Receipts"]);
+    search(&ui, "slides is:nonsense");
+    assert_eq!(card_titles(&ui), ["Quarterly report"]);
+    assert_eq!(ui.get_notice_ignored(), "Ignored: is:nonsense");
+    search(&ui, "quartrly");
+    assert_eq!(card_titles(&ui), ["Quarterly report"]);
+    assert!(ui.get_notice_fuzzy().starts_with("No exact match for “quartrly”"));
+    search(&ui, "");
+    assert_eq!(ui.get_notice_fuzzy(), "");
+
+    // A smart view is its search, typed into the box; Notes leaves it.
+    let views: Vec<(String, i32)> = ui.get_smart_views().iter().map(|r| (r.label.to_string(), r.count)).collect();
+    assert_eq!(views, [("Reminders".into(), 0), ("Unfinished".into(), 1), ("Unlabelled".into(), 1)]);
+    press(&ui, "Unfinished");
+    assert_eq!(ui.get_query(), "has:unchecked");
+    assert_eq!(card_titles(&ui), ["Packing"]);
+    assert!(!ui.get_library_current(), "the view, not Notes, is what is on screen");
+    press(&ui, "Notes");
+    assert_eq!(ui.get_query(), "");
+    assert!(ui.get_library_current());
+
+    // The Filters sheet: choices apply at once, and can be saved by name.
+    press(&ui, "Filters");
+    assert!(ui.get_filters_open());
+    tick(&ui, "Has checklist");
+    assert_eq!(card_titles(&ui), ["Packing"]);
+    assert_eq!(ui.get_filter_count(), 1);
+    press(&ui, "Save these filters");
+    assert!(ui.get_naming());
+    ui.set_filter_name("Lists".into());
+    press(&ui, "Save");
+    assert!(!ui.get_naming());
+    assert_eq!(ui.get_saved_filters().iter().map(|r| r.label.to_string()).collect::<Vec<_>>(), ["Lists"]);
+    assert!(ui.get_saved_filters().row_data(0).unwrap().current, "what is on screen is the saved filter");
+    // Saving under a taken name says it replaces it.
+    press(&ui, "Save these filters");
+    ui.invoke_filter_name_edited("LISTS".into());
+    assert_eq!(ui.get_filter_name_hint(), "Replaces the filter already saved as “Lists”");
+    ui.set_naming(false);
+
+    press(&ui, "Clear all");
+    assert_eq!(ui.get_filter_count(), 0);
+    assert_eq!(sorted_titles(&ui), ["Packing", "Quarterly report"]);
+    tick(&ui, "Today");
+    assert_eq!(ui.get_note_count(), 2, "everything was edited today");
+    tick(&ui, "Any time");
+    tick(&ui, "Work");
+    assert_eq!(card_titles(&ui), ["Quarterly report"]);
+    press(&ui, "Show 1 note");
+    assert!(!ui.get_filters_open());
+    press(&ui, "Clear filters");
+    assert_eq!(ui.get_note_count(), 2);
+
+    // A saved filter comes back from the sidebar after a restart, and can be deleted there.
+    drop(ui);
+    let (ui, _controller) = open(&dir);
+    press(&ui, "Lists");
+    assert_eq!(card_titles(&ui), ["Packing"]);
+    press(&ui, "Delete saved filter Lists");
+    assert_eq!(ui.get_saved_filters().row_count(), 0);
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 fn creating_editing_and_reopening() {

@@ -7,12 +7,16 @@ use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-use notelikeus_app::{ChecklistItem, NoteView, NotesService, Scope, label_key};
+use notelikeus_app::clock::LocalDays;
+use notelikeus_app::query::{self, DateField, DatePreset, Filters, LabelMatch, NoteFlag, NoteScope, SMART_VIEWS};
+use notelikeus_app::{ChecklistItem, NoteView, NotesService, label_key};
 use notelikeus_core::palette;
 use slint::{Color, ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
 use crate::view;
-use crate::{AppWindow, CardColumn, ChecklistLine, EditRow, LabelChoice, NoteCard, Swatch, View};
+use crate::{
+    AppWindow, CardColumn, ChecklistLine, Choice, ChoiceRow, EditRow, LabelChoice, NoteCard, SidebarRow, Swatch, View,
+};
 
 const AUTOSAVE_AFTER: Duration = Duration::from_millis(400);
 const TOAST_FOR: Duration = Duration::from_secs(6);
@@ -47,6 +51,8 @@ struct State {
     editing: Option<Editing>,
     undo: Option<Undo>,
     confirm: Option<Confirm>,
+    /// What the grid shows: the sidebar's view, the search box and the Filters sheet, in one place.
+    filters: Filters,
 }
 
 pub struct Controller {
@@ -57,12 +63,36 @@ pub struct Controller {
     toast: Timer,
 }
 
-fn scope_of(view: View) -> Scope {
+fn scope_of(view: View) -> NoteScope {
     match view {
-        View::Notes => Scope::Notes,
-        View::Archive => Scope::Archive,
-        View::Trash => Scope::Trash,
+        View::Notes => NoteScope::Active,
+        View::Archive => NoteScope::Archive,
+        View::Trash => NoteScope::Trash,
     }
+}
+
+fn view_of_scope(scope: NoteScope) -> View {
+    match scope {
+        NoteScope::Archive => View::Archive,
+        NoteScope::Trash => View::Trash,
+        NoteScope::Active | NoteScope::All => View::Notes,
+    }
+}
+
+fn now_millis() -> i64 {
+    chrono::Local::now().timestamp_millis()
+}
+
+/// Chips wrapped into rows that fit the Filters sheet; `index` is each chip's place in `items`.
+fn chip_rows(items: Vec<(String, bool)>) -> Vec<ChoiceRow> {
+    view::wrap_chips(&items.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>())
+        .into_iter()
+        .map(|range| ChoiceRow {
+            items: model(
+                range.map(|i| Choice { text: items[i].0.as_str().into(), on: items[i].1, index: i as i32 }).collect(),
+            ),
+        })
+        .collect()
 }
 
 fn view_of(note: &NoteView) -> View {
@@ -155,7 +185,29 @@ impl Controller {
         wire!(on_autosave_due, |c| c.save_now());
         wire!(on_toast_expired, |c| c.toast_expired());
         wire!(on_columns_changed, |c, _count| c.refresh());
-        wire!(on_query_edited, |c, _query| c.refresh());
+        wire!(on_query_edited, |c, query| c.search_edited(&query));
+        wire!(on_smart_view_picked, |c, index| c.smart_view(index as usize));
+        wire!(on_saved_applied, |c, name| c.apply_saved(&name));
+        wire!(on_saved_deleted, |c, name| c.delete_saved(&name));
+        wire!(on_filter_color_toggled, |c, index| c.change_filters(|f| f.toggle_color(index as usize)));
+        wire!(on_filter_label_toggled, |c, name| c.change_filters(|f| f.toggle_label(&name)));
+        wire!(on_filter_label_match_toggled, |c| c.change_filters(|f| {
+            f.label_match = if f.label_match == LabelMatch::All { LabelMatch::Any } else { LabelMatch::All }
+        }));
+        wire!(on_filter_flag_toggled, |c, index| c.change_filters(|f| {
+            if let Some(flag) = NoteFlag::ALL.get(index as usize) {
+                f.toggle_flag(*flag);
+            }
+        }));
+        wire!(on_filter_date_field_picked, |c, index| c.change_filters(|f| {
+            if let Some(field) = DateField::ALL.get(index as usize) {
+                f.date_field = *field;
+            }
+        }));
+        wire!(on_filter_preset_picked, |c, index| c.pick_preset(index as usize));
+        wire!(on_filters_cleared, |c| c.clear_filters());
+        wire!(on_filter_name_edited, |c, name| c.filter_name_edited(&name));
+        wire!(on_filter_saved, |c, name| c.save_filter(&name));
         {
             let weak = Rc::downgrade(&controller);
             ui.window().on_close_requested(move || {
@@ -203,33 +255,191 @@ impl Controller {
         }
     }
 
-    /// Rebuilds the grid and the sidebar counts: the selected view, search applied, laid out in as many
-    /// columns as fit.
+    /// Rebuilds everything the filters decide: the grid (laid out in as many columns as fit), the notices,
+    /// the sidebar's counts, views and saved filters, and the Filters sheet's choices.
     pub fn refresh(&self) {
         let Some(ui) = self.ui() else { return };
-        let query = ui.get_query().to_string();
+        let filters = self.state.borrow().filters.clone();
+        let now = now_millis();
         let service = self.service.borrow();
         let counts = service.counts();
+        let found = service.search(&filters, now);
+        let view_counts = service.smart_view_counts(now);
+        let saved = service.saved_filters().to_vec();
+        let labels = service.label_names();
+        drop(service);
+
         ui.set_count_notes(counts.notes as i32);
         ui.set_count_archive(counts.archive as i32);
         ui.set_count_trash(counts.trash as i32);
-        let notes: Vec<NoteView> =
-            service.list_in(scope_of(ui.get_view())).into_iter().filter(|n| view::matches(n, &query)).collect();
-        drop(service);
-        let now = chrono::Local::now();
-        let shown = notes.len();
-        let columns = view::masonry(notes, ui.get_column_count().max(1) as usize, view::card_height)
+        let local_now = chrono::Local::now();
+        let shown = found.notes.len();
+        let columns = view::masonry(found.notes, ui.get_column_count().max(1) as usize, view::card_height)
             .into_iter()
-            .map(|column| CardColumn { cards: model(column.iter().map(|n| Self::card(n, &now)).collect()) })
+            .map(|column| CardColumn { cards: model(column.iter().map(|n| Self::card(n, &local_now)).collect()) })
             .collect::<Vec<_>>();
         ui.set_note_count(shown as i32);
-        ui.set_searching(!query.trim().is_empty());
+        ui.set_searching(filters.has_active());
         ui.set_columns(model(columns));
+        ui.set_notice_ignored(if found.unknown.is_empty() {
+            SharedString::new()
+        } else {
+            format!("Ignored: {}", found.unknown.join(", ")).into()
+        });
+        ui.set_notice_fuzzy(if found.is_fuzzy {
+            format!("No exact match for “{}” — showing near matches", found.search_text).into()
+        } else {
+            SharedString::new()
+        });
+
+        // The sidebar: which row is what is on screen.
+        let current_view = query::active_smart_view(&filters);
+        let current_saved = query::current_saved(&saved, &filters).map(|f| f.name.clone());
+        ui.set_library_current(current_view.is_none() && current_saved.is_none());
+        ui.set_smart_views(model(
+            SMART_VIEWS
+                .iter()
+                .enumerate()
+                .map(|(i, v)| SidebarRow {
+                    label: v.label.into(),
+                    count: view_counts[i] as i32,
+                    current: current_view == Some(i),
+                })
+                .collect(),
+        ));
+        ui.set_saved_filters(model(
+            saved
+                .iter()
+                .map(|f| SidebarRow {
+                    label: f.name.as_str().into(),
+                    count: 0,
+                    current: current_saved.as_deref() == Some(f.name.as_str()),
+                })
+                .collect(),
+        ));
+
+        // The Filters sheet.
+        let days = LocalDays::at(now);
+        ui.set_filters_active(filters.has_active());
+        ui.set_filter_count(filters.sheet_count() as i32);
+        ui.set_filter_colors(model((0..palette::NOTE_COLORS.len()).map(|i| filters.colors.contains(&i)).collect()));
+        ui.set_filter_label_rows(model(chip_rows(labels.iter().map(|l| (l.clone(), filters.has_label(l))).collect())));
+        ui.set_filter_label_count(filters.label_names.len() as i32);
+        ui.set_filter_label_all(filters.label_match == LabelMatch::All);
+        ui.set_filter_flag_rows(model(chip_rows(
+            NoteFlag::ALL.iter().map(|f| (f.label().to_string(), filters.flags.contains(f))).collect(),
+        )));
+        ui.set_filter_date_fields(model(
+            DateField::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, f)| Choice { text: f.label().into(), on: filters.date_field == *f, index: i as i32 })
+                .collect(),
+        ));
+        let preset = DatePreset::of(filters.date_range, &days);
+        ui.set_filter_presets(model(
+            DatePreset::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, p)| Choice { text: p.label().into(), on: preset == Some(*p), index: i as i32 })
+                .collect(),
+        ));
     }
 
+    /// Puts `filters` on screen: the sidebar's view and the search box follow them.
+    fn set_filters(&self, filters: Filters) {
+        if let Some(ui) = self.ui() {
+            ui.set_view(view_of_scope(filters.scope));
+            if ui.get_query().as_str() != filters.search {
+                ui.set_query(filters.search.as_str().into());
+            }
+        }
+        self.state.borrow_mut().filters = filters;
+        self.refresh();
+    }
+
+    fn change_filters(&self, change: impl FnOnce(&mut Filters)) {
+        let mut filters = self.state.borrow().filters.clone();
+        change(&mut filters);
+        self.set_filters(filters);
+    }
+
+    /// Notes, Archive or Trash, keeping the other filters as the web app does; leaving a smart view leaves
+    /// its search behind too.
     pub fn select_view(&self, view: View) {
+        self.change_filters(|f| {
+            if query::active_smart_view(f).is_some() {
+                f.search.clear();
+            }
+            f.scope = scope_of(view);
+        });
+    }
+
+    pub fn search_edited(&self, text: &str) {
+        self.change_filters(|f| f.search = text.to_string());
+    }
+
+    /// A smart view is a destination, not a refinement: it replaces the other filters.
+    pub fn smart_view(&self, index: usize) {
+        let Some(view) = SMART_VIEWS.get(index) else { return };
+        self.change_filters(|f| *f = view.filters(f));
+    }
+
+    pub fn apply_saved(&self, name: &str) {
+        let saved = self.service.borrow().saved_filters().iter().find(|f| f.name == name).cloned();
+        if let Some(saved) = saved {
+            self.set_filters(saved.filters);
+        }
+    }
+
+    pub fn delete_saved(&self, name: &str) {
+        let deleted = self.service.borrow_mut().delete_saved_filter(name);
+        match deleted {
+            Ok(()) => self.show_toast(&format!("Deleted saved filter “{name}”"), None, None),
+            Err(message) => self.show_toast(&message, None, None),
+        }
+        self.refresh();
+    }
+
+    pub fn pick_preset(&self, index: usize) {
+        let Some(preset) = DatePreset::ALL.get(index).copied() else { return };
+        let range = preset.range(&LocalDays::at(now_millis()));
+        self.change_filters(|f| f.date_range = range);
+    }
+
+    pub fn clear_filters(&self) {
+        self.change_filters(|f| *f = f.cleared());
+    }
+
+    /// What saving under `name` will do, said before it is done.
+    pub fn filter_name_edited(&self, name: &str) {
         let Some(ui) = self.ui() else { return };
-        ui.set_view(view);
+        let service = self.service.borrow();
+        let saved = service.saved_filters();
+        let hint = match query::find_saved(saved, name) {
+            Some(existing) if !name.trim().is_empty() => {
+                format!("Replaces the filter already saved as “{}”", existing.name)
+            }
+            _ if saved.len() >= query::SAVED_FILTER_MAX => {
+                format!("{} saved already. Saving replaces the oldest.", saved.len())
+            }
+            _ => String::new(),
+        };
+        ui.set_filter_name_hint(hint.into());
+    }
+
+    pub fn save_filter(&self, name: &str) {
+        let Some(ui) = self.ui() else { return };
+        let filters = self.state.borrow().filters.clone();
+        let saved = self.service.borrow_mut().save_filter(name, &filters);
+        match saved {
+            Ok(()) => {
+                ui.set_naming(false);
+                ui.set_filter_name("".into());
+                self.show_toast(&format!("Saved “{}”", name.trim()), None, None);
+            }
+            Err(message) => self.show_toast(&message, None, None),
+        }
         self.refresh();
     }
 
@@ -292,10 +502,9 @@ impl Controller {
     pub fn new_note(&self) {
         self.save_now();
         let Some(ui) = self.ui() else { return };
-        if ui.get_view() != View::Notes {
+        if self.state.borrow().filters.scope != NoteScope::Active {
             // A new note lands in Notes, so show it there.
-            ui.set_view(View::Notes);
-            self.refresh();
+            self.change_filters(|f| f.scope = NoteScope::Active);
         }
         self.state.borrow_mut().editing = Some(Editing::default());
         self.show_editor(&ui, None);

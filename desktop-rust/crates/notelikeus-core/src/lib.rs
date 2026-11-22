@@ -12,6 +12,7 @@ pub mod conflict;
 pub mod crypto;
 pub mod model;
 pub mod palette;
+pub mod query;
 pub mod store;
 pub mod sync;
 

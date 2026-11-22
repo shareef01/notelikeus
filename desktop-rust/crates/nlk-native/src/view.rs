@@ -55,20 +55,26 @@ where
     }
 }
 
-/// Whether a note matches the search box: every word appears in the title, the body, a checklist item or
-/// a label, ignoring case.
-pub fn matches(note: &NoteView, query: &str) -> bool {
-    let mut haystack = format!("{}\n{}", note.title, note.content);
-    for item in &note.checklist {
-        haystack.push('\n');
-        haystack.push_str(&item.text);
+/// The Filters sheet's chip rows: how many chips go on each row, by an estimate of each chip's width in
+/// the sheet (Slint has no wrapping layout). Every chip goes somewhere, a very long one on its own row.
+pub fn wrap_chips(texts: &[&str]) -> Vec<std::ops::Range<usize>> {
+    const ROW_WIDTH: usize = 540;
+    const GAP: usize = 8;
+    let width = |text: &str| text.chars().count() * 15 / 2 + 42;
+    let mut rows = Vec::new();
+    let (mut start, mut used) = (0, 0);
+    for (index, text) in texts.iter().enumerate() {
+        let chip = width(text);
+        if index > start && used + GAP + chip > ROW_WIDTH {
+            rows.push(start..index);
+            (start, used) = (index, 0);
+        }
+        used += if index > start { GAP + chip } else { chip };
     }
-    for label in &note.labels {
-        haystack.push('\n');
-        haystack.push_str(label);
+    if start < texts.len() {
+        rows.push(start..texts.len());
     }
-    let haystack = haystack.to_lowercase();
-    query.split_whitespace().all(|word| haystack.contains(&word.to_lowercase()))
+    rows
 }
 
 /// A rough height for a card, in lines, for balancing the columns: the title's and the preview's
@@ -128,6 +134,19 @@ mod tests {
     }
 
     #[test]
+    fn checklists_and_labels_make_a_card_taller() {
+        let plain = note("Packing", "");
+        let mut list = plain.clone();
+        list.checklist = (0..10)
+            .map(|i| notelikeus_app::ChecklistItem { text: format!("item {i}"), is_checked: false, position: i })
+            .collect();
+        // Six items show, plus the "+ 4 more items" line.
+        assert_eq!(card_height(&list), card_height(&plain) + 7);
+        let labelled = NoteView { labels: vec!["Travel".into()], ..plain.clone() };
+        assert!(card_height(&labelled) > card_height(&plain));
+    }
+
+    #[test]
     fn previews_are_trimmed_and_cut_with_an_ellipsis() {
         assert_eq!(preview("\n\n  milk\neggs  \n"), "milk\neggs");
         let long = (1..=12).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
@@ -150,23 +169,25 @@ mod tests {
     }
 
     #[test]
-    fn search_needs_every_word_in_any_order_and_case() {
-        let groceries = note("Groceries", "Oat milk, eggs, sourdough");
-        assert!(matches(&groceries, ""));
-        assert!(matches(&groceries, "MILK groceries"));
-        assert!(matches(&groceries, "  eggs   oat "));
-        assert!(!matches(&groceries, "milk bread"));
-    }
-
-    #[test]
-    fn search_looks_in_checklist_items_and_labels() {
-        let mut list = note("Weekend", "");
-        list.checklist =
-            vec![notelikeus_app::ChecklistItem { text: "Call plumber".into(), is_checked: false, position: 0 }];
-        list.labels = vec!["Home".into()];
-        assert!(matches(&list, "plumber"));
-        assert!(matches(&list, "home weekend"));
-        assert!(!matches(&list, "office"));
+    fn chips_wrap_into_rows_that_fit_and_none_is_lost() {
+        let flags = [
+            "Pinned",
+            "Has reminder",
+            "Overdue",
+            "Has checklist",
+            "Unfinished items",
+            "Has links",
+            "Untitled",
+            "No labels",
+        ];
+        let rows = wrap_chips(&flags);
+        assert!(rows.len() >= 2, "eight chips do not fit one row");
+        assert_eq!(rows.first().map(|r| r.start), Some(0));
+        assert_eq!(rows.last().map(|r| r.end), Some(flags.len()));
+        assert!(rows.windows(2).all(|w| w[0].end == w[1].start), "rows are contiguous");
+        let long = "x".repeat(200);
+        assert_eq!(wrap_chips(&[&long, "a"]), vec![0..1, 1..2], "a chip wider than a row gets its own");
+        assert!(wrap_chips(&[]).is_empty());
     }
 
     #[test]

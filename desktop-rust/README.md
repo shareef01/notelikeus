@@ -47,8 +47,8 @@ logic (`crates/notelikeus-app`). The Tauri app stays as an earlier experiment.
 |---|---|---|
 | 1 | Foundation: web-app layout and theme, notes create / edit (autosave) / pin / delete with Undo / search | **Done** |
 | 2 | Note features: colours (the shared palette, `contracts/design/note-colors.json`), archive, trash with Restore / Delete forever / Empty trash, labels (note options and Edit labels), checklists | **Done** |
-| 3 | Search operators (`contracts/query/parser-vectors.json`), saved filters, smart views | Next |
-| 4 | Sign-in (emailed code, security check) and sync for everything above, conflict review | |
+| 3 | Search operators (`contracts/query/parser-vectors.json`), word-prefix matching with relevance and near matches, the Filters sheet, saved filters, smart views | **Done** |
+| 4 | Sign-in (emailed code, security check) and sync for everything above, conflict review | Next |
 | 5 | Images: staging, upload through the attachments Worker, thumbnails | |
 | 6 | Reminders: Windows notifications, tray | |
 | 7 | Backups: v3 JSON and v4 `.nlkbak` against `contracts/backup` | |

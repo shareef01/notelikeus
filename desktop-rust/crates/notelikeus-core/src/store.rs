@@ -66,6 +66,9 @@ pub struct LocalState {
     /// Defaulted, so state written before it existed still opens.
     #[serde(default)]
     pub label_registry: Vec<String>,
+    /// Filters the user named, newest first. Device-local like the other clients' copies; defaulted.
+    #[serde(default)]
+    pub saved_filters: Vec<crate::query::SavedFilter>,
 }
 
 #[derive(Serialize, Deserialize)]

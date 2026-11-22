@@ -57,6 +57,25 @@ export struct LabelChoice {
     on: bool,
 }
 
+/// One choice in the Filters sheet: a chip, on or off. `index` is what the callback reports.
+export struct Choice {
+    text: string,
+    on: bool,
+    index: int,
+}
+
+/// A row of chips, wrapped in Rust (Slint has no wrapping layout).
+export struct ChoiceRow {
+    items: [Choice],
+}
+
+/// A smart view or a saved filter in the sidebar.
+export struct SidebarRow {
+    label: string,
+    count: int,
+    current: bool,
+}
+
 // The note views, as the web app's sidebar.
 export enum View { notes, archive, trash }
 
@@ -67,9 +86,65 @@ component SectionLabel inherits Text {
     color: Theme.muted;
 }
 
+/// A chip that is on or off, as the web app's filter chips. Announced as a checkbox.
+component FilterChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> on;
+    callback clicked();
+    height: 32px;
+    width: chip-label.preferred-width + (root.on ? 42px : 26px);
+    border-radius: 16px;
+    background: root.on ? Theme.on-surface : (touch.has-hover ? Theme.hover : transparent);
+    border-width: root.on ? 0 : 1px;
+    border-color: Theme.outline;
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-checked: root.on;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    HorizontalLayout {
+        padding-left: 13px;
+        padding-right: 13px;
+        spacing: 4px;
+        if root.on: Icon {
+            y: (parent.height - self.height) / 2;
+            width: 14px;
+            height: 14px;
+            path: Icons.check;
+            color: Theme.background;
+        }
+        chip-label := Text {
+            text: root.text;
+            vertical-alignment: center;
+            font-size: 13px;
+            font-weight: 500;
+            color: root.on ? Theme.background : Theme.on-surface-secondary;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// One row of filter chips (rows are wrapped in Rust: Slint has no wrapping layout).
+component ChipRow inherits HorizontalLayout {
+    in property <[Choice]> items;
+    callback picked(Choice);
+    spacing: 8px;
+    alignment: start;
+    for choice in root.items: FilterChip {
+        text: choice.text;
+        on: choice.on;
+        clicked => { root.picked(choice); }
+    }
+}
+
 /// A rounded text button. `strong` is the filled, primary look.
 component PillButton inherits Rectangle {
     in property <string> text;
+    /// What a screen reader announces, when it should differ from what is shown.
+    in property <string> label: root.text;
     in property <bool> strong: false;
     in property <bool> danger: false;
     in property <bool> enabled: true;
@@ -82,7 +157,7 @@ component PillButton inherits Rectangle {
     border-width: strong ? 0 : 1px;
     border-color: Theme.outline;
     accessible-role: button;
-    accessible-label: text;
+    accessible-label: root.label;
     accessible-enabled: enabled;
     accessible-action-default => { if (root.enabled) { root.clicked(); } }
     label := Text {
@@ -288,10 +363,17 @@ component Card inherits Rectangle {
 
 component Sidebar inherits Rectangle {
     in property <View> view;
+    /// False while a smart view or a saved filter is what is on screen: then that row is current.
+    in property <bool> library-current: true;
     in property <int> count-notes;
     in property <int> count-archive;
     in property <int> count-trash;
+    in property <[SidebarRow]> views;
+    in property <[SidebarRow]> saved;
     callback view-selected(View);
+    callback smart-view(int);
+    callback saved-applied(string);
+    callback saved-deleted(string);
     callback edit-labels();
     width: Theme.sidebar-width;
     background: Theme.surface;
@@ -328,46 +410,84 @@ component Sidebar inherits Rectangle {
         }
         Rectangle { height: 1px; background: Theme.outline; }
 
-        VerticalLayout {
-            padding: 12px;
-            padding-top: 20px;
-            spacing: 4px;
-            vertical-stretch: 0;
-            alignment: start;
-            HorizontalLayout { padding-left: 12px; SectionLabel { text: "LIBRARY"; } }
-            Rectangle { height: 6px; }
-            NavItem {
-                icon: Icons.notes;
-                label: "Notes";
-                count: root.count-notes;
-                selected: root.view == View.notes;
-                clicked => { root.view-selected(View.notes); }
-            }
-            NavItem {
-                icon: Icons.archive;
-                label: "Archive";
-                count: root.count-archive;
-                selected: root.view == View.archive;
-                clicked => { root.view-selected(View.archive); }
-            }
-            NavItem {
-                icon: Icons.trash;
-                label: "Trash";
-                count: root.count-trash;
-                selected: root.view == View.trash;
-                clicked => { root.view-selected(View.trash); }
-            }
-            Rectangle { height: 20px; }
-            HorizontalLayout { padding-left: 12px; SectionLabel { text: "MANAGE"; } }
-            Rectangle { height: 6px; }
-            NavItem {
-                icon: Icons.label;
-                label: "Edit labels";
-                clicked => { root.edit-labels(); }
+        // Scrolls when many saved filters make it taller than the window.
+        nav-scroll := Flickable {
+            vertical-stretch: 1;
+            content-height: nav.preferred-height;
+            nav := VerticalLayout {
+                width: nav-scroll.width;
+                padding: 12px;
+                padding-top: 20px;
+                spacing: 4px;
+                alignment: start;
+                HorizontalLayout { padding-left: 12px; SectionLabel { text: "LIBRARY"; } }
+                Rectangle { height: 6px; }
+                NavItem {
+                    icon: Icons.notes;
+                    label: "Notes";
+                    count: root.count-notes;
+                    selected: root.library-current && root.view == View.notes;
+                    clicked => { root.view-selected(View.notes); }
+                }
+                NavItem {
+                    icon: Icons.archive;
+                    label: "Archive";
+                    count: root.count-archive;
+                    selected: root.library-current && root.view == View.archive;
+                    clicked => { root.view-selected(View.archive); }
+                }
+                NavItem {
+                    icon: Icons.trash;
+                    label: "Trash";
+                    count: root.count-trash;
+                    selected: root.library-current && root.view == View.trash;
+                    clicked => { root.view-selected(View.trash); }
+                }
+
+                // Smart views, as the web app's "Views": each is a search, typed into the box when chosen.
+                Rectangle { height: 20px; }
+                HorizontalLayout { padding-left: 12px; SectionLabel { text: "VIEWS"; } }
+                Rectangle { height: 6px; }
+                for row[index] in root.views: NavItem {
+                    icon: index == 0 ? Icons.notification : index == 1 ? Icons.checklist : Icons.label;
+                    label: row.label;
+                    count: row.count;
+                    selected: row.current;
+                    clicked => { root.smart-view(index); }
+                }
+
+                // Only when there are any, as the web app: an empty heading would show a hole.
+                if root.saved.length > 0: Rectangle { height: 20px; }
+                if root.saved.length > 0: HorizontalLayout { padding-left: 12px; SectionLabel { text: "SAVED"; } }
+                if root.saved.length > 0: Rectangle { height: 6px; }
+                for row in root.saved: HorizontalLayout {
+                    spacing: 2px;
+                    NavItem {
+                        horizontal-stretch: 1;
+                        icon: Icons.bookmark;
+                        label: row.label;
+                        selected: row.current;
+                        clicked => { root.saved-applied(row.label); }
+                    }
+                    IconButton {
+                        y: (parent.height - self.height) / 2;
+                        size: 32px;
+                        icon: Icons.close;
+                        label: "Delete saved filter " + row.label;
+                        clicked => { root.saved-deleted(row.label); }
+                    }
+                }
+
+                Rectangle { height: 20px; }
+                HorizontalLayout { padding-left: 12px; SectionLabel { text: "MANAGE"; } }
+                Rectangle { height: 6px; }
+                NavItem {
+                    icon: Icons.label;
+                    label: "Edit labels";
+                    clicked => { root.edit-labels(); }
+                }
             }
         }
-
-        Rectangle { vertical-stretch: 1; }
 
         HorizontalLayout {
             padding-left: 24px;
@@ -834,6 +954,28 @@ export component AppWindow inherits Window {
     in property <bool> searching;
     in-out property <string> query;
 
+    // Smart views and saved filters in the sidebar; under the search box, what the search could not use.
+    in property <bool> library-current: true;
+    in property <[SidebarRow]> smart-views;
+    in property <[SidebarRow]> saved-filters;
+    in property <string> notice-ignored;
+    in property <string> notice-fuzzy;
+
+    // The Filters sheet.
+    in-out property <bool> filters-open;
+    in property <bool> filters-active;
+    in property <int> filter-count;
+    in property <[bool]> filter-colors;
+    in property <[ChoiceRow]> filter-label-rows;
+    in property <int> filter-label-count;
+    in property <bool> filter-label-all;
+    in property <[ChoiceRow]> filter-flag-rows;
+    in property <[Choice]> filter-date-fields;
+    in property <[Choice]> filter-presets;
+    in-out property <bool> naming;
+    in-out property <string> filter-name;
+    in property <string> filter-name-hint;
+
     // The editor.
     in-out property <bool> editor-open;
     in property <View> editor-mode;
@@ -878,6 +1020,18 @@ export component AppWindow inherits Window {
     callback columns-changed(int);
     callback view-selected(View);
     callback query-edited(string);
+    callback smart-view-picked(int);
+    callback saved-applied(string);
+    callback saved-deleted(string);
+    callback filter-color-toggled(int);
+    callback filter-label-toggled(string);
+    callback filter-label-match-toggled();
+    callback filter-flag-toggled(int);
+    callback filter-date-field-picked(int);
+    callback filter-preset-picked(int);
+    callback filters-cleared();
+    callback filter-name-edited(string);
+    callback filter-saved(string);
     callback new-note();
     callback open-note(string);
     callback editor-edited();
@@ -939,6 +1093,10 @@ export component AppWindow inherits Window {
                     root.options-open = false;
                 } else if (root.labels-open) {
                     root.labels-open = false;
+                } else if (root.naming) {
+                    root.naming = false;
+                } else if (root.filters-open) {
+                    root.filters-open = false;
                 } else if (root.editor-open) {
                     root.close-editor();
                 }
@@ -950,10 +1108,16 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             Sidebar {
                 view: root.view;
+                library-current: root.library-current;
                 count-notes: root.count-notes;
                 count-archive: root.count-archive;
                 count-trash: root.count-trash;
+                views: root.smart-views;
+                saved: root.saved-filters;
                 view-selected(view) => { root.view-selected(view); }
+                smart-view(index) => { root.smart-view-picked(index); }
+                saved-applied(name) => { root.saved-applied(name); }
+                saved-deleted(name) => { root.saved-deleted(name); }
                 edit-labels => { root.open-labels(); }
             }
 
@@ -978,6 +1142,52 @@ export component AppWindow inherits Window {
                         filled: true;
                         size: 44px;
                         clicked => { root.new-note(); }
+                    }
+                }
+
+                // The filter row: the sheet's button with how many choices it holds, and a way out.
+                HorizontalLayout {
+                    padding-left: 24px;
+                    padding-right: 24px;
+                    padding-bottom: 12px;
+                    spacing: 8px;
+                    alignment: start;
+                    PillButton {
+                        text: root.filter-count > 0 ? "Filters · " + root.filter-count : "Filters";
+                        label: "Filters";
+                        clicked => { root.filters-open = true; }
+                    }
+                    if root.filters-active: PillButton {
+                        text: "Clear filters";
+                        clicked => { root.filters-cleared(); }
+                    }
+                }
+
+                // What the search could not use, and near matches, said rather than left to look like a match.
+                if root.notice-ignored != "": HorizontalLayout {
+                    padding-left: 28px;
+                    padding-right: 24px;
+                    padding-bottom: 8px;
+                    Text {
+                        text: root.notice-ignored;
+                        font-size: 13px;
+                        color: Theme.muted;
+                        wrap: word-wrap;
+                        accessible-role: text;
+                        accessible-label: self.text;
+                    }
+                }
+                if root.notice-fuzzy != "" && root.note-count > 0: HorizontalLayout {
+                    padding-left: 28px;
+                    padding-right: 24px;
+                    padding-bottom: 8px;
+                    Text {
+                        text: root.notice-fuzzy;
+                        font-size: 13px;
+                        color: Theme.muted;
+                        wrap: word-wrap;
+                        accessible-role: text;
+                        accessible-label: self.text;
                     }
                 }
 
@@ -1045,7 +1255,7 @@ export component AppWindow inherits Window {
                             color: Theme.on-surface;
                         }
                         Text {
-                            text: root.searching ? "Try other words."
+                            text: root.searching ? "Try other words, or clear the filters."
                                 : root.view == View.archive ? "Notes you archive appear here."
                                 : root.view == View.trash ? "Notes you move to the trash appear here."
                                 : "Press Ctrl+N, or the + button, to write one.";
@@ -1098,6 +1308,285 @@ export component AppWindow inherits Window {
                         self.focus-title();
                     } else {
                         self.focus();
+                    }
+                }
+            }
+        }
+
+        // Filters, as the web app's sheet: every choice applies at once, the grid behind is the preview, and
+        // the button at the foot says how many notes it holds.
+        if root.filters-open: Rectangle {
+            background: Theme.scrim;
+            TouchArea { clicked => { root.filters-open = false; } }
+            filters-card := Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: 40px;
+                width: min(600px, parent.width - 48px);
+                height: parent.height - 80px;
+                border-radius: Theme.radius-sheet;
+                background: Theme.surface;
+                border-width: 1px;
+                border-color: Theme.outline;
+                drop-shadow-blur: 32px;
+                drop-shadow-color: #00000066;
+                accessible-role: groupbox;
+                accessible-label: "Filters";
+                TouchArea { }
+                VerticalLayout {
+                    HorizontalLayout {
+                        padding: 16px;
+                        padding-left: 24px;
+                        spacing: 10px;
+                        Icon {
+                            y: (parent.height - self.height) / 2;
+                            path: Icons.filter;
+                        }
+                        Text {
+                            text: "Filters";
+                            vertical-alignment: center;
+                            font-size: 18px;
+                            font-weight: 700;
+                            color: Theme.on-surface;
+                            horizontal-stretch: 1;
+                        }
+                        IconButton {
+                            icon: Icons.close;
+                            label: "Close filters";
+                            clicked => { root.filters-open = false; }
+                        }
+                    }
+                    Rectangle { height: 1px; background: Theme.outline; }
+
+                    filters-scroll := Flickable {
+                        vertical-stretch: 1;
+                        content-height: filters-body.preferred-height;
+                        filters-body := VerticalLayout {
+                            width: filters-scroll.width;
+                            padding: 24px;
+                            padding-top: 16px;
+                            spacing: 12px;
+                            alignment: start;
+
+                            SectionLabel { text: "WHERE"; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                FilterChip { text: "Notes"; on: root.view == View.notes; clicked => { root.view-selected(View.notes); } }
+                                FilterChip { text: "Archive"; on: root.view == View.archive; clicked => { root.view-selected(View.archive); } }
+                                FilterChip { text: "Trash"; on: root.view == View.trash; clicked => { root.view-selected(View.trash); } }
+                            }
+
+                            Rectangle { height: 1px; background: Theme.outline; }
+                            SectionLabel { text: "COLORS"; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                for swatch[index] in root.swatches: Rectangle {
+                                    property <bool> on: root.filter-colors[index];
+                                    width: 34px;
+                                    height: 34px;
+                                    border-radius: 17px;
+                                    background: swatch.none ? transparent : (Theme.dark ? swatch.dark : swatch.light);
+                                    border-width: self.on ? 2px : 1px;
+                                    border-color: self.on ? Theme.on-surface : Theme.outline;
+                                    accessible-role: checkbox;
+                                    accessible-checkable: true;
+                                    accessible-checked: self.on;
+                                    accessible-label: swatch.name;
+                                    accessible-action-default => { root.filter-color-toggled(index); }
+                                    if swatch.none && !root.filter-colors[index]: Path {
+                                        width: 20px;
+                                        height: 20px;
+                                        viewbox-width: 24;
+                                        viewbox-height: 24;
+                                        commands: "M5 19 L19 5";
+                                        stroke: Theme.muted;
+                                        stroke-width: 2px;
+                                    }
+                                    if root.filter-colors[index]: Icon {
+                                        width: 16px;
+                                        height: 16px;
+                                        path: Icons.check;
+                                        color: Theme.on-surface;
+                                    }
+                                    TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.filter-color-toggled(index); }
+                                    }
+                                }
+                            }
+
+                            if root.filter-label-rows.length > 0: Rectangle { height: 1px; background: Theme.outline; }
+                            if root.filter-label-rows.length > 0: HorizontalLayout {
+                                spacing: 8px;
+                                SectionLabel {
+                                    text: "LABELS";
+                                    vertical-alignment: center;
+                                    horizontal-stretch: 1;
+                                }
+                                // Any or all only means something once two labels are chosen.
+                                if root.filter-label-count > 1: FilterChip {
+                                    text: root.filter-label-all ? "All of these" : "Any of these";
+                                    on: root.filter-label-all;
+                                    clicked => { root.filter-label-match-toggled(); }
+                                }
+                            }
+                            if root.filter-label-rows.length > 0: VerticalLayout {
+                                spacing: 8px;
+                                for row in root.filter-label-rows: ChipRow {
+                                    items: row.items;
+                                    picked(choice) => { root.filter-label-toggled(choice.text); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: Theme.outline; }
+                            SectionLabel { text: "STATUS"; }
+                            VerticalLayout {
+                                spacing: 8px;
+                                for row in root.filter-flag-rows: ChipRow {
+                                    items: row.items;
+                                    picked(choice) => { root.filter-flag-toggled(choice.index); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: Theme.outline; }
+                            SectionLabel { text: "DATE"; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                for choice in root.filter-date-fields: FilterChip {
+                                    text: choice.text;
+                                    on: choice.on;
+                                    clicked => { root.filter-date-field-picked(choice.index); }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                for choice in root.filter-presets: FilterChip {
+                                    text: choice.text;
+                                    on: choice.on;
+                                    clicked => { root.filter-preset-picked(choice.index); }
+                                }
+                            }
+
+                            // Saved filters live here as well as in the sidebar: this is where they are made.
+                            if root.saved-filters.length > 0: Rectangle { height: 1px; background: Theme.outline; }
+                            if root.saved-filters.length > 0: SectionLabel { text: "SAVED"; }
+                            for row in root.saved-filters: HorizontalLayout {
+                                spacing: 4px;
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                    height: 40px;
+                                    border-radius: Theme.radius-md;
+                                    background: row.current ? Theme.surface-variant : (saved-touch.has-hover ? Theme.hover : transparent);
+                                    accessible-role: button;
+                                    accessible-label: row.label;
+                                    accessible-action-default => { root.saved-applied(row.label); }
+                                    HorizontalLayout {
+                                        padding-left: 12px;
+                                        spacing: 12px;
+                                        Icon {
+                                            y: (parent.height - self.height) / 2;
+                                            width: 18px;
+                                            height: 18px;
+                                            path: Icons.bookmark;
+                                            color: Theme.muted;
+                                        }
+                                        Text {
+                                            text: row.label;
+                                            vertical-alignment: center;
+                                            font-size: 14px;
+                                            font-weight: row.current ? 600 : 400;
+                                            color: Theme.on-surface;
+                                            horizontal-stretch: 1;
+                                        }
+                                    }
+                                    saved-touch := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.saved-applied(row.label); }
+                                    }
+                                }
+                                IconButton {
+                                    y: (parent.height - self.height) / 2;
+                                    size: 32px;
+                                    icon: Icons.close;
+                                    label: "Delete saved filter " + row.label;
+                                    clicked => { root.saved-deleted(row.label); }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Theme.outline; }
+                    // Naming a filter takes the footer's place, so the field and Save are always in view.
+                    if root.naming: VerticalLayout {
+                        padding: 16px;
+                        padding-left: 24px;
+                        padding-right: 24px;
+                        spacing: 8px;
+                        Text {
+                            text: "Name this filter";
+                            font-size: 14px;
+                            font-weight: 600;
+                            color: Theme.on-surface;
+                        }
+                        Field {
+                            text <=> root.filter-name;
+                            placeholder: "e.g. Invoices this month";
+                            label: "Filter name";
+                            edited => { root.filter-name-edited(self.text); }
+                            accepted => { root.filter-saved(root.filter-name); }
+                            init => { self.focus-field(); }
+                        }
+                        if root.filter-name-hint != "": Text {
+                            text: root.filter-name-hint;
+                            font-size: 12px;
+                            color: Theme.muted;
+                            wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: end;
+                            PillButton {
+                                text: "Cancel";
+                                clicked => { root.naming = false; }
+                            }
+                            // An unnamed filter is not saveable: a Save that does nothing is worse.
+                            PillButton {
+                                text: "Save";
+                                strong: true;
+                                enabled: root.filter-name != "";
+                                clicked => { root.filter-saved(root.filter-name); }
+                            }
+                        }
+                    }
+                    if !root.naming: HorizontalLayout {
+                        padding: 16px;
+                        padding-left: 24px;
+                        padding-right: 24px;
+                        spacing: 8px;
+                        // Nothing to save when nothing narrows: an unfiltered list is not a filter.
+                        PillButton {
+                            text: "Save these filters";
+                            enabled: root.filters-active;
+                            clicked => {
+                                root.filter-name = "";
+                                root.filter-name-edited("");
+                                root.naming = true;
+                            }
+                        }
+                        PillButton {
+                            text: "Clear all";
+                            enabled: root.filters-active;
+                            clicked => { root.filters-cleared(); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        PillButton {
+                            text: root.note-count == 1 ? "Show 1 note" : "Show " + root.note-count + " notes";
+                            strong: true;
+                            clicked => { root.filters-open = false; }
+                        }
                     }
                 }
             }

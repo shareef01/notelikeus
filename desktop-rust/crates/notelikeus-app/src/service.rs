@@ -12,6 +12,9 @@ use notelikeus_core::auth::{AuthClient, AuthError};
 use notelikeus_core::crypto::KeyProtector;
 use notelikeus_core::http::SupabaseTransport;
 use notelikeus_core::model::{ChecklistItem, Note};
+use notelikeus_core::query::{self, Filters, NoteScope, SavedFilter};
+
+use crate::clock::LocalDays;
 use notelikeus_core::store::{LocalState, Session, SessionVault, Store, TombstoneOrigin};
 use notelikeus_core::sync::{self, IdSource, SyncError, TransportError};
 use serde::Serialize;
@@ -70,6 +73,17 @@ pub struct NoteView {
     pub labels: Vec<String>,
     /// A note is text or a checklist: when this is non-empty, `content` is empty.
     pub checklist: Vec<ChecklistItem>,
+}
+
+/// What a search shows: the notes, whether they are near misses, and what the box could not use.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SearchView {
+    pub notes: Vec<NoteView>,
+    pub is_fuzzy: bool,
+    pub search_text: String,
+    pub unknown: Vec<String>,
+    /// The scope searched, which `in:all` or `is:archived` typed in the box may have changed.
+    pub scope: NoteScope,
 }
 
 /// Which notes a view shows, as the web app's sidebar: Notes, Archive and Trash.
@@ -266,6 +280,54 @@ impl NotesService {
             pin.then(b.timestamp.cmp(&a.timestamp)).then(b.id.cmp(&a.id))
         });
         notes.into_iter().map(|n| self.view(n)).collect()
+    }
+
+    /// Every note in the order a list shows them before any search ranks them: active pinned notes
+    /// first, then most recently edited.
+    fn in_list_order(&self) -> Vec<&Note> {
+        let mut notes: Vec<&Note> = self.state.notes.values().collect();
+        let leads = |n: &Note| n.is_pinned && !n.is_archived && !n.is_trashed;
+        notes.sort_by(|a, b| leads(b).cmp(&leads(a)).then(b.timestamp.cmp(&a.timestamp)).then(b.id.cmp(&a.id)));
+        notes
+    }
+
+    /// The notes `filters` picks out, search box operators included, as of `now` (epoch millis).
+    pub fn search(&self, filters: &Filters, now: i64) -> SearchView {
+        let labels = self.label_names();
+        let outcome = query::search(self.in_list_order(), filters, &labels, now, &LocalDays::at(now));
+        SearchView {
+            notes: outcome.notes.iter().map(|n| self.view(n)).collect(),
+            is_fuzzy: outcome.is_fuzzy,
+            search_text: outcome.search_text,
+            unknown: outcome.unknown,
+            scope: outcome.scope,
+        }
+    }
+
+    /// Active notes in each smart view (Reminders, Unfinished, Unlabelled).
+    pub fn smart_view_counts(&self, now: i64) -> [usize; 3] {
+        query::smart_view_counts(self.state.notes.values(), now)
+    }
+
+    /// Saved filters, newest first.
+    pub fn saved_filters(&self) -> &[SavedFilter] {
+        &self.state.saved_filters
+    }
+
+    /// Saves `filters` under `name`, replacing a filter of the same name (ignoring case).
+    pub fn save_filter(&mut self, name: &str, filters: &Filters) -> Result<(), String> {
+        if name.trim().is_empty() {
+            return Err("A saved filter needs a name.".into());
+        }
+        let before = self.state.clone();
+        self.state.saved_filters = query::with_saved(&self.state.saved_filters, name, filters);
+        self.commit(before)
+    }
+
+    pub fn delete_saved_filter(&mut self, name: &str) -> Result<(), String> {
+        let before = self.state.clone();
+        self.state.saved_filters = query::without_saved(&self.state.saved_filters, name);
+        self.commit(before)
     }
 
     pub fn counts(&self) -> ScopeCounts {
@@ -732,6 +794,40 @@ mod tests {
 
     fn open(dir: &Path) -> NotesService {
         open_with(dir, None, Box::new(TestIds(1_000)))
+    }
+
+    #[test]
+    fn search_uses_operators_and_saved_filters_survive_a_restart() {
+        let dir = root("search");
+        let mut service = open(&dir);
+        let work = service.create("Quarterly report", "slides").unwrap();
+        service.set_note_label(&work.id, "Work", true).unwrap();
+        let list = service.create("Packing", "passport\ncharger").unwrap();
+        service.convert_to_checklist(&list.id).unwrap();
+        let old = service.create("Receipts", "scanned").unwrap();
+        service.set_archived(&old.id, true).unwrap();
+
+        let ids = |view: SearchView| view.notes.into_iter().map(|n| n.title).collect::<Vec<_>>();
+        let now = 2_000_000_000_000;
+        let typed = |text: &str| Filters { search: text.into(), ..Filters::default() };
+        assert_eq!(ids(service.search(&typed("label:work"), now)), ["Quarterly report"]);
+        assert_eq!(ids(service.search(&typed("has:unchecked"), now)), ["Packing"]);
+        let archived = service.search(&typed("is:archived"), now);
+        assert_eq!(archived.scope, NoteScope::Archive);
+        assert_eq!(ids(archived), ["Receipts"]);
+        assert_eq!(service.search(&typed("in:all"), now).notes.len(), 3);
+        assert_eq!(service.smart_view_counts(now), [0, 1, 1], "reminders, unfinished, unlabelled (active only)");
+
+        let filters = typed("label:work");
+        service.save_filter("Work stuff", &filters).unwrap();
+        assert!(service.save_filter("  ", &filters).is_err());
+        drop(service);
+        let mut service = open(&dir);
+        assert_eq!(service.saved_filters().len(), 1);
+        assert_eq!(service.saved_filters()[0].filters.search, "label:work");
+        service.delete_saved_filter("Work stuff").unwrap();
+        assert!(service.saved_filters().is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
