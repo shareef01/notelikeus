@@ -123,7 +123,8 @@ fn import_bundle(service: &mut NotesService, path: &Path) -> Result<BackupImport
     for index in 0..archive.len() {
         let entry =
             archive.by_index(index).map_err(|error| format!("Backup bundle isn't a valid ZIP file: {error}"))?;
-        let name = entry.name().to_string();
+        let name =
+            entry.name().map_err(|error| format!("Backup bundle has an invalid ZIP entry name: {error}"))?.into_owned();
         if !names.insert(name.clone()) {
             return Err(format!("Backup bundle has a duplicate ZIP entry: {name}"));
         }

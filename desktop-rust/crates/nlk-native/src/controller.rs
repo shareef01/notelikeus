@@ -1045,12 +1045,12 @@ impl Controller {
 
     fn show_reminder_notification(&self) {
         #[cfg(windows)]
-        if let Some(ui) = self.ui() {
-            if let Some(hwnd) = crate::win_notify::show_for_window(&ui) {
-                self.notification_timer.start(TimerMode::SingleShot, Duration::from_secs(20), move || {
-                    crate::win_notify::remove(hwnd);
-                });
-            }
+        if let Some(ui) = self.ui()
+            && let Some(hwnd) = crate::win_notify::show_for_window(&ui)
+        {
+            self.notification_timer.start(TimerMode::SingleShot, Duration::from_secs(20), move || {
+                crate::win_notify::remove(hwnd);
+            });
         }
     }
 

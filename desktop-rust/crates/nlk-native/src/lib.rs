@@ -7,8 +7,8 @@ slint::include_modules!();
 pub mod backup;
 pub mod controller;
 pub mod images;
-pub mod view;
 mod settings;
+pub mod view;
 #[cfg(windows)]
 mod win_notify;
 
