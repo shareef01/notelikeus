@@ -69,6 +69,12 @@ export struct ChoiceRow {
     items: [Choice],
 }
 
+/// One line of a version under conflict review; `changed` when the other version has no such line.
+export struct ReviewRow {
+    text: string,
+    changed: bool,
+}
+
 /// A smart view or a saved filter in the sidebar.
 export struct SidebarRow {
     label: string,
@@ -137,6 +143,58 @@ component ChipRow inherits HorizontalLayout {
         text: choice.text;
         on: choice.on;
         clicked => { root.picked(choice); }
+    }
+}
+
+/// One version in the conflict review: when it was edited, its title, and its lines, those only in this
+/// version highlighted (and said so to a screen reader).
+component ReviewVersion inherits Rectangle {
+    in property <string> heading;
+    in property <string> edited;
+    in property <string> note-title;
+    in property <[ReviewRow]> lines;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.outline;
+    accessible-role: groupbox;
+    accessible-label: root.heading;
+    VerticalLayout {
+        padding: 14px;
+        spacing: 4px;
+        alignment: start;
+        Text {
+            text: root.heading;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.9px;
+            color: Theme.on-surface-secondary;
+        }
+        Text { text: root.edited; font-size: 12px; color: Theme.muted; }
+        if root.note-title != "": Text {
+            text: root.note-title;
+            font-size: 15px;
+            font-weight: 600;
+            color: Theme.on-surface;
+            wrap: word-wrap;
+        }
+        if root.lines.length == 0: Text { text: "(empty)"; font-size: 14px; color: Theme.muted; }
+        for line in root.lines: Rectangle {
+            border-radius: 4px;
+            background: line.changed ? #f59e0b.transparentize(0.8) : transparent;
+            accessible-role: text;
+            accessible-label: line.text + (line.changed ? " (only in this version)" : "");
+            HorizontalLayout {
+                padding-left: 4px;
+                padding-right: 4px;
+                Text {
+                    text: line.text == "" ? " " : line.text;
+                    font-size: 14px;
+                    font-weight: line.changed ? 500 : 400;
+                    color: Theme.on-surface;
+                    wrap: word-wrap;
+                }
+            }
+        }
     }
 }
 
@@ -370,6 +428,16 @@ component Sidebar inherits Rectangle {
     in property <int> count-trash;
     in property <[SidebarRow]> views;
     in property <[SidebarRow]> saved;
+    // The account area: 0 no sync in this build, 1 guest, 2 signed in.
+    in property <int> account-mode;
+    in property <string> account-email;
+    in property <string> account-initial;
+    in property <string> account-status;
+    in property <bool> account-problem;
+    in property <bool> syncing;
+    callback sign-in();
+    callback sync();
+    callback sign-out();
     callback view-selected(View);
     callback smart-view(int);
     callback saved-applied(string);
@@ -489,14 +557,92 @@ component Sidebar inherits Rectangle {
             }
         }
 
-        HorizontalLayout {
+        // The account: who is signed in and how sync is going, or a way to sign in.
+        Rectangle { height: 1px; background: Theme.outline; }
+        if root.account-mode == 0: HorizontalLayout {
+            padding: 16px;
             padding-left: 24px;
             Text {
-                text: "Rust · guest";
-                font-size: 11px;
-                font-weight: 600;
-                letter-spacing: 0.8px;
+                text: "Notes stay on this device";
+                font-size: 12px;
                 color: Theme.muted;
+                wrap: word-wrap;
+            }
+        }
+        if root.account-mode == 1: VerticalLayout {
+            padding: 16px;
+            padding-left: 20px;
+            padding-right: 20px;
+            spacing: 10px;
+            Text {
+                text: "Your notes are on this device. Sign in to sync them with your other devices.";
+                font-size: 12px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: start;
+                PillButton {
+                    text: "Sign in";
+                    strong: true;
+                    clicked => { root.sign-in(); }
+                }
+            }
+        }
+        if root.account-mode == 2: VerticalLayout {
+            padding: 14px;
+            padding-left: 16px;
+            padding-right: 16px;
+            spacing: 10px;
+            HorizontalLayout {
+                spacing: 10px;
+                Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    width: 34px;
+                    height: 34px;
+                    border-radius: 17px;
+                    background: Theme.surface-variant;
+                    Text {
+                        text: root.account-initial;
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: Theme.on-surface;
+                    }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+                    Text {
+                        text: root.account-email;
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: Theme.on-surface;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: root.account-status;
+                        font-size: 12px;
+                        color: root.account-problem ? Theme.danger : Theme.muted;
+                        wrap: word-wrap;
+                        accessible-role: text;
+                        accessible-label: "Sync status: " + root.account-status;
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                PillButton {
+                    text: root.syncing ? "Syncing…" : "Sync now";
+                    label: "Sync now";
+                    enabled: !root.syncing;
+                    clicked => { root.sync(); }
+                }
+                PillButton {
+                    text: "Sign out";
+                    clicked => { root.sign-out(); }
+                }
             }
         }
     }
@@ -653,6 +799,8 @@ component EditorSheet inherits Rectangle {
     in property <[string]> labels;
     in property <bool> is-checklist;
     in property <[EditRow]> rows;
+    in property <bool> conflict;
+    callback compare();
     callback edited();
     callback close();
     callback toggle-pin();
@@ -736,6 +884,33 @@ component EditorSheet inherits Rectangle {
                 text: "This note is in the trash. Restore it to edit.";
                 font-size: 13px;
                 color: Theme.on-surface;
+            }
+        }
+
+        // As the web app's: a copy kept from a sync conflict says so, and offers the comparison.
+        if root.conflict && !root.read-only: Rectangle {
+            background: #f59e0b.transparentize(0.86);
+            HorizontalLayout {
+                padding: 10px;
+                padding-left: 40px;
+                padding-right: 40px;
+                spacing: 12px;
+                Text {
+                    text: "This note was kept from a sync conflict so neither version was lost.";
+                    vertical-alignment: center;
+                    font-size: 13px;
+                    color: Theme.on-surface;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                    accessible-role: text;
+                    accessible-label: self.text;
+                }
+                PillButton {
+                    y: (parent.height - self.height) / 2;
+                    text: "Compare versions";
+                    label: "Compare with the current note";
+                    clicked => { root.compare(); }
+                }
             }
         }
 
@@ -961,6 +1136,35 @@ export component AppWindow inherits Window {
     in property <string> notice-ignored;
     in property <string> notice-fuzzy;
 
+    // The account and sync (see Sidebar for account-mode).
+    in property <int> account-mode;
+    in property <string> account-email;
+    in property <string> account-initial;
+    in property <string> account-status;
+    in property <bool> account-problem;
+    in property <bool> syncing;
+
+    // Signing in: step 0 email, 1 the browser's security check, 2 the code.
+    in-out property <bool> signin-open;
+    in property <int> signin-step;
+    in-out property <string> signin-email;
+    in-out property <string> signin-code;
+    in property <string> signin-error;
+    in property <string> signin-notice;
+    in property <bool> signin-busy;
+    in property <int> signin-resend-in;
+
+    // A copy kept from a sync conflict, beside the note it was split from.
+    in property <bool> editor-conflict;
+    in-out property <bool> review-open;
+    in property <bool> review-has-original;
+    in property <string> review-original-title;
+    in property <string> review-original-edited;
+    in property <[ReviewRow]> review-original-lines;
+    in property <string> review-copy-title;
+    in property <string> review-copy-edited;
+    in property <[ReviewRow]> review-copy-lines;
+
     // The Filters sheet.
     in-out property <bool> filters-open;
     in property <bool> filters-active;
@@ -1032,6 +1236,22 @@ export component AppWindow inherits Window {
     callback filters-cleared();
     callback filter-name-edited(string);
     callback filter-saved(string);
+    callback sync-requested();
+    callback sign-out-requested();
+    callback signin-opened();
+    callback signin-send();
+    callback signin-resend();
+    callback signin-verify();
+    callback signin-change-email();
+    callback signin-cancelled();
+    callback review-opened();
+    callback review-keep-original();
+    callback review-keep-copy();
+    callback review-keep-both();
+    // Raised by Rust: timers and the worker thread.
+    callback sync-due();
+    callback resend-tick();
+    callback background-done();
     callback new-note();
     callback open-note(string);
     callback editor-edited();
@@ -1089,6 +1309,10 @@ export component AppWindow inherits Window {
             if (event.text == Key.Escape) {
                 if (root.confirm-title != "") {
                     root.confirm-cancelled();
+                } else if (root.review-open) {
+                    root.review-open = false;
+                } else if (root.signin-open) {
+                    root.signin-cancelled();
                 } else if (root.options-open) {
                     root.options-open = false;
                 } else if (root.labels-open) {
@@ -1114,6 +1338,15 @@ export component AppWindow inherits Window {
                 count-trash: root.count-trash;
                 views: root.smart-views;
                 saved: root.saved-filters;
+                account-mode: root.account-mode;
+                account-email: root.account-email;
+                account-initial: root.account-initial;
+                account-status: root.account-status;
+                account-problem: root.account-problem;
+                syncing: root.syncing;
+                sign-in => { root.signin-opened(); }
+                sync => { root.sync-requested(); }
+                sign-out => { root.sign-out-requested(); }
                 view-selected(view) => { root.view-selected(view); }
                 smart-view(index) => { root.smart-view-picked(index); }
                 saved-applied(name) => { root.saved-applied(name); }
@@ -1289,6 +1522,8 @@ export component AppWindow inherits Window {
                 labels: root.editor-labels;
                 is-checklist: root.editor-is-checklist;
                 rows: root.editor-rows;
+                conflict: root.editor-conflict;
+                compare => { root.review-opened(); }
                 edited => { root.editor-edited(); }
                 close => { root.close-editor(); }
                 toggle-pin => { root.toggle-pin(); }
@@ -1586,6 +1821,218 @@ export component AppWindow inherits Window {
                             text: root.note-count == 1 ? "Show 1 note" : "Show " + root.note-count + " notes";
                             strong: true;
                             clicked => { root.filters-open = false; }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sign in with an emailed code, as the web app's: no password.
+        if root.signin-open: Dialog {
+            title: root.signin-step == 2 ? "Enter your code" : "Sign in to Notelikeus";
+            card-width: 440px;
+            if root.signin-step == 0: Text {
+                text: "Notes are saved on this device. Sign in with your email to sync them across Android, Windows and the web.";
+                font-size: 14px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            if root.signin-step == 0: Field {
+                text <=> root.signin-email;
+                placeholder: "you@example.com";
+                label: "Email";
+                accepted => { root.signin-send(); }
+                init => { self.focus-field(); }
+            }
+            if root.signin-step == 0: Text {
+                text: "We'll email you a 6-digit code. No password needed.";
+                font-size: 12px;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            if root.signin-step == 1: Text {
+                text: "Finish the quick security check in your browser. Notelikeus carries on by itself when it's done.";
+                font-size: 14px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+                accessible-role: text;
+                accessible-label: self.text;
+            }
+            if root.signin-step == 2: Text {
+                text: "Sent to " + root.signin-email + ". Check spam if it hasn't arrived.";
+                font-size: 14px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            if root.signin-step == 2: Field {
+                text <=> root.signin-code;
+                placeholder: "000000";
+                label: "6-digit code";
+                accepted => { root.signin-verify(); }
+                init => { self.focus-field(); }
+            }
+            if root.signin-notice != "": Text {
+                text: root.signin-notice;
+                font-size: 13px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            if root.signin-error != "": Text {
+                text: root.signin-error;
+                font-size: 13px;
+                color: Theme.danger;
+                wrap: word-wrap;
+                accessible-role: text;
+                accessible-label: self.text;
+            }
+            if root.signin-step == 2: HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                PillButton {
+                    text: "Use a different email";
+                    enabled: !root.signin-busy;
+                    clicked => { root.signin-change-email(); }
+                }
+                PillButton {
+                    text: root.signin-resend-in > 0 ? "Resend code in " + root.signin-resend-in + "s" : "Resend code";
+                    label: "Resend code";
+                    enabled: !root.signin-busy && root.signin-resend-in == 0;
+                    clicked => { root.signin-resend(); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                PillButton {
+                    text: "Cancel";
+                    clicked => { root.signin-cancelled(); }
+                }
+                if root.signin-step == 0: PillButton {
+                    text: root.signin-busy ? "Sending code…" : "Send code";
+                    label: "Send code";
+                    strong: true;
+                    enabled: !root.signin-busy;
+                    clicked => { root.signin-send(); }
+                }
+                if root.signin-step == 2: PillButton {
+                    text: root.signin-busy ? "Checking code…" : "Sign in";
+                    label: "Sign in";
+                    strong: true;
+                    enabled: !root.signin-busy;
+                    clicked => { root.signin-verify(); }
+                }
+            }
+        }
+
+        // A conflicted copy beside the note it was split from. Nothing here deletes: a version not kept
+        // goes to the trash, where it can still be restored.
+        if root.review-open: Rectangle {
+            background: Theme.scrim;
+            TouchArea { }
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: 40px;
+                width: min(860px, parent.width - 48px);
+                // As tall as the versions need, up to the window.
+                height: min(parent.height - 80px, review-layout.preferred-height);
+                border-radius: Theme.radius-sheet;
+                background: Theme.surface;
+                border-width: 1px;
+                border-color: Theme.outline;
+                drop-shadow-blur: 32px;
+                drop-shadow-color: #00000066;
+                accessible-role: groupbox;
+                accessible-label: "This note changed on two devices";
+                review-layout := VerticalLayout {
+                    padding: 24px;
+                    spacing: 12px;
+                    Text {
+                        text: "This note changed on two devices";
+                        font-size: 18px;
+                        font-weight: 700;
+                        color: Theme.on-surface;
+                    }
+                    Text {
+                        text: "Nothing was lost. Pick what to keep. A version you don't keep goes to the trash, where you can still restore it.";
+                        font-size: 14px;
+                        color: Theme.on-surface-secondary;
+                        wrap: word-wrap;
+                    }
+                    if !root.review-has-original: Rectangle {
+                        border-radius: Theme.radius-md;
+                        background: Theme.surface-variant;
+                        HorizontalLayout {
+                            padding: 12px;
+                            Text {
+                                text: "The note this copy came from couldn't be identified. It may have been renamed or deleted. You can keep the copy as an ordinary note or move it to the trash.";
+                                font-size: 13px;
+                                color: Theme.on-surface;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                    review-scroll := Flickable {
+                        vertical-stretch: 1;
+                        preferred-height: versions.preferred-height;
+                        content-height: versions.preferred-height;
+                        versions := HorizontalLayout {
+                            width: review-scroll.width;
+                            spacing: 12px;
+                            alignment: stretch;
+                            if root.review-has-original: ReviewVersion {
+                                horizontal-stretch: 1;
+                                heading: "CURRENT NOTE";
+                                edited: root.review-original-edited;
+                                note-title: root.review-original-title;
+                                lines: root.review-original-lines;
+                            }
+                            ReviewVersion {
+                                horizontal-stretch: 1;
+                                heading: "CONFLICTED COPY";
+                                edited: root.review-copy-edited;
+                                note-title: root.review-copy-title;
+                                lines: root.review-copy-lines;
+                            }
+                        }
+                    }
+                    if root.review-has-original: HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle {
+                            y: (parent.height - self.height) / 2;
+                            width: 20px;
+                            height: 12px;
+                            border-radius: 3px;
+                            background: #f59e0b.transparentize(0.8);
+                        }
+                        Text {
+                            text: "Highlighted lines appear in only one version.";
+                            font-size: 12px;
+                            color: Theme.muted;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        PillButton {
+                            text: "Decide later";
+                            clicked => { root.review-open = false; }
+                        }
+                        if root.review-has-original: PillButton {
+                            text: "Keep current note";
+                            clicked => { root.review-keep-original(); }
+                        }
+                        if root.review-has-original: PillButton {
+                            text: "Keep conflicted copy";
+                            clicked => { root.review-keep-copy(); }
+                        }
+                        if !root.review-has-original: PillButton {
+                            text: "Move copy to Trash";
+                            clicked => { root.review-keep-original(); }
+                        }
+                        PillButton {
+                            text: "Keep both";
+                            strong: true;
+                            clicked => { root.review-keep-both(); }
                         }
                     }
                 }

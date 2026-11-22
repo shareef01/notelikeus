@@ -3,9 +3,15 @@
 //! It saves before anything that would lose an edit: closing the editor or the window, opening another
 //! note, converting between text and checklist.
 
+mod account;
+mod background;
+
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
+
+pub use background::Mode;
 
 use notelikeus_app::clock::LocalDays;
 use notelikeus_app::query::{self, DateField, DatePreset, Filters, LabelMatch, NoteFlag, NoteScope, SMART_VIEWS};
@@ -44,6 +50,7 @@ enum Undo {
 enum Confirm {
     EmptyTrash,
     DeleteForever(String),
+    SignOut,
 }
 
 #[derive(Default)]
@@ -57,10 +64,14 @@ struct State {
 
 pub struct Controller {
     ui: slint::Weak<AppWindow>,
-    service: RefCell<NotesService>,
+    /// Shared with the worker thread that syncs and signs in; the window never waits for it (see
+    /// [`background`]).
+    service: Arc<Mutex<NotesService>>,
     state: RefCell<State>,
     autosave: Timer,
     toast: Timer,
+    jobs: background::Jobs,
+    account: account::AccountState,
 }
 
 fn scope_of(view: View) -> NoteScope {
@@ -128,14 +139,23 @@ fn sorted_items(items: &[ChecklistItem]) -> Vec<ChecklistItem> {
 }
 
 impl Controller {
-    /// Wires every callback of `ui` and shows the notes. The window holds the controller alive.
+    /// Wires every callback of `ui` and shows the notes, with sign-in and sync on a worker thread.
+    /// The window holds the controller alive.
     pub fn attach(ui: &AppWindow, service: NotesService) -> Rc<Controller> {
+        Self::attach_with(ui, service, Mode::Threads)
+    }
+
+    /// As [`Controller::attach`]; [`Mode::Inline`] runs sign-in and sync on the calling thread, for
+    /// tests that have no event loop to hand results back on.
+    pub fn attach_with(ui: &AppWindow, service: NotesService, mode: Mode) -> Rc<Controller> {
         let controller = Rc::new(Controller {
             ui: ui.as_weak(),
-            service: RefCell::new(service),
+            service: Arc::new(Mutex::new(service)),
             state: RefCell::default(),
             autosave: Timer::default(),
             toast: Timer::default(),
+            jobs: background::Jobs::new(mode),
+            account: account::AccountState::default(),
         });
         ui.set_swatches(model(
             palette::NOTE_COLORS
@@ -144,12 +164,20 @@ impl Controller {
                 .collect(),
         ));
 
+        // While a worker holds the notes (a sync, a sign-in), what the window asks for waits in a queue
+        // and runs when the worker is done, so the window never blocks on it.
         macro_rules! wire {
             ($setter:ident, |$c:ident $(, $arg:ident)*| $body:expr) => {{
                 let weak: Weak<Controller> = Rc::downgrade(&controller);
                 ui.$setter(move |$($arg),*| {
                     if let Some($c) = weak.upgrade() {
-                        $body;
+                        if $c.jobs.holds_notes() {
+                            $c.jobs.defer(Box::new(move |$c: &Controller| {
+                                $body;
+                            }));
+                        } else {
+                            $body;
+                        }
                     }
                 });
             }};
@@ -208,10 +236,34 @@ impl Controller {
         wire!(on_filters_cleared, |c| c.clear_filters());
         wire!(on_filter_name_edited, |c, name| c.filter_name_edited(&name));
         wire!(on_filter_saved, |c, name| c.save_filter(&name));
+        wire!(on_sync_requested, |c| c.sync_now());
+        wire!(on_sign_out_requested, |c| c.ask_sign_out());
+        wire!(on_signin_opened, |c| c.open_sign_in());
+        wire!(on_signin_send, |c| c.send_code(false));
+        wire!(on_signin_resend, |c| c.send_code(true));
+        wire!(on_signin_verify, |c| c.verify_code());
+        wire!(on_signin_change_email, |c| c.change_email());
+        wire!(on_signin_cancelled, |c| c.cancel_sign_in());
+        wire!(on_review_opened, |c| c.open_review());
+        wire!(on_review_keep_original, |c| c.review_keep_original());
+        wire!(on_review_keep_copy, |c| c.review_keep_copy());
+        wire!(on_review_keep_both, |c| c.review_keep_both());
+        wire!(on_sync_due, |c| c.sync_now());
+        wire!(on_resend_tick, |c| c.resend_tick());
+        {
+            // Never deferred: this is how a worker's result comes back.
+            let weak = Rc::downgrade(&controller);
+            ui.on_background_done(move || {
+                if let Some(c) = weak.upgrade() {
+                    c.background_done();
+                }
+            });
+        }
         {
             let weak = Rc::downgrade(&controller);
             ui.window().on_close_requested(move || {
                 if let Some(c) = weak.upgrade() {
+                    // Waits for a running sync to finish rather than lose the editor's words.
                     c.save_now();
                 }
                 slint::CloseRequestResponse::HideWindow
@@ -219,7 +271,14 @@ impl Controller {
         }
 
         controller.refresh();
+        controller.start_account();
         controller
+    }
+
+    /// The notes. Never called while a worker holds them (the `wire!` queue sees to that), so on the
+    /// window's thread this does not wait.
+    fn svc(&self) -> MutexGuard<'_, NotesService> {
+        self.service.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn ui(&self) -> Option<AppWindow> {
@@ -261,7 +320,7 @@ impl Controller {
         let Some(ui) = self.ui() else { return };
         let filters = self.state.borrow().filters.clone();
         let now = now_millis();
-        let service = self.service.borrow();
+        let service = self.svc();
         let counts = service.counts();
         let found = service.search(&filters, now);
         let view_counts = service.smart_view_counts(now);
@@ -344,6 +403,7 @@ impl Controller {
                 .map(|(i, p)| Choice { text: p.label().into(), on: preset == Some(*p), index: i as i32 })
                 .collect(),
         ));
+        self.after_change();
     }
 
     /// Puts `filters` on screen: the sidebar's view and the search box follow them.
@@ -386,14 +446,14 @@ impl Controller {
     }
 
     pub fn apply_saved(&self, name: &str) {
-        let saved = self.service.borrow().saved_filters().iter().find(|f| f.name == name).cloned();
+        let saved = self.svc().saved_filters().iter().find(|f| f.name == name).cloned();
         if let Some(saved) = saved {
             self.set_filters(saved.filters);
         }
     }
 
     pub fn delete_saved(&self, name: &str) {
-        let deleted = self.service.borrow_mut().delete_saved_filter(name);
+        let deleted = self.svc().delete_saved_filter(name);
         match deleted {
             Ok(()) => self.show_toast(&format!("Deleted saved filter “{name}”"), None, None),
             Err(message) => self.show_toast(&message, None, None),
@@ -414,7 +474,7 @@ impl Controller {
     /// What saving under `name` will do, said before it is done.
     pub fn filter_name_edited(&self, name: &str) {
         let Some(ui) = self.ui() else { return };
-        let service = self.service.borrow();
+        let service = self.svc();
         let saved = service.saved_filters();
         let hint = match query::find_saved(saved, name) {
             Some(existing) if !name.trim().is_empty() => {
@@ -431,7 +491,7 @@ impl Controller {
     pub fn save_filter(&self, name: &str) {
         let Some(ui) = self.ui() else { return };
         let filters = self.state.borrow().filters.clone();
-        let saved = self.service.borrow_mut().save_filter(name, &filters);
+        let saved = self.svc().save_filter(name, &filters);
         match saved {
             Ok(()) => {
                 ui.set_naming(false);
@@ -460,6 +520,7 @@ impl Controller {
             sorted_labels(&note.labels).iter().map(|l| SharedString::from(l.as_str())).collect(),
         ));
         ui.set_editor_footer(Self::saved_footer(note.timestamp));
+        ui.set_editor_conflict(notelikeus_core::conflict::is_conflicted_copy_title(&note.title));
     }
 
     fn show_rows(&self, ui: &AppWindow, focus: Option<i64>) {
@@ -513,7 +574,7 @@ impl Controller {
     pub fn open_note(&self, id: &str) {
         self.save_now();
         let Some(ui) = self.ui() else { return };
-        let Some(note) = self.service.borrow().note(id) else { return };
+        let Some(note) = self.svc().note(id) else { return };
         self.state.borrow_mut().editing = Some(Editing {
             id: Some(note.id.clone()),
             dirty: false,
@@ -551,7 +612,7 @@ impl Controller {
             (e.id.clone(), e.dirty, e.is_checklist, e.checklist.clone())
         };
         if !dirty && !force {
-            return id.and_then(|id| self.service.borrow().note(&id));
+            return id.and_then(|id| self.svc().note(&id));
         }
         let title = ui.get_editor_title().to_string();
         let body = if is_checklist { String::new() } else { ui.get_editor_body().to_string() };
@@ -563,11 +624,11 @@ impl Controller {
                 ui.set_editor_footer("Not saved yet".into());
                 return None;
             }
-            None => self.service.borrow_mut().create(&title, &body),
+            None => self.svc().create(&title, &body),
             Some(id) => {
-                let updated = self.service.borrow_mut().update(id, &title, &body);
+                let updated = self.svc().update(id, &title, &body);
                 match updated {
-                    Ok(_) if is_checklist => self.service.borrow_mut().set_checklist(id, checklist),
+                    Ok(_) if is_checklist => self.svc().set_checklist(id, checklist),
                     other => other,
                 }
             }
@@ -618,7 +679,7 @@ impl Controller {
         self.save_now();
         let ui = self.ui()?;
         let id = self.editing_id()?;
-        let result = change(&mut self.service.borrow_mut(), &id);
+        let result = change(&mut self.svc(), &id);
         match result {
             Ok(note) => {
                 self.show_note_details(&ui, &note);
@@ -682,7 +743,7 @@ impl Controller {
     }
 
     pub fn ask_empty_trash(&self) {
-        let count = self.service.borrow().counts().trash;
+        let count = self.svc().counts().trash;
         let body = if count == 1 {
             "1 note will be deleted for good. This can't be undone.".to_string()
         } else {
@@ -705,7 +766,7 @@ impl Controller {
         }
         match confirm {
             Some(Confirm::DeleteForever(id)) => {
-                let result = self.service.borrow_mut().delete(&id);
+                let result = self.svc().delete(&id);
                 match result {
                     Ok(_) => {
                         self.close_sheet();
@@ -715,7 +776,7 @@ impl Controller {
                 }
             }
             Some(Confirm::EmptyTrash) => {
-                let result = self.service.borrow_mut().empty_trash();
+                let result = self.svc().empty_trash();
                 match result {
                     Ok(0) => {}
                     Ok(n) => self.show_toast(&format!("Trash emptied ({n})"), None, None),
@@ -723,6 +784,7 @@ impl Controller {
                 }
                 self.refresh();
             }
+            Some(Confirm::SignOut) => self.sign_out(),
             None => {}
         }
     }
@@ -730,7 +792,7 @@ impl Controller {
     // --- Note options: colour and labels --------------------------------------------------------------
 
     fn show_label_choices(&self, ui: &AppWindow) {
-        let service = self.service.borrow();
+        let service = self.svc();
         let on: Vec<String> = self
             .editing_id()
             .and_then(|id| service.note(&id))
@@ -761,7 +823,7 @@ impl Controller {
     pub fn toggle_label(&self, name: &str) {
         let on = self
             .editing_id()
-            .and_then(|id| self.service.borrow().note(&id))
+            .and_then(|id| self.svc().note(&id))
             .is_some_and(|n| n.labels.iter().any(|l| label_key(l) == label_key(name)));
         self.change_open_note(|s, id| s.set_note_label(id, name, !on));
         if let Some(ui) = self.ui() {
@@ -772,7 +834,7 @@ impl Controller {
     /// A label created in the options sheet is put on the note too.
     pub fn create_label_for_note(&self, name: &str) {
         let Some(ui) = self.ui() else { return };
-        let created = self.service.borrow_mut().create_label(name);
+        let created = self.svc().create_label(name);
         match created {
             Ok(name) => {
                 self.change_open_note(|s, id| s.set_note_label(id, &name, true));
@@ -843,7 +905,7 @@ impl Controller {
             return;
         }
         let Some(id) = self.editing_id() else { return };
-        let converted = self.service.borrow_mut().convert_to_checklist(&id);
+        let converted = self.svc().convert_to_checklist(&id);
         match converted {
             Ok(note) => {
                 if let Some(e) = self.state.borrow_mut().editing.as_mut() {
@@ -863,7 +925,7 @@ impl Controller {
         self.save_now();
         let Some(ui) = self.ui() else { return };
         let Some(id) = self.editing_id() else { return };
-        let converted = self.service.borrow_mut().convert_to_text(&id);
+        let converted = self.svc().convert_to_text(&id);
         match converted {
             Ok(note) => {
                 if let Some(e) = self.state.borrow_mut().editing.as_mut() {
@@ -882,14 +944,14 @@ impl Controller {
     // --- Edit labels ----------------------------------------------------------------------------------
 
     fn show_all_labels(&self, ui: &AppWindow) {
-        let names = self.service.borrow().label_names();
+        let names = self.svc().label_names();
         ui.set_all_labels(model(names.iter().map(|n| SharedString::from(n.as_str())).collect()));
     }
 
     /// After a label changed everywhere: the grid, and the open note's chips if any.
     fn labels_changed(&self, ui: &AppWindow) {
         self.show_all_labels(ui);
-        if let Some(note) = self.editing_id().and_then(|id| self.service.borrow().note(&id)) {
+        if let Some(note) = self.editing_id().and_then(|id| self.svc().note(&id)) {
             self.show_note_details(ui, &note);
         }
         self.refresh();
@@ -904,7 +966,7 @@ impl Controller {
 
     pub fn labels_created(&self, name: &str) {
         let Some(ui) = self.ui() else { return };
-        let created = self.service.borrow_mut().create_label(name);
+        let created = self.svc().create_label(name);
         match created {
             Ok(_) => {
                 ui.set_labels_new("".into());
@@ -916,7 +978,7 @@ impl Controller {
 
     pub fn label_renamed(&self, old: &str, new: &str) {
         let Some(ui) = self.ui() else { return };
-        let renamed = self.service.borrow_mut().rename_label(old, new);
+        let renamed = self.svc().rename_label(old, new);
         match renamed {
             Ok(()) => self.labels_changed(&ui),
             Err(message) => self.show_toast(&message, None, None),
@@ -925,7 +987,7 @@ impl Controller {
 
     pub fn label_deleted(&self, name: &str) {
         let Some(ui) = self.ui() else { return };
-        let deleted = self.service.borrow_mut().delete_label(name);
+        let deleted = self.svc().delete_label(name);
         match deleted {
             Ok(()) => {
                 self.labels_changed(&ui);
@@ -963,7 +1025,7 @@ impl Controller {
         let Some(undo) = self.state.borrow_mut().undo.take() else { return };
         self.hide_toast();
         let result = {
-            let mut service = self.service.borrow_mut();
+            let mut service = self.svc();
             match undo {
                 Undo::Restore(id) => service.restore_from_trash(&id),
                 Undo::Unarchive(id) => service.set_archived(&id, false),

@@ -85,6 +85,47 @@ fn the_native_window_end_to_end() {
     colours_and_labels();
     checklists();
     search_views_and_saved_filters();
+    reviewing_a_conflicted_copy();
+}
+
+fn reviewing_a_conflicted_copy() {
+    use slint::Model;
+    let dir = temp_dir("review");
+    let (ui, _controller) = open(&dir);
+    assert_eq!(ui.get_account_mode(), 0, "a build without sync says notes stay on this device");
+    for (title, body) in [("Groceries", "milk\neggs"), ("Groceries (conflicted copy)", "milk\nbread")] {
+        press(&ui, "New note");
+        type_note(&ui, title, body);
+        press(&ui, "Back to notes");
+    }
+
+    // An ordinary note has no banner; the copy has one, and its comparison.
+    press(&ui, "Groceries");
+    assert!(!ui.get_editor_conflict());
+    press(&ui, "Back to notes");
+    press(&ui, "Groceries (conflicted copy)");
+    assert!(ui.get_editor_conflict());
+    press(&ui, "Compare with the current note");
+    assert!(ui.get_review_open());
+    assert!(ui.get_review_has_original());
+    let lines = |rows: slint::ModelRc<nlk_native::ReviewRow>| {
+        rows.iter().map(|r| (r.text.to_string(), r.changed)).collect::<Vec<_>>()
+    };
+    assert_eq!(lines(ui.get_review_original_lines()), [("milk".to_string(), false), ("eggs".to_string(), true)]);
+    assert_eq!(lines(ui.get_review_copy_lines()), [("milk".to_string(), false), ("bread".to_string(), true)]);
+
+    // "Decide later" changes nothing; keeping the copy trashes the original and takes its title.
+    press(&ui, "Decide later");
+    assert!(!ui.get_review_open() && ui.get_editor_open());
+    press(&ui, "Compare with the current note");
+    press(&ui, "Keep conflicted copy");
+    assert!(!ui.get_editor_open());
+    assert_eq!(ui.get_toast_text(), "Kept the copy. The other version is in Trash.");
+    assert_eq!(card_titles(&ui), ["Groceries"]);
+    assert_eq!(ui.get_count_trash(), 1, "the other version can still be restored");
+    press(&ui, "Groceries");
+    assert_eq!(ui.get_editor_body(), "milk\nbread");
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 fn search(ui: &AppWindow, text: &str) {

@@ -4147,8 +4147,10 @@ dependencies = [
  "i-slint-backend-testing",
  "notelikeus-app",
  "notelikeus-core",
+ "serde_json",
  "slint",
  "slint-build",
+ "ureq",
  "windows-sys 0.59.0",
 ]
 

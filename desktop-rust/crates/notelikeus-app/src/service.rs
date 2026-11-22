@@ -9,6 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use notelikeus_core::auth::{AuthClient, AuthError};
+use notelikeus_core::conflict;
 use notelikeus_core::crypto::KeyProtector;
 use notelikeus_core::http::SupabaseTransport;
 use notelikeus_core::model::{ChecklistItem, Note};
@@ -84,6 +85,16 @@ pub struct SearchView {
     pub unknown: Vec<String>,
     /// The scope searched, which `in:all` or `is:archived` typed in the box may have changed.
     pub scope: NoteScope,
+}
+
+/// A conflicted copy beside the note it was split from: each version's lines, marked `true` where the
+/// other version has no such line. `original` is None when no single live note matches.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConflictReview {
+    pub copy: NoteView,
+    pub original: Option<NoteView>,
+    pub original_lines: Vec<(String, bool)>,
+    pub copy_lines: Vec<(String, bool)>,
 }
 
 /// Which notes a view shows, as the web app's sidebar: Notes, Archive and Trash.
@@ -302,6 +313,65 @@ impl NotesService {
             unknown: outcome.unknown,
             scope: outcome.scope,
         }
+    }
+
+    /// Whether the note is a copy kept from a sync conflict, by its title, as every client marks them.
+    pub fn is_conflicted_copy(&self, id: &str) -> bool {
+        self.state.notes.get(id).is_some_and(|n| conflict::is_conflicted_copy_title(&n.title))
+    }
+
+    /// A conflicted copy beside the note it was most likely split from, line by line.
+    pub fn conflict_review(&self, copy_id: &str) -> Option<ConflictReview> {
+        let copy = self.state.notes.get(copy_id).filter(|n| conflict::is_conflicted_copy_title(&n.title))?;
+        let original = conflict::find_original(copy, self.state.notes.values());
+        let (original_lines, copy_lines) = match original {
+            Some(original) => conflict::compare_versions(original, copy),
+            None => (Vec::new(), conflict::compare_versions(copy, copy).0),
+        };
+        Some(ConflictReview {
+            copy: self.view(copy),
+            original: original.map(|n| self.view(n)),
+            original_lines: original_lines.into_iter().map(|l| (l.text, l.changed)).collect(),
+            copy_lines: copy_lines.into_iter().map(|l| (l.text, l.changed)).collect(),
+        })
+    }
+
+    /// The copy's title without the suffix: what it becomes when it is kept as an ordinary note.
+    fn retitle_copy(&mut self, copy_id: &str, now: i64) -> Result<(), String> {
+        let title = self
+            .state
+            .notes
+            .get(copy_id)
+            .map(|n| conflict::original_title_of(&n.title).unwrap_or_default().to_string())
+            .ok_or("That note no longer exists.")?;
+        sync::edit_note(&mut self.state, copy_id, now, |n| n.title = title).map_err(|e| e.to_string())
+    }
+
+    /// Keeps both versions: the copy loses its suffix and becomes an ordinary note.
+    pub fn keep_both(&mut self, copy_id: &str) -> Result<(), String> {
+        let before = self.state.clone();
+        let now = self.ids.now_millis();
+        self.retitle_copy(copy_id, now)?;
+        self.commit(before)
+    }
+
+    /// Keeps the copy's version: the original goes to the trash and the copy takes its title.
+    pub fn keep_copy(&mut self, copy_id: &str, original_id: &str) -> Result<(), String> {
+        let before = self.state.clone();
+        let now = self.ids.now_millis();
+        let result = sync::edit_note(&mut self.state, original_id, now, |n| n.is_trashed = true)
+            .map_err(|e| e.to_string())
+            .and_then(|()| self.retitle_copy(copy_id, now));
+        if let Err(message) = result {
+            self.state = before;
+            return Err(message);
+        }
+        self.commit(before)
+    }
+
+    /// Keeps the current note: the copy goes to the trash, where it can still be restored.
+    pub fn keep_original(&mut self, copy_id: &str) -> Result<(), String> {
+        self.move_to_trash(copy_id).map(|_| ())
     }
 
     /// Active notes in each smart view (Reminders, Unfinished, Unlabelled).
@@ -794,6 +864,40 @@ mod tests {
 
     fn open(dir: &Path) -> NotesService {
         open_with(dir, None, Box::new(TestIds(1_000)))
+    }
+
+    /// The native app runs sync and sign-in on a worker thread, so the service must be able to move there.
+    #[test]
+    fn the_service_can_move_to_a_worker_thread() {
+        fn is_send<T: Send>() {}
+        is_send::<NotesService>();
+    }
+
+    #[test]
+    fn a_conflict_review_keeps_one_version_or_both_and_trashes_nothing_for_good() {
+        let dir = root("review");
+        let mut service = open(&dir);
+        let original = service.create("Groceries", "milk").unwrap();
+        let copy = service.create("Groceries (conflicted copy)", "milk\neggs").unwrap();
+        assert!(service.is_conflicted_copy(&copy.id) && !service.is_conflicted_copy(&original.id));
+        let review = service.conflict_review(&copy.id).unwrap();
+        assert_eq!(review.original.as_ref().map(|n| n.id.as_str()), Some(original.id.as_str()));
+        assert_eq!(review.copy_lines, [("milk".to_string(), false), ("eggs".to_string(), true)]);
+        assert!(service.conflict_review(&original.id).is_none(), "only a copy is reviewed");
+
+        // Keep the copy: the original goes to the trash and the copy takes its title.
+        service.keep_copy(&copy.id, &original.id).unwrap();
+        assert!(service.note(&original.id).unwrap().is_trashed);
+        assert_eq!(service.note(&copy.id).unwrap().title, "Groceries");
+
+        // Keep both: the suffix goes. Keep the original: the copy goes to the trash.
+        let second = service.create("Groceries (conflicted copy)", "bread").unwrap();
+        service.keep_both(&second.id).unwrap();
+        assert_eq!(service.note(&second.id).unwrap().title, "Groceries");
+        let third = service.create("Trip (conflicted copy)", "").unwrap();
+        service.keep_original(&third.id).unwrap();
+        assert!(service.note(&third.id).unwrap().is_trashed);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

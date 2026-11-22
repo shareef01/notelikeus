@@ -10,7 +10,7 @@ pub mod view;
 use std::rc::Rc;
 
 use controller::Controller;
-use notelikeus_app::{NotesService, SystemIds};
+use notelikeus_app::{NotesService, SyncConfig, SystemIds};
 
 /// The folder under `%APPDATA%` this app keeps its notes in.
 pub const DATA_FOLDER: &str = "NotelikeusRust";
@@ -30,7 +30,7 @@ fn protector() -> Box<dyn notelikeus_core::crypto::KeyProtector + Send + Sync> {
 /// as an empty library.
 pub fn open() -> Result<(AppWindow, Rc<Controller>), String> {
     let dir = notelikeus_app::data_dir_named(DATA_FOLDER);
-    let service = NotesService::open(&dir, protector(), Box::new(SystemIds), None)
+    let service = NotesService::open(&dir, protector(), Box::new(SystemIds), SyncConfig::from_env())
         .map_err(|e| format!("Notelikeus could not open its notes in {}.\n\n{e}", dir.display()))?;
     let ui = AppWindow::new().map_err(|e| format!("Notelikeus could not open its window: {e}"))?;
     let controller = Controller::attach(&ui, service);
