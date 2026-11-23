@@ -3,10 +3,11 @@ import {
   AccountIcon,
   ArchiveIcon,
   BookmarkIcon,
+  CheckBoxOutlineIcon,
   ChevronRightIcon,
   CloseIcon,
-  ChecklistIcon,
   LabelIcon,
+  LabelOffIcon,
   NotesIcon,
   NotificationIcon,
   SettingsIcon,
@@ -49,8 +50,8 @@ interface SideDrawerProps {
 
 const SMART_VIEW_ICONS: Record<SmartViewId, typeof NotesIcon> = {
   reminders: NotificationIcon,
-  unfinished: ChecklistIcon,
-  unlabeled: LabelIcon,
+  unfinished: CheckBoxOutlineIcon,
+  unlabeled: LabelOffIcon,
 };
 
 const NAV_ITEMS: Array<{
@@ -221,20 +222,20 @@ export function SideDrawer({
       >
         {/* Header */}
         <header
-          className={`flex shrink-0 items-center gap-3 border-b border-brand-outline/40 pb-4 pt-[max(1.75rem,env(safe-area-inset-top,0px))] ${
+          className={`flex shrink-0 items-center gap-3 pb-3 pt-[max(1.5rem,env(safe-area-inset-top,0px))] ${
             showCollapsed ? 'justify-center px-1.5' : 'justify-between px-4 md:px-5'
           }`}
         >
           {showCollapsed ? (
             <BrandMark size={32} />
           ) : (
-            <div className="flex min-w-0 items-center gap-3">
-              <BrandMark size={40} />
+            <div className="flex min-w-0 items-center gap-2.5">
+              <BrandMark size={36} />
               <div className="min-w-0 leading-none">
-                <p className="truncate text-[17px] font-semibold tracking-tight text-brand-primary">
+                <p className="truncate text-[15px] font-bold tracking-[-0.02em] text-brand-primary">
                   Notelikeus
                 </p>
-                <p className="mt-1 truncate text-[12px] font-medium tracking-tight text-brand-secondary">
+                <p className="mt-1 truncate text-[11px] font-medium tracking-tight text-brand-secondary">
                   Capture what matters
                 </p>
               </div>
@@ -253,10 +254,10 @@ export function SideDrawer({
         </header>
 
         {/* Nav */}
-        <nav className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 pb-5 pt-5 ${
+        <nav className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 pb-5 pt-2 ${
           showCollapsed ? 'gap-2 md:px-1.5' : 'gap-1 md:px-3'
         }`}>
-          <NavSection title={showCollapsed ? undefined : 'Library'}>
+          <NavSection>
             {NAV_ITEMS.map(({ filter, label, Icon }) => {
               const active = currentFilter === filter && currentSmartView == null && currentSavedFilter == null;
               const count = navCounts?.[filter];
@@ -403,7 +404,7 @@ export function SideDrawer({
               </span>
               {!showCollapsed && (
                 <span className="min-w-0 flex-1 truncate text-left">
-                  Collapse sidebar
+                  Collapse
                 </span>
               )}
             </button>

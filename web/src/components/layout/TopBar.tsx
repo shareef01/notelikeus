@@ -1,7 +1,7 @@
 import { FilterRow } from '@/components/layout/FilterRow';
 import { SelectionBar } from '@/components/layout/SelectionBar';
 import { ViewModeToggle } from '@/components/layout/ViewModeToggle';
-import { AddIcon, CloseIcon, MenuIcon, SettingsIcon } from '@/components/icons/Icons';
+import { AccountIcon, AddIcon, CloseIcon, MenuIcon, SearchIcon } from '@/components/icons/Icons';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import type { ViewColumns } from '@/store/uiStore';
 import type { Label } from '@/types/label';
@@ -199,15 +199,18 @@ export function TopBar({
                 setIsSearchFocused(false);
                 searchInputRef.current?.focus();
               }}
-              className="relative flex h-11 min-w-0 flex-1 items-center rounded-full border border-brand-outline/25 bg-true-surface-variant/60 px-1 shadow-sm transition-all duration-150 focus-within:border-brand-primary/60 focus-within:bg-true-surface focus-within:ring-2 focus-within:ring-brand-primary/25 sm:h-12"
+              className="relative flex h-11 min-w-0 flex-1 items-center rounded-full border border-brand-outline/30 bg-true-surface-variant/65 px-1 shadow-sm transition-all duration-150 focus-within:border-brand-primary/60 focus-within:bg-true-surface focus-within:ring-2 focus-within:ring-brand-primary/25 sm:h-12"
             >
+              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-muted sm:left-4" aria-hidden>
+                <SearchIcon size={20} />
+              </span>
               <input
                 ref={searchInputRef}
                 type="search"
                 value={searchQuery}
                 onChange={(event) => onSearchQueryChange(event.target.value)}
                 placeholder={SEARCH_PLACEHOLDERS[currentFilter]}
-                className="min-w-0 flex-1 bg-transparent px-3 text-base text-brand-primary outline-none placeholder:text-brand-muted focus:outline-none focus:ring-0 sm:px-4"
+                className="min-w-0 flex-1 bg-transparent pl-9 pr-3 text-base text-brand-primary outline-none placeholder:text-brand-muted focus:outline-none focus:ring-0 sm:pl-10 sm:pr-4"
                 aria-label={SEARCH_PLACEHOLDERS[currentFilter]}
               />
 
@@ -277,17 +280,19 @@ export function TopBar({
             <button
               type="button"
               onClick={onProfileClick}
-              className={`tap-target flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-brand-primary transition-colors hover:bg-brand-primary/18 ${CHROME_FOCUS}`}
+              className={`tap-target flex size-11 shrink-0 items-center justify-center rounded-full border border-brand-outline/35 bg-true-surface text-brand-primary transition-colors hover:bg-brand-primary/8 ${CHROME_FOCUS}`}
               aria-label="Open settings"
-              title={userEmail ? userEmail : 'Settings'}
+              title={userEmail ? userEmail : 'Account & settings'}
             >
-              {userEmail ? (
-                <span className="text-[13px] font-bold uppercase leading-none" aria-hidden>
-                  {userEmail.charAt(0)}
-                </span>
-              ) : (
-                <SettingsIcon size={20} />
-              )}
+              <span className="flex size-7.5 items-center justify-center rounded-full bg-brand-primary/14 text-brand-primary">
+                {userEmail ? (
+                  <span className="text-[13px] font-bold uppercase leading-none" aria-hidden>
+                    {userEmail.charAt(0)}
+                  </span>
+                ) : (
+                  <AccountIcon size={18} />
+                )}
+              </span>
             </button>
 
             {showNewNote && onNewNote ? (
