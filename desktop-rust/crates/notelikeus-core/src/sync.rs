@@ -52,12 +52,21 @@ pub enum TransportError {
     Network(String),
     #[error("not signed in or the session expired")]
     Unauthorized,
-    /// NL002: the account was wiped on another device after this device last synced.
+    /// NL001 / NL002: the account was wiped on another device after this device last synced.
     #[error("the cloud data was deleted on another device")]
     WipeGenerationStale,
     /// NL003.
     #[error("this account was deleted")]
     AccountDeleted,
+    /// NL004.
+    #[error("a recent sign-in is required to do that")]
+    ReauthenticationRequired,
+    /// NL005.
+    #[error("account note limit reached")]
+    AccountNoteLimit,
+    /// 22023.
+    #[error("note rejected by server validation: {0}")]
+    PayloadInvalid(String),
     #[error("server error: {0}")]
     Server(String),
 }
@@ -78,8 +87,11 @@ pub trait Transport {
 pub struct SyncReport {
     pub pushed: Vec<String>,
     pub conflicted_copies: Vec<String>,
+    /// Pairs of `(original_note_id, copy_note_id)` created during this run so attachments can be carried over.
+    pub forked_sources: Vec<(String, String)>,
     pub deleted_remotely: Vec<String>,
     pub restored_by_cloud: Vec<String>,
+    pub skipped_invalid: Vec<String>,
     pub pulled: usize,
 }
 
@@ -135,22 +147,25 @@ pub fn edit_note(state: &mut LocalState, id: &str, now: i64, edit: impl FnOnce(&
     let note = state.notes.get_mut(id).ok_or_else(|| SyncError::NoSuchNote(id.into()))?;
     edit(note);
     // Strictly increasing, so an edit within the same millisecond still reads as an edit.
-    note.timestamp = now.max(note.timestamp + 1);
+    note.timestamp = now.max(note.timestamp.saturating_add(1));
     mark_pending(state, id);
     Ok(())
 }
 
-/// A permanent delete. The row goes now; the tombstone remembers the revision it was made against.
+/// A permanent delete. The row goes now; the tombstone remembers the revision it was made against, or
+/// its authored content digest when the revision was never known (AU-07).
 pub fn delete_note(state: &mut LocalState, id: &str, now: i64) -> Result<(), SyncError> {
-    state.notes.remove(id).ok_or_else(|| SyncError::NoSuchNote(id.into()))?;
+    let removed = state.notes.remove(id).ok_or_else(|| SyncError::NoSuchNote(id.into()))?;
     state.pending.remove(id);
     let base = state.revisions.get(id).copied();
+    let content_digest = if base.is_none() { Some(conflict::authored_content_digest(&removed)) } else { None };
     state.tombstones.insert(
         id.to_string(),
         Tombstone {
             deleted_at: now,
             origin: TombstoneOrigin::Local { confirmed: base.is_none() },
             base_revision: base,
+            content_digest,
         },
     );
     Ok(())
@@ -171,12 +186,14 @@ fn fork_copy(state: &mut LocalState, local: &Note, ids: &mut dyn IdSource, repor
         p.base_revision = None;
     }
     report.conflicted_copies.push(key.clone());
+    report.forked_sources.push((local.id.clone(), key.clone()));
     key
 }
 
 fn accept_cloud(state: &mut LocalState, row: &CloudNoteRow) {
     let note = row.to_note();
     state.synced_timestamps.insert(note.id.clone(), note.timestamp);
+    state.known_cloud_ids.insert(note.id.clone());
     if let Some(revision) = row.revision {
         state.revisions.insert(note.id.clone(), revision);
     }
@@ -229,6 +246,7 @@ fn push_one(
     match outcome {
         ApplyOutcome::Applied { revision, server_updated_at } => {
             state.revisions.insert(id.into(), revision);
+            state.known_cloud_ids.insert(id.into());
             if let Some(note) = state.notes.get_mut(id) {
                 note.server_updated_at = server_updated_at.or(note.server_updated_at);
                 state.synced_timestamps.insert(id.into(), note.timestamp);
@@ -249,9 +267,15 @@ fn push_one(
             state.notes.remove(id);
             state.pending.remove(id);
             state.revisions.remove(id);
+            state.known_cloud_ids.remove(id);
             state.tombstones.insert(
                 id.into(),
-                Tombstone { deleted_at: local.timestamp, origin: TombstoneOrigin::Cloud, base_revision: None },
+                Tombstone {
+                    deleted_at: local.timestamp,
+                    origin: TombstoneOrigin::Cloud,
+                    base_revision: None,
+                    content_digest: None,
+                },
             );
         }
         ApplyOutcome::NotFound => {
@@ -268,14 +292,31 @@ fn push_pending(
     report: &mut SyncReport,
 ) -> Result<(), TransportError> {
     // Copies made while pushing are queued too, so loop until the queue stops shrinking (bounded:
-    // a copy is a fresh note that can only be applied or fail).
+    // a copy is a fresh note that can only be applied or fail). Skipped invalid payloads stay queued
+    // without blocking other notes in the same sync pass.
+    let mut skipped = std::collections::BTreeSet::new();
     for _ in 0..4 {
-        let queue: Vec<String> = state.pending.keys().cloned().collect();
+        let mut queue: Vec<(u64, String)> =
+            state.pending.iter().filter(|(id, _)| !skipped.contains(*id)).map(|(id, p)| (p.seq, id.clone())).collect();
         if queue.is_empty() {
             break;
         }
-        for id in queue {
-            push_one(state, transport, ids, &id, report)?;
+        queue.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        for (_, id) in queue {
+            match push_one(state, transport, ids, &id, report) {
+                Ok(()) => {}
+                Err(TransportError::PayloadInvalid(_)) => {
+                    skipped.insert(id.clone());
+                    if !report.skipped_invalid.contains(&id) {
+                        report.skipped_invalid.push(id);
+                    }
+                }
+                Err(TransportError::WipeGenerationStale) => {
+                    state.uploads_blocked_after_wipe = true;
+                    return Err(TransportError::WipeGenerationStale);
+                }
+                Err(err) => return Err(err),
+            }
         }
     }
     Ok(())
@@ -293,11 +334,21 @@ fn push_deletes(
         .map(|(id, t)| (id.clone(), t.base_revision))
         .collect();
     for (id, base) in unconfirmed {
-        match transport.apply_note_delete(&id, base, state.wipe_generation)? {
+        let outcome = match transport.apply_note_delete(&id, base, state.wipe_generation) {
+            Ok(outcome) => outcome,
+            Err(TransportError::WipeGenerationStale) => {
+                state.uploads_blocked_after_wipe = true;
+                return Err(TransportError::WipeGenerationStale);
+            }
+            Err(err) => return Err(err),
+        };
+        match outcome {
             DeleteOutcome::Deleted | DeleteOutcome::AlreadyGone => {
                 state.revisions.remove(&id);
+                state.known_cloud_ids.remove(&id);
                 if let Some(t) = state.tombstones.get_mut(&id) {
                     t.origin = TombstoneOrigin::Local { confirmed: true };
+                    t.content_digest = None;
                 }
             }
             DeleteOutcome::Conflict { current } => {
@@ -314,7 +365,18 @@ fn push_deletes(
 
 fn apply_inbound_note(state: &mut LocalState, row: &CloudNoteRow, ids: &mut dyn IdSource, report: &mut SyncReport) {
     let id = row.note_id.clone();
-    if let Some(tombstone) = state.tombstones.get(&id) {
+    let cloud = row.to_note();
+    if let Some(tombstone) = state.tombstones.get_mut(&id) {
+        // If this device deleted an unconfirmed note whose create reply was lost, check whether the
+        // cloud row holds the exact deleted words: if so, confirm the delete rather than resurrecting it.
+        if tombstone.base_revision.is_none()
+            && let Some(digest) = tombstone.content_digest.as_deref()
+            && conflict::authored_content_digest(&cloud) == digest
+        {
+            tombstone.base_revision = row.revision;
+            tombstone.origin = TombstoneOrigin::Local { confirmed: false };
+            return;
+        }
         let newer = match (row.revision, tombstone.base_revision) {
             (Some(remote), Some(base)) => remote > base,
             _ => true,
@@ -326,12 +388,13 @@ fn apply_inbound_note(state: &mut LocalState, row: &CloudNoteRow, ids: &mut dyn 
         state.tombstones.remove(&id);
         report.restored_by_cloud.push(id.clone());
     }
-    let cloud = row.to_note();
     let local = state.notes.get(&id).cloned();
     let synced = state.synced_timestamps.get(&id).copied();
     match conflict::decide(local.as_ref(), synced, &cloud) {
         InboundAction::Accept => accept_cloud(state, row),
-        InboundAction::KeepLocal => {}
+        InboundAction::KeepLocal => {
+            state.known_cloud_ids.insert(id);
+        }
         InboundAction::Fork => {
             if let Some(local) = local {
                 fork_copy(state, &local, ids, report);
@@ -359,9 +422,15 @@ fn apply_inbound_tombstone(
     }
     state.pending.remove(id);
     state.revisions.remove(id);
+    state.known_cloud_ids.remove(id);
     state.synced_timestamps.remove(id);
-    state.tombstones.insert(id.into(), Tombstone { deleted_at, origin: TombstoneOrigin::Cloud, base_revision: None });
+    state.tombstones.insert(
+        id.into(),
+        Tombstone { deleted_at, origin: TombstoneOrigin::Cloud, base_revision: None, content_digest: None },
+    );
 }
+
+const MAX_PULL_PAGES: usize = 500;
 
 fn pull(
     state: &mut LocalState,
@@ -370,17 +439,19 @@ fn pull(
     report: &mut SyncReport,
 ) -> Result<(), TransportError> {
     let fresh = never_synced(state);
-    loop {
+    for _ in 0..MAX_PULL_PAGES {
         let page = transport.pull_changes(state.last_remote_revision, 100)?;
         if page.wipe_generation > state.wipe_generation {
             if !fresh {
                 // Uploading now would put back what the user deleted on another device; that is their call.
+                state.uploads_blocked_after_wipe = true;
                 return Err(TransportError::WipeGenerationStale);
             }
             // A device that never synced holds nothing from before the wipe: it joins the current generation.
             state.wipe_generation = page.wipe_generation;
         }
-        let mut cursor = state.last_remote_revision;
+        let prev_cursor = state.last_remote_revision;
+        let mut cursor = prev_cursor;
         for change in &page.changes {
             match change {
                 CloudChange::Note(row) => {
@@ -398,7 +469,11 @@ fn pull(
         if !page.has_more || page.changes.is_empty() {
             return Ok(());
         }
+        if cursor <= prev_cursor {
+            return Err(TransportError::Server("pull pagination did not advance revision cursor".into()));
+        }
     }
+    Err(TransportError::Server("pull exceeded maximum page count".into()))
 }
 
 /// Only the download half: applies every change after the cursor, keeping unsynced words as copies.
@@ -418,6 +493,9 @@ pub fn push_only(
     transport: &mut dyn Transport,
     ids: &mut dyn IdSource,
 ) -> Result<SyncReport, SyncError> {
+    if state.uploads_blocked_after_wipe {
+        return Err(SyncError::Transport(TransportError::WipeGenerationStale));
+    }
     let mut report = SyncReport::default();
     push_pending(state, transport, ids, &mut report)?;
     push_deletes(state, transport, &mut report)?;
@@ -431,6 +509,9 @@ pub fn sync(
     transport: &mut dyn Transport,
     ids: &mut dyn IdSource,
 ) -> Result<SyncReport, SyncError> {
+    if state.uploads_blocked_after_wipe {
+        return Err(SyncError::Transport(TransportError::WipeGenerationStale));
+    }
     let mut report = SyncReport::default();
     // A device's first sync downloads first, to learn the account's wipe generation before an upload
     // presents one (a write with an old generation is refused, NL002).
@@ -441,6 +522,7 @@ pub fn sync(
     push_deletes(state, transport, &mut report)?;
     pull(state, transport, ids, &mut report)?;
     push_pending(state, transport, ids, &mut report)?;
+    push_deletes(state, transport, &mut report)?;
     Ok(report)
 }
 

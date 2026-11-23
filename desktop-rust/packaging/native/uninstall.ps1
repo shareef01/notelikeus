@@ -6,6 +6,14 @@ if (-not [string]::Equals($scriptRoot, $expectedInstallRoot, [StringComparison]:
     throw 'Refusing to uninstall from an unexpected folder.'
 }
 
+$installedExe = Join-Path $expectedInstallRoot 'notelikeus.exe'
+$running = Get-Process -Name 'notelikeus' -ErrorAction SilentlyContinue | Where-Object {
+    try { [string]::Equals($_.Path, $installedExe, [StringComparison]::OrdinalIgnoreCase) } catch { $false }
+}
+if ($running) {
+    throw 'Notelikeus Rust is currently running. Close it from the tray or window before uninstalling.'
+}
+
 $programs = [Environment]::GetFolderPath('Programs')
 $programsRoot = [IO.Path]::GetFullPath($programs).TrimEnd('\')
 $shortcutRoot = [IO.Path]::GetFullPath((Join-Path $programsRoot 'NotelikeusRust')).TrimEnd('\')

@@ -36,7 +36,7 @@ foreach ($name in $buildConfigNames) {
 try {
     Push-Location $workspaceRoot
     try {
-        & $cargo build --release --manifest-path $manifestPath -p nlk-native
+        & $cargo build --release --locked --manifest-path $manifestPath -p nlk-native
         if ($LASTEXITCODE -ne 0) { throw 'The native release build failed.' }
     }
     finally {
@@ -147,7 +147,10 @@ Sync is configured at runtime with NLK_SUPABASE_URL and NLK_SUPABASE_KEY. This p
     }
     Compress-Archive -Path (Join-Path $stagingPath '*') -DestinationPath $outputPath -CompressionLevel Optimal -Force
     $hash = (Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash
+    $checksumPath = "$outputPath.sha256"
+    Set-Content -LiteralPath $checksumPath -Value ("{0}  {1}" -f $hash.ToLowerInvariant(), (Split-Path -Leaf $outputPath)) -Encoding ascii
     Write-Host "Package: $outputPath"
+    Write-Host "Checksum: $checksumPath"
     Write-Host "SHA-256: $hash"
 }
 finally {

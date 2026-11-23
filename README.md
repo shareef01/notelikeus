@@ -19,7 +19,7 @@ account, and syncs across devices when you sign in without ever silently overwri
 - **Rich text** (bold, italic, links, lists) and **images**, stored on the device first and uploaded later.
 - **Reminders** through system alarms on Android, the tray on Windows and the service worker on the web.
 - **Offline without an account.** "Continue without an account" keeps everything in the browser or on the device. Signing in later adds sync.
-- **Encrypted storage on the device**: SQLCipher (key in the Android Keystore or Windows DPAPI), WebCrypto AES-GCM in IndexedDB on the web.
+- **Encrypted storage on the device**: AES-256-GCM sealed storage wrapped with Windows DPAPI on the native Rust Windows client (`%APPDATA%\NotelikeusRust`), SQLCipher (key in the Android Keystore or Windows DPAPI) on Kotlin clients, and WebCrypto AES-GCM in IndexedDB on the web.
 - **Backups** you can move between platforms: a `.nlkbak` archive with images, or plain JSON.
 - **Account deletion** from every client, which also removes the account's images from storage.
 
@@ -39,7 +39,7 @@ A device's clock never overrides a revision the server has confirmed: the revisi
 ## Architecture
 
 ```
- Web PWA (React, IndexedDB)    Android (Compose, Room)    Windows (Compose Desktop, Room)
+ Web PWA (React, IndexedDB)    Android (Compose, Room)    Windows (Rust/Slint or Compose Desktop)
             │                          │                             │
             └──────────── revision-checked RPCs over HTTPS ──────────┘
                                        │
@@ -50,19 +50,20 @@ A device's clock never overrides a revision the server has confirmed: the revisi
 
 - **Supabase** stores notes and enforces ownership with row-level security. Writes go through RPCs that check the revision, the wipe generation and storage quota in one transaction.
 - **The attachments Worker** verifies the user's token and builds every storage key itself (`owners/{owner}/notes/{note}/attachments/{id}`), so one account can never name another's file. An upload stays provisional until a note revision references it; a sweep reclaims anything orphaned.
-- **Shared contracts** in [`contracts/`](contracts/) (note colours, query parser vectors, backup fixtures) are tested by both the Kotlin and TypeScript clients, so the platforms agree on the data model.
+- **Shared contracts** in [`contracts/`](contracts/) (note colours, theme palettes, query parser vectors, sync scenarios, backup fixtures) are tested by the Rust, Kotlin, and TypeScript clients, so all platforms agree on the data model.
 
-More detail: [backend architecture](docs/BACKEND_ARCHITECTURE.md), [local encryption at rest](docs/LOCAL_ENCRYPTION_AT_REST.md), [decision record](docs/DECISIONS.md), [deployment runbook](docs/DEPLOYMENT_RUNBOOK.md).
+More detail: [backend architecture](docs/BACKEND_ARCHITECTURE.md), [local encryption at rest](docs/LOCAL_ENCRYPTION_AT_REST.md), [Rust migration audit](docs/RUST_MIGRATION_AUDIT.md), [decision record](docs/DECISIONS.md), [deployment runbook](docs/DEPLOYMENT_RUNBOOK.md).
 
 ## Stack
 
 | Part | Built with |
 |---|---|
 | Web | React 19, TypeScript, TipTap 3, Zustand 5, Tailwind CSS 4, Vite, Workbox |
-| Android and Windows | Kotlin 2.4 Multiplatform, Compose Multiplatform 1.12, Room 2.8 with SQLCipher, Koin, Glance widget |
+| Windows (native Rust) | Rust 2024, Slint 1.19 (Direct2D / FemtoVG / Skia), `aes-gcm` + Windows DPAPI (`CryptProtectData`), `ureq` + Schannel (`native-tls`) |
+| Android and Windows (Kotlin) | Kotlin 2.4 Multiplatform, Compose Multiplatform 1.12, Room 2.8 with SQLCipher, Koin, Glance widget |
 | Backend | Supabase (Postgres, PostgREST, Auth, Realtime), pgTAP tests |
 | Storage | Cloudflare Workers and R2 |
-| Quality | Vitest, Playwright with axe accessibility checks, Detekt, GitHub Actions |
+| Quality | Cargo test + headless Slint UI tests, Vitest, Playwright with axe accessibility checks, Detekt, GitHub Actions |
 
 ## Quick start
 
@@ -86,7 +87,8 @@ npm run supabase:reset
 Desktop and Android:
 
 ```bash
-./gradlew :composeApp:run                # Windows/desktop
+cd desktop-rust && cargo run --release --locked -p nlk-native   # Native Windows desktop (Rust + Slint)
+./gradlew :composeApp:run                                       # Kotlin/Compose Windows desktop
 npm run kotlin:staging-properties && ./gradlew :androidApp:assembleDebug
 ```
 
@@ -94,6 +96,7 @@ npm run kotlin:staging-properties && ./gradlew :androidApp:assembleDebug
 
 | What | Command |
 |---|---|
+| Rust desktop fmt, clippy, unit/contract/UI tests | `cd desktop-rust && cargo fmt --all -- --check && cargo clippy --workspace --all-features --all-targets --locked -- -D warnings && cargo test --workspace --all-features --locked` |
 | Web lint, types, unit tests | `cd web && npm run lint && npm run typecheck && npm test` |
 | Web end-to-end (needs local Supabase) | `cd web && npm run test:e2e` |
 | Web accessibility and reflow matrix (no backend) | `cd web && npm run test:audit-ui` |
@@ -118,6 +121,7 @@ See [SECURITY.md](SECURITY.md) and the [privacy policy](PRIVACY_POLICY.md).
 
 ```
 web/                  React PWA
+desktop-rust/         Native Windows Rust workspace (nlk-native, notelikeus-app, notelikeus-core, nlk-tauri, nlk-cli)
 composeApp/           Shared Kotlin: domain, sync engine, Room, Compose UI, desktop target
 androidApp/           Android entry point, widget, App Functions
 supabase/             Migrations and pgTAP tests

@@ -514,3 +514,61 @@ fn a_device_that_never_synced_joins_an_account_wiped_before_it_arrived() {
     assert_eq!(fresh.state.wipe_generation, 3);
     assert_eq!(cloud_contents(&s), ["First: written before the first sync"]);
 }
+
+#[test]
+fn wipe_block_persists_across_local_state_serialization_and_reload() {
+    let s = server();
+    let mut a = Device::new(&s, 1_000);
+    let id = a.create("Local", "keep me");
+    a.sync().unwrap();
+    {
+        let mut server = s.borrow_mut();
+        server.rows.clear();
+        server.wipe_generation = 1;
+    }
+    a.edit(&id, "edited offline");
+    assert!(matches!(a.sync(), Err(SyncError::Transport(TransportError::WipeGenerationStale))));
+    assert!(a.state.uploads_blocked_after_wipe);
+
+    let json = serde_json::to_vec(&a.state).unwrap();
+    let reloaded: LocalState = serde_json::from_slice(&json).unwrap();
+    assert!(reloaded.uploads_blocked_after_wipe);
+    assert_eq!(reloaded.notes[&id].content, "edited offline");
+    assert!(!reloaded.pending.is_empty());
+}
+
+#[test]
+fn payload_invalid_skips_only_offending_note_and_syncs_siblings() {
+    struct RejectTitleTransport<'a> {
+        inner: Link<'a>,
+        bad_id: String,
+    }
+    impl Transport for RejectTitleTransport<'_> {
+        fn apply_note_change(&mut self, args: &ApplyNoteChangeArgs) -> Result<ApplyOutcome, TransportError> {
+            if args.p_note_id == self.bad_id {
+                return Err(TransportError::PayloadInvalid("bad note payload".into()));
+            }
+            self.inner.apply_note_change(args)
+        }
+        fn apply_note_delete(&mut self, id: &str, base: Option<i64>, w: i64) -> Result<DeleteOutcome, TransportError> {
+            self.inner.apply_note_delete(id, base, w)
+        }
+        fn pull_changes(&mut self, after: i64, limit: u32) -> Result<PullPage, TransportError> {
+            self.inner.pull_changes(after, limit)
+        }
+    }
+
+    let s = server();
+    let mut a = Device::new(&s, 1_000);
+    let bad = a.create("Bad", "too malformed for server");
+    let good = a.create("Good", "valid sibling");
+    let mut clock = a.clock;
+    let mut tx = RejectTitleTransport { inner: Link(&s), bad_id: bad.clone() };
+    let report = sync::sync(&mut a.state, &mut tx, &mut Ids(&mut clock)).unwrap();
+    assert!(report.pushed.contains(&good));
+    assert!(!report.pushed.contains(&bad));
+    assert_eq!(cloud_contents(&s), ["Good: valid sibling"]);
+    assert!(a.state.notes.contains_key(&bad), "skipped local note is kept safely");
+    assert!(a.state.pending.contains_key(&bad), "skipped local note remains queued");
+    assert!(!a.state.pending.contains_key(&good));
+}

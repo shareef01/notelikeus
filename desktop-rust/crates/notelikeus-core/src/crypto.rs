@@ -11,6 +11,21 @@ use crate::Error;
 pub const KEY_LEN: usize = 32;
 const NONCE_LEN: usize = 12;
 
+/// Overwrites secret bytes using volatile writes and a compiler fence so the optimizer cannot elide it.
+pub fn wipe(bytes: &mut [u8]) {
+    for b in bytes.iter_mut() {
+        // SAFETY: `b` is a valid mutable reference to an initialized byte inside the slice.
+        unsafe { std::ptr::write_volatile(b, 0) };
+    }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Wipes the underlying buffer of a `String` safely before clearing it.
+pub fn wipe_string(secret: &mut String) {
+    let mut bytes = std::mem::take(secret).into_bytes();
+    wipe(&mut bytes);
+}
+
 /// Wraps and unwraps the data key for storage on disk.
 pub trait KeyProtector {
     fn protect(&self, key: &[u8; KEY_LEN]) -> Result<Vec<u8>, Error>;
@@ -79,14 +94,22 @@ mod dpapi {
     /// calling DPAPI without also knowing it. Not a secret, only a namespace.
     const ENTROPY: &[u8] = b"notelikeus-rust-experimental/data-key/v1";
 
-    fn blob(data: &[u8]) -> CRYPT_INTEGER_BLOB {
-        CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 }
+    fn blob(data: &[u8]) -> Result<CRYPT_INTEGER_BLOB, Error> {
+        let len = u32::try_from(data.len()).map_err(|_| Error::Crypto("DPAPI input is too large".into()))?;
+        Ok(CRYPT_INTEGER_BLOB { cbData: len, pbData: data.as_ptr() as *mut u8 })
     }
 
-    fn take(out: CRYPT_INTEGER_BLOB) -> Vec<u8> {
-        // SAFETY: DPAPI returned a buffer of cbData bytes that we own and free with LocalFree.
+    fn take(out: CRYPT_INTEGER_BLOB, wipe_source: bool) -> Vec<u8> {
+        if out.pbData.is_null() {
+            return Vec::new();
+        }
+        // SAFETY: DPAPI returned a non-null LocalAlloc buffer of `cbData` bytes that we own and free with LocalFree.
         unsafe {
-            let bytes = std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec();
+            let len = out.cbData as usize;
+            let bytes = if len > 0 { std::slice::from_raw_parts(out.pbData, len).to_vec() } else { Vec::new() };
+            if wipe_source && len > 0 {
+                super::wipe(std::slice::from_raw_parts_mut(out.pbData, len));
+            }
             LocalFree(out.pbData as _);
             bytes
         }
@@ -94,8 +117,8 @@ mod dpapi {
 
     impl KeyProtector for DpapiKeyProtector {
         fn protect(&self, key: &[u8; KEY_LEN]) -> Result<Vec<u8>, Error> {
-            let input = blob(key);
-            let entropy = blob(ENTROPY);
+            let input = blob(key)?;
+            let entropy = blob(ENTROPY)?;
             let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
             // SAFETY: every pointer refers to a live blob for the duration of the call.
             let ok = unsafe {
@@ -112,12 +135,12 @@ mod dpapi {
             if ok == 0 {
                 return Err(Error::Crypto(format!("CryptProtectData failed: {}", std::io::Error::last_os_error())));
             }
-            Ok(take(out))
+            Ok(take(out, false))
         }
 
         fn unprotect(&self, data: &[u8]) -> Result<[u8; KEY_LEN], Error> {
-            let input = blob(data);
-            let entropy = blob(ENTROPY);
+            let input = blob(data)?;
+            let entropy = blob(ENTROPY)?;
             let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
             // SAFETY: as above.
             let ok = unsafe {
@@ -134,9 +157,9 @@ mod dpapi {
             if ok == 0 {
                 return Err(Error::Crypto(format!("CryptUnprotectData failed: {}", std::io::Error::last_os_error())));
             }
-            let mut bytes = take(out);
+            let mut bytes = take(out, true);
             let key: Result<[u8; KEY_LEN], _> = bytes.as_slice().try_into();
-            bytes.iter_mut().for_each(|b| *b = 0);
+            super::wipe(&mut bytes);
             key.map_err(|_| Error::Crypto("unwrapped key has the wrong length".into()))
         }
     }

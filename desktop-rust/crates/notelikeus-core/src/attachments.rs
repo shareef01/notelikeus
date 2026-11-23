@@ -62,7 +62,7 @@ pub struct RemoteAttachment {
 /// The image types the Worker accepts, from the file's first bytes (never the file name). The ones the
 /// app can show are PNG, JPEG, GIF and WebP; HEIC/HEIF/AVIF come from phones and are kept and synced.
 pub fn sniff_mime(bytes: &[u8]) -> Option<&'static str> {
-    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+    if bytes.len() >= 8 && bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
         Some("image/png")
     } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
         Some("image/jpeg")
@@ -92,9 +92,12 @@ pub fn new_attachment_id() -> Result<String, Error> {
     Ok(crypto::random_bytes::<16>()?.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// A path segment the Worker accepts (`[A-Za-z0-9._-]{1,128}`).
+/// A path segment the Worker accepts (`[A-Za-z0-9._-]{1,128}`), excluding dot-segments.
 pub fn valid_segment(segment: &str) -> bool {
     (1..=128).contains(&segment.len())
+        && segment != "."
+        && segment != ".."
+        && !segment.contains("..")
         && segment.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
@@ -125,6 +128,9 @@ pub fn merge_listing(
         });
     }
     for (note_id, attachments) in local {
+        if !live_notes.contains(note_id) {
+            continue;
+        }
         let keep: Vec<Attachment> = attachments
             .iter()
             .filter(|a| a.is_pending() || awaiting_commit.contains(note_id))
@@ -147,11 +153,19 @@ pub struct Blobs {
     key: [u8; KEY_LEN],
 }
 
+impl Drop for Blobs {
+    fn drop(&mut self) {
+        crypto::wipe(&mut self.key);
+    }
+}
+
 impl std::fmt::Debug for Blobs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Blobs").field("dir", &self.dir).finish_non_exhaustive()
     }
 }
+
+static BLOB_TEMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl Blobs {
     pub(crate) fn new(dir: PathBuf, owner_id: &str, key: [u8; KEY_LEN]) -> Blobs {
@@ -163,7 +177,9 @@ impl Blobs {
     }
 
     fn path(&self, id: &str, cached: bool) -> Result<PathBuf, Error> {
-        if !valid_segment(id) {
+        let valid =
+            (1..=128).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'));
+        if !valid {
             return Err(Error::InvalidInput("attachment id".into()));
         }
         let dir = if cached { self.dir.join("cache") } else { self.dir.clone() };
@@ -171,12 +187,29 @@ impl Blobs {
     }
 
     fn write(&self, id: &str, bytes: &[u8], cached: bool) -> Result<(), Error> {
+        use std::io::Write;
+        use std::sync::atomic::Ordering;
+
+        if cached
+            && let Some(account_dir) = self.dir.parent()
+            && !account_dir.exists()
+        {
+            return Err(Error::InvalidInput("account directory no longer exists".into()));
+        }
         let path = self.path(id, cached)?;
-        fs::create_dir_all(path.parent().unwrap_or(&self.dir))?;
+        let parent = path.parent().unwrap_or(&self.dir);
+        fs::create_dir_all(parent)?;
         let sealed = crypto::seal(&self.key, &self.aad(id), bytes)?;
-        let temp = path.with_extension("tmp");
-        fs::write(&temp, sealed)?;
-        fs::rename(temp, path)?;
+        let seq = BLOB_TEMP_SEQ.fetch_add(1, Ordering::Relaxed);
+        let temp = parent.join(format!("{id}.{}.{seq}.tmp", std::process::id()));
+        if let Err(err) = fs::File::create(&temp).and_then(|mut f| f.write_all(&sealed)) {
+            let _ = fs::remove_file(&temp);
+            return Err(err.into());
+        }
+        if let Err(err) = fs::rename(&temp, &path) {
+            let _ = fs::remove_file(&temp);
+            return Err(err.into());
+        }
         Ok(())
     }
 
@@ -215,7 +248,11 @@ impl Blobs {
     pub fn release_pending(&self, id: &str) -> Result<(), Error> {
         if let Some(bytes) = self.read(id, false)? {
             self.write(id, &bytes, true)?;
-            fs::remove_file(self.path(id, false)?)?;
+            match fs::remove_file(self.path(id, false)?) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.into()),
+            }
         }
         Ok(())
     }
@@ -224,11 +261,33 @@ impl Blobs {
     pub fn remove(&self, id: &str) -> Result<(), Error> {
         for cached in [false, true] {
             let path = self.path(id, cached)?;
-            if path.exists() {
-                fs::remove_file(path)?;
+            match fs::remove_file(path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.into()),
             }
         }
         Ok(())
+    }
+
+    /// Removes cached `.nla` files whose attachment ids are no longer referenced by any live note.
+    pub fn prune_orphans(&self, keep_ids: &BTreeSet<String>) -> Result<usize, Error> {
+        let cache = self.dir.join("cache");
+        if !cache.exists() {
+            return Ok(0);
+        }
+        let mut removed = 0usize;
+        for entry in fs::read_dir(&cache)? {
+            let path = entry?.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("nla") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+            if !keep_ids.contains(stem) && fs::remove_file(&path).is_ok() {
+                removed += 1;
+            }
+        }
+        Ok(removed)
     }
 }
 

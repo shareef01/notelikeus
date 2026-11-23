@@ -7,38 +7,133 @@
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::model::{ApplyNoteChangeArgs, CloudChange, CloudNoteRow};
+use crate::crypto;
+use crate::model::{ApplyNoteChangeArgs, CloudChange, CloudNoteRow, CloudTombstoneRow, Note};
 use crate::sync::{ApplyOutcome, DeleteOutcome, PullPage, Transport, TransportError};
 
 /// The project URL without a trailing slash, if it is HTTPS, or plain HTTP to this machine (a local
-/// stack). The host is compared exactly: `http://localhost.example.com` is not loopback.
+/// stack). The host is compared strictly: userinfo (`@`), whitespace, control characters, and
+/// `http://localhost.example.com` are refused.
 pub fn checked_base_url(base_url: &str) -> Result<String, String> {
     let base = base_url.trim().trim_end_matches('/');
-    if let Some(rest) = base.strip_prefix("https://") {
-        if rest.is_empty() {
+    if base.bytes().any(|b| b <= 0x20 || b == 0x7F || matches!(b, b'\\' | b'"' | b'\'' | b'<' | b'>')) {
+        return Err("refusing a Supabase URL with invalid characters".into());
+    }
+    let (is_http, rest) = if let Some(rest) = base.strip_prefix("https://") {
+        (false, rest)
+    } else if let Some(rest) = base.strip_prefix("http://") {
+        (true, rest)
+    } else {
+        return Err("refusing a non-HTTPS Supabase URL".into());
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.is_empty() || authority.contains('@') {
+        return Err("refusing a URL without a valid host".into());
+    }
+    let (host, port_part) = if let Some(v6_rest) = authority.strip_prefix('[') {
+        let Some((addr, after_bracket)) = v6_rest.split_once(']') else {
+            return Err("the Supabase URL has a malformed IPv6 host".into());
+        };
+        if addr.is_empty() {
             return Err("the Supabase URL has no host".into());
         }
-        return Ok(base.to_string());
-    }
-    let rest = base.strip_prefix("http://").ok_or("refusing a non-HTTPS Supabase URL")?;
-    let authority = rest.split('/').next().unwrap_or_default();
-    let host = if let Some(v6) = authority.strip_prefix('[') {
-        v6.split(']').next().map(|h| format!("[{h}]")).unwrap_or_default()
+        let port = if let Some(p) = after_bracket.strip_prefix(':') {
+            Some(p)
+        } else if after_bracket.is_empty() {
+            None
+        } else {
+            return Err("the Supabase URL has a malformed host".into());
+        };
+        (format!("[{addr}]"), port)
+    } else if let Some((h, p)) = authority.split_once(':') {
+        if h.is_empty() || p.contains(':') {
+            return Err("the Supabase URL has a malformed host".into());
+        }
+        (h.to_string(), Some(p))
     } else {
-        authority.split(':').next().unwrap_or_default().to_string()
+        (authority.to_string(), None)
     };
-    match host.as_str() {
-        "127.0.0.1" | "localhost" | "[::1]" => Ok(base.to_string()),
-        _ => Err("refusing a non-HTTPS Supabase URL".into()),
+    if host.is_empty() {
+        return Err("the Supabase URL has no host".into());
+    }
+    if let Some(port) = port_part {
+        let parsed: u16 = port.parse().map_err(|_| "the Supabase URL has an invalid port".to_string())?;
+        if parsed == 0 {
+            return Err("the Supabase URL has an invalid port".into());
+        }
+    }
+    if is_http {
+        match host.to_ascii_lowercase().as_str() {
+            "127.0.0.1" | "localhost" | "[::1]" => Ok(base.to_string()),
+            _ => Err("refusing a non-HTTPS Supabase URL".into()),
+        }
+    } else {
+        Ok(base.to_string())
     }
 }
 
-/// One HTTPS agent: Windows SChannel through `native-tls`, 30-second timeout.
+fn decode_base64url_segment(segment: &str) -> Option<Vec<u8>> {
+    let val = |b: u8| -> Option<u32> {
+        match b {
+            b'A'..=b'Z' => Some(u32::from(b - b'A')),
+            b'a'..=b'z' => Some(u32::from(b - b'a' + 26)),
+            b'0'..=b'9' => Some(u32::from(b - b'0' + 52)),
+            b'-' => Some(62),
+            b'_' => Some(63),
+            _ => None,
+        }
+    };
+    let clean = segment.trim_end_matches('=').as_bytes();
+    let mut out = Vec::with_capacity(clean.len() * 3 / 4);
+    let mut i = 0;
+    while i < clean.len() {
+        let rem = clean.len() - i;
+        if rem == 1 {
+            return None;
+        }
+        let a = val(clean[i])?;
+        let b = val(clean[i + 1])?;
+        out.push(((a << 2) | (b >> 4)) as u8);
+        if rem >= 3 {
+            let c = val(clean[i + 2])?;
+            out.push((((b & 0x0f) << 4) | (c >> 2)) as u8);
+            if rem >= 4 {
+                let d = val(clean[i + 3])?;
+                out.push((((c & 0x03) << 6) | d) as u8);
+            }
+        }
+        i += 4;
+    }
+    Some(out)
+}
+
+/// Validates that a configured Supabase client API key is not a secret or `service_role` key (D31).
+pub fn checked_publishable_key(key: &str) -> Result<String, String> {
+    let trimmed = key.trim();
+    if trimmed.is_empty() {
+        return Err("the Supabase key is empty".into());
+    }
+    if trimmed.to_ascii_lowercase().starts_with("sb_secret_") {
+        return Err("refusing a secret Supabase key in the desktop client".into());
+    }
+    let mut parts = trimmed.split('.');
+    if let (Some(_), Some(payload_b64), Some(_), None) = (parts.next(), parts.next(), parts.next(), parts.next())
+        && let Some(bytes) = decode_base64url_segment(payload_b64)
+        && let Ok(payload) = serde_json::from_slice::<Value>(&bytes)
+        && payload.get("role").and_then(Value::as_str) == Some("service_role")
+    {
+        return Err("refusing a service_role Supabase key in the desktop client".into());
+    }
+    Ok(trimmed.to_string())
+}
+
+/// One HTTPS agent: Windows SChannel through `native-tls`, 30-second timeout, zero redirects.
 pub(crate) fn tls_agent() -> Result<ureq::Agent, String> {
     let tls = native_tls::TlsConnector::new().map_err(|e| e.to_string())?;
     Ok(ureq::AgentBuilder::new()
         .tls_connector(std::sync::Arc::new(tls))
         .timeout(std::time::Duration::from_secs(30))
+        .redirects(0)
         .build())
 }
 
@@ -49,20 +144,75 @@ pub struct SupabaseTransport {
     agent: ureq::Agent,
 }
 
+impl Drop for SupabaseTransport {
+    fn drop(&mut self) {
+        crypto::wipe_string(&mut self.access_token);
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SnapshotData {
+    pub notes: Vec<CloudNoteRow>,
+    pub tombstones: Vec<CloudTombstoneRow>,
+    pub wipe_generation: i64,
+    pub head_revision: Option<i64>,
+    pub authoritative_note_count: Option<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct PendingDeletedAttachment {
+    pub attachment_id: String,
+    pub note_id: String,
+    pub object_key: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+struct SnapshotState {
+    head_revision: i64,
+    wipe_generation: i64,
+    note_count: i64,
+    tombstone_count: i64,
+}
+
+#[derive(Deserialize)]
+struct SnapshotNotesPage {
+    #[serde(default)]
+    items: Vec<CloudNoteRow>,
+    next_after: Option<String>,
+    state: SnapshotState,
+}
+
+#[derive(Deserialize)]
+struct SnapshotTombstonesPage {
+    #[serde(default)]
+    items: Vec<CloudTombstoneRow>,
+    next_after: Option<String>,
+    state: SnapshotState,
+}
+
+#[derive(Deserialize)]
+struct LegacyFullSnapshot {
+    #[serde(default)]
+    notes: Vec<CloudNoteRow>,
+    #[serde(default)]
+    tombstones: Vec<CloudTombstoneRow>,
+    #[serde(default)]
+    note_count: Option<i64>,
+    #[serde(default)]
+    wipe_generation: i64,
+}
+
 impl SupabaseTransport {
     /// `base_url` must be `https://` (a plain-HTTP URL is accepted only for a local stack on loopback).
     pub fn new(base_url: &str, publishable_key: &str, access_token: &str) -> Result<Self, TransportError> {
         let base = checked_base_url(base_url).map_err(TransportError::Server)?;
+        let key = checked_publishable_key(publishable_key).map_err(TransportError::Server)?;
         let agent = tls_agent().map_err(TransportError::Network)?;
-        Ok(SupabaseTransport {
-            base_url: base,
-            publishable_key: publishable_key.to_string(),
-            access_token: access_token.to_string(),
-            agent,
-        })
+        Ok(SupabaseTransport { base_url: base, publishable_key: key, access_token: access_token.to_string(), agent })
     }
 
     pub fn set_access_token(&mut self, token: &str) {
+        crypto::wipe_string(&mut self.access_token);
         self.access_token = token.to_string();
     }
 
@@ -85,13 +235,168 @@ impl SupabaseTransport {
         }
     }
 
+    /// Reads the account's current wipe generation (`get_sync_generation`).
+    pub fn get_sync_generation(&self) -> Result<i64, TransportError> {
+        let value = self.rpc("get_sync_generation", &json!({}))?;
+        value
+            .get("wipe_generation")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| TransportError::Server("get_sync_generation missing wipe_generation".into()))
+    }
+
     /// Whether the authenticated account has entered the deletion flow (NL003).
     pub fn account_is_deleted(&self) -> Result<bool, TransportError> {
-        match self.rpc("get_sync_generation", &json!({})) {
+        match self.get_sync_generation() {
             Ok(_) => Ok(false),
             Err(TransportError::AccountDeleted) => Ok(true),
             Err(error) => Err(error),
         }
+    }
+
+    /// Deletes all cloud notes and increments `wipe_generation`. Requires a recent sign-in (NL004).
+    pub fn delete_all_user_cloud_data(&self) -> Result<i64, TransportError> {
+        let value = self.rpc("delete_all_user_cloud_data", &json!({}))?;
+        value
+            .get("wipe_generation")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| TransportError::Server("delete_all_user_cloud_data missing wipe_generation".into()))
+    }
+
+    /// Finalizes confirmed attachment deletes queued during a cloud wipe.
+    pub fn finalize_cloud_wipe(&self) -> Result<(), TransportError> {
+        let _ = self.rpc("finalize_cloud_wipe", &json!({}))?;
+        Ok(())
+    }
+
+    /// Fetches a consistent snapshot of all cloud notes and tombstones via `fetch_snapshot_page`,
+    /// falling back to `fetch_full_snapshot` only when the paged RPC is absent (PGRST202).
+    pub fn fetch_full_snapshot_rows(&self) -> Result<SnapshotData, TransportError> {
+        for _attempt in 0..3 {
+            let mut expected_state: Option<SnapshotState> = None;
+            let mut notes = Vec::new();
+            let mut after_note: Option<String> = None;
+            let mut consistent = true;
+            let mut fallback = false;
+            loop {
+                let args = json!({ "p_kind": "notes", "p_after": after_note, "p_limit": 500 });
+                let raw = match self.rpc("fetch_snapshot_page", &args) {
+                    Ok(v) => v,
+                    Err(TransportError::Server(msg)) if msg.contains("PGRST202") || msg.contains("HTTP 404") => {
+                        fallback = true;
+                        break;
+                    }
+                    Err(err) => return Err(err),
+                };
+                let page: SnapshotNotesPage = serde_json::from_value(raw)
+                    .map_err(|e| TransportError::Server(format!("bad snapshot notes page: {e}")))?;
+                match &expected_state {
+                    None => expected_state = Some(page.state.clone()),
+                    Some(prev) if prev != &page.state => {
+                        consistent = false;
+                        break;
+                    }
+                    _ => {}
+                }
+                notes.extend(page.items);
+                match page.next_after {
+                    Some(cursor) => after_note = Some(cursor),
+                    None => break,
+                }
+            }
+            if fallback {
+                let raw = self.rpc("fetch_full_snapshot", &json!({}))?;
+                let full: LegacyFullSnapshot = serde_json::from_value(raw)
+                    .map_err(|e| TransportError::Server(format!("bad full snapshot: {e}")))?;
+                let expected = full.note_count.and_then(|n| usize::try_from(n).ok());
+                if let Some(count) = expected
+                    && count != full.notes.len()
+                {
+                    return Err(TransportError::Server("incomplete cloud snapshot".into()));
+                }
+                return Ok(SnapshotData {
+                    notes: full.notes,
+                    tombstones: full.tombstones,
+                    wipe_generation: full.wipe_generation,
+                    head_revision: None,
+                    authoritative_note_count: expected,
+                });
+            }
+            if !consistent {
+                continue;
+            }
+            let mut tombstones = Vec::new();
+            let mut after_tomb: Option<String> = None;
+            loop {
+                let args = json!({ "p_kind": "tombstones", "p_after": after_tomb, "p_limit": 500 });
+                let raw = self.rpc("fetch_snapshot_page", &args)?;
+                let page: SnapshotTombstonesPage = serde_json::from_value(raw)
+                    .map_err(|e| TransportError::Server(format!("bad snapshot tombstones page: {e}")))?;
+                match &expected_state {
+                    Some(prev) if prev != &page.state => {
+                        consistent = false;
+                        break;
+                    }
+                    _ => {}
+                }
+                tombstones.extend(page.items);
+                match page.next_after {
+                    Some(cursor) => after_tomb = Some(cursor),
+                    None => break,
+                }
+            }
+            if !consistent {
+                continue;
+            }
+            let state = expected_state.ok_or_else(|| TransportError::Server("snapshot returned no state".into()))?;
+            let expected_notes = usize::try_from(state.note_count).unwrap_or(0);
+            let expected_tombstones = usize::try_from(state.tombstone_count).unwrap_or(0);
+            if notes.len() != expected_notes || tombstones.len() != expected_tombstones {
+                return Err(TransportError::Server("incomplete cloud snapshot".into()));
+            }
+            return Ok(SnapshotData {
+                notes,
+                tombstones,
+                wipe_generation: state.wipe_generation,
+                head_revision: Some(state.head_revision),
+                authoritative_note_count: Some(expected_notes),
+            });
+        }
+        Err(TransportError::Server("cloud snapshot kept changing across pages".into()))
+    }
+
+    /// Restores a deleted note atomically on the server via the 14-arg `restore_note` RPC.
+    pub fn restore_note(&self, note: &Note, base_revision: Option<i64>) -> Result<ApplyOutcome, TransportError> {
+        let labels: Vec<_> = note.labels.iter().map(|name| json!({ "name": name })).collect();
+        let body = json!({
+            "p_note_id": note.id,
+            "p_local_id": note.local_id,
+            "p_base_revision": base_revision,
+            "p_title": note.title,
+            "p_content": note.content,
+            "p_client_timestamp": note.timestamp,
+            "p_color": note.color,
+            "p_is_pinned": note.is_pinned,
+            "p_is_archived": note.is_archived,
+            "p_is_trashed": note.is_trashed,
+            "p_position": note.position,
+            "p_reminder_timestamp": note.reminder_timestamp,
+            "p_labels": labels,
+            "p_checklist": note.checklist,
+        });
+        parse_apply_reply(self.rpc("restore_note", &body)?)
+    }
+
+    /// Attachments for tombstoned notes awaiting client GC.
+    pub fn list_pending_deleted_attachments(&self) -> Result<Vec<PendingDeletedAttachment>, TransportError> {
+        let value = self.rpc("list_pending_deleted_attachments", &json!({}))?;
+        serde_json::from_value(value).map_err(|e| TransportError::Server(format!("bad pending deletes: {e}")))
+    }
+
+    /// Purges a confirmed-deleted attachment metadata row for a non-live note.
+    pub fn purge_deleted_note_attachment(&self, note_id: &str, attachment_id: &str) -> Result<(), TransportError> {
+        let _ = self
+            .rpc("purge_deleted_note_attachment", &json!({ "p_attachment_id": attachment_id, "p_note_id": note_id }))?;
+        Ok(())
     }
 }
 
@@ -99,8 +404,11 @@ impl SupabaseTransport {
 /// message text: a conflict message can embed a note title.
 pub fn classify_error(status: u16, body: &Value) -> TransportError {
     match body.get("code").and_then(Value::as_str) {
-        Some("NL002") => TransportError::WipeGenerationStale,
+        Some("NL001") | Some("NL002") => TransportError::WipeGenerationStale,
         Some("NL003") => TransportError::AccountDeleted,
+        Some("NL004") => TransportError::ReauthenticationRequired,
+        Some("NL005") => TransportError::AccountNoteLimit,
+        Some("22023") => TransportError::PayloadInvalid(format!("HTTP {status}, code 22023")),
         Some("PGRST301") | Some("PGRST302") => TransportError::Unauthorized,
         _ if status == 401 || status == 403 => TransportError::Unauthorized,
         Some(code) => TransportError::Server(format!("HTTP {status}, code {code}")),
@@ -251,6 +559,12 @@ pub struct AttachmentsClient {
     pub rate_limit_waits: Vec<std::time::Duration>,
 }
 
+impl Drop for AttachmentsClient {
+    fn drop(&mut self) {
+        crypto::wipe_string(&mut self.access_token);
+    }
+}
+
 const MAX_RATE_LIMIT_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
 
 fn worker_path(version: &str, note_id: &str, attachment_id: &str) -> Result<String, AttachmentError> {
@@ -274,6 +588,7 @@ impl AttachmentsClient {
     }
 
     pub fn set_access_token(&mut self, token: &str) {
+        crypto::wipe_string(&mut self.access_token);
         self.access_token = token.to_string();
     }
 

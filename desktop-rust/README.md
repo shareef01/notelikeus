@@ -54,7 +54,7 @@ logic (`crates/notelikeus-app`). The Tauri app stays as an earlier experiment.
 | 6 | Reminders: Windows notifications, tray | **Done** |
 | 7 | Backups: v3 JSON and v4 `.nlkbak` against `contracts/backup` | **Done** |
 | 8 | Settings: themes, account, diagnostics, delete account, About (Slint attribution) | **Done** |
-| 9 | Packaging and polish: installer, accessibility review, performance | **In progress** (per-user package and accessibility semantics added; runtime screen-reader review and startup/memory comparison remain) |
+| 9 | Packaging and polish: installer, accessibility review, performance, Markdown formatting, cloud wipe recovery, single-instance guard | **Done** (per-user installer with `.ico` and `VERSIONINFO`, UIA `FocusScope` inheritance fix, 7 canonical themes, `PINNED`/`OTHERS` sections, SortOrder + density modes, Markdown toolbar + `SafeHref`, cloud wipe actions, and single-instance activation lock; spoken screen-reader review and Authenticode signing remain) |
 
 ```
 cargo run -p nlk-native                      # the app
@@ -98,26 +98,29 @@ desktop-rust/
       when closed and gives up after five minutes.
     - **Without the setting** nothing changes, which is what a local stack (no captcha) expects.
 
-- **Native settings:** theme choice (system, light, or dark) is saved per app install. Settings includes the
-  existing sign-in, sync, and sign-out actions, plus an exportable diagnostics report with counts and error
-  categories rather than note text, email, or raw account identifiers. Account deletion requires typing `DELETE`
-  and a recent sign-in; after the server accepts deletion, the app clears the account's local sealed data and
-  returns to the separate guest notes. About displays the Slint attribution widget required by its licence.
+- **Native settings & UI features:**
+  - **Appearance:** 7 canonical theme palettes (`contracts/design/theme-colors.json`: System/Light/Dark × Neutral/Blue/Green × AMOLED black), view density (Grid / List / Compact), sort order (Manual / Newest / Oldest), and sidebar collapse state are persisted atomically per install in `settings.json`.
+  - **Notes layout & rich text:** Separate `PINNED` and `OTHERS` sections in the Notes view; Markdown formatting toolbar (`**bold**`, `_italic_`, `• ` bullet lists, `[label](url)` links validated with `SafeHref` rules matching Kotlin and Web) plus `Ctrl+B` / `Ctrl+I` shortcuts; card previews strip inline Markdown markers (`strip_markdown`).
+  - **Cloud wipe & account actions:** Settings includes sign-in, `Sync now`, sign-out, `Delete cloud notes` (`delete_all_user_cloud_data` + `finalize_cloud_wipe`), and a `Re-upload local notes` recovery banner when another device wiped the cloud (`uploads_blocked_after_wipe`). Account deletion requires typing `DELETE` and a recent sign-in; after the server accepts deletion, the app clears the account's local sealed data and returns to the separate guest notes.
+  - **Diagnostics & About:** Exportable and copyable JSON diagnostics report (`schemaVersion`, note/attachment/pending/tombstone counts, `wipeGeneration`, `uploadsBlockedAfterWipe`, and error category) verified by `assert_no_sensitive_values` to never leak note text, emails, JWTs, or raw account UUIDs. About displays the Slint attribution widget required by its licence.
+  - **Single-instance & tray reminders:** Advisory file lock on `instance.lock` with `activate.request` hand-off restores and focuses the existing window when a second instance is launched. A 60-second heartbeat checks due reminders while running, and closing the window hides to the system tray only when pending future reminders exist (exiting cleanly otherwise).
 - **Native Windows package:** from `desktop-rust`, run
   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/native/package.ps1`. It builds the MSVC release
-  executable and writes `target/native-packages/NotelikeusRust-<version>-<target>.zip`. The archive has a per-user
-  installer, Start menu shortcut, Installed apps entry, dependency notices, and an uninstaller that preserves the
-  separate `%APPDATA%\NotelikeusRust` notes and settings folder. The archive is unsigned and remains for local
-  evaluation until a trusted release signing identity is available.
+  executable (`--locked`) with embedded Win32 `.ico` and `VERSIONINFO` resources (`build.rs`), and writes
+  `target/native-packages/NotelikeusRust-<version>-<target>.zip` plus its `.sha256` checksum. The archive has a per-user
+  installer (`install.ps1`), Start menu shortcut, Installed apps entry, dependency notices, and an uninstaller (`uninstall.ps1`)
+  that checks for running `notelikeus` processes and preserves the separate `%APPDATA%\NotelikeusRust` notes and settings folder.
+  The archive is unsigned and remains for local evaluation until a trusted release signing identity is available.
 
 - **Native runtime review (2026-11-22, one run per app):** the Rust release opened its first window in 181 ms and
   used 78.5 MiB working set / 114.8 MiB private memory after 30 seconds idle. The installed Kotlin desktop app took
   4,190 ms to its first window and used 311.7 MiB / 438.6 MiB at the same idle point (main process plus launcher).
   Both ran with isolated empty data. These are single-run measurements with uncontrolled OS file caches.
-- **Keyboard and accessibility review:** Settings, Diagnostics and About expose labeled groups and controls in the
-  Windows accessibility tree. Tab, arrow keys, Space and Enter worked in the theme selector, and the dialogs showed
-  focus on their first action. The accessibility snapshot continued to report Search notes as focused while the
-  screenshot showed focus on the dialog control; spoken screen-reader announcements were not independently checked.
+- **Keyboard and accessibility review:** interactive controls (`IconButton`, `FilterChip`, `PillButton`, `ThemeOption`,
+  `CheckBox`, `NavItem`, `Card`) inherit `FocusScope` directly on their root element so Windows UI Automation (UIA) tracks
+  keyboard focus accurately on the accessible element itself rather than an inner child scope. Modal dialogs and sheets restore
+  focus to the main window key scope on close, gate background shortcuts (`Ctrl+N`, `Ctrl+K`, `Ctrl+F`), and dismiss in strict
+  top-down Z-order on `Escape`. Spoken screen-reader announcements were not independently checked.
 
 - **Tauri 2 app** (guest mode): a notes list with search, an editor that autosaves, pin, delete with Undo,
   keyboard shortcuts (Ctrl+N new, Ctrl+F search, Ctrl+S save now), light and dark themes from
@@ -147,12 +150,14 @@ desktop-rust/
 - **Transport** (`--features http`): `apply_note_change`, `apply_note_delete`, `pull_changes` over HTTPS with
   SChannel. Errors are classified by SQLSTATE code, never by message text. Plain HTTP is accepted only on loopback.
 
-## Verified (2026-11-21, this machine)
+## Verified (2026-11-23, this machine)
 
-`cargo test --workspace --all-features` passed 30 tests: 8 contract, 10 sync scenarios, 7 store (including the real
-DPAPI round trip and tamper rejection), 5 reply parsing. `cargo clippy -- -D warnings` and `cargo fmt --check` are
-clean. The CLI was smoke-tested end to end with a temporary data folder. No note text is in plaintext on disk, and
-`--data-dir ~/.notelikeus` is refused.
+`cargo test --workspace --all-features --locked` passed 116 test entry points across all workspace crates:
+- `nlk-native`: 16 library unit/contract tests (`backup`, `images`, `instance`, `view`, `controller::account`), 1 headless Slint UI test suite (`tests/ui.rs`, exercising 15 end-to-end scenarios), and 1 live test entry point (`tests/live.rs`).
+- `notelikeus-app`: 28 library unit/contract tests (`clock`, `service`, `backup`, `diagnostics`, `settings`).
+- `notelikeus-core`: 7 library unit tests, 11 contract tests (`tests/contracts.rs`, including theme palettes and SQL migration RPC signatures), 11 HTTP reply & URL/key validation tests (`tests/http_replies.rs`), 10 query parser tests (`tests/query.rs`), 12 DPAPI & encrypted store tests (`tests/store.rs`), 14 sync engine scenario tests (`tests/sync_scenarios.rs`), and 5 live Supabase test entry points (`tests/live_supabase.rs`).
+
+`cargo clippy --workspace --all-features --all-targets --locked -- -D warnings` and `cargo fmt --all -- --check` pass with 0 warnings. The release binary (`target/release/notelikeus.exe`, 22.09 MiB, embedded Win32 `FileVersion = 0.1.0` and `ProductName = Notelikeus`) was smoke-tested with an isolated `NLK_RUST_DATA_DIR`, verifying DPAPI key creation, `instance.lock` acquisition, and second-instance exit-code-0 activation hand-off.
 
 **Tauri app (2026-11-21, MSVC toolchain):** 6 service unit tests, plus `node crates/nlk-tauri/e2e/drive.mjs` with 18
 checks against the real window, passing four runs in a row. The checks cover typing and saving, newest first,
@@ -193,23 +198,18 @@ measurement; the Kotlin app was not measured alongside it).
 
 Without local-stack variables, the live integration tests return early; CI runs the remaining Rust tests.
 
-## Not done: parity gates before replacing Kotlin
+## Remaining items before replacing Kotlin as the default Windows release
 
-1. **UI parity.** The interface is new and small. It does not yet reuse the web app's React components. Settings
-   remain to be built.
-2. **Hosted sign-in, untried:** the security check is implemented and tested end to end with a test key, but it has
-   never run against `https://notelikeus.pages.dev/captcha` and the hosted project together. Try that with a
-   throwaway address, by a person, before relying on it.
-3. **First download**: `fetch_snapshot_page` with the unexplained-missing-ids guard. The engine only pulls with
-   `pull_changes`, which is safe for an empty device but has no snapshot consistency check.
-4. **Realtime** wake-ups, **restore and undo** (`restore_note`), **digest-verified deletes** of notes whose revision was never known, the **re-upload after a wipe**
-   flow, and **account deletion**.
-5. **A hosted project has never been used.** The transport and sign-in are verified against the local stack only.
-   Never point the tests at production; they create accounts, and refuse any URL that is not this machine.
-6. **Sync runs under the store's lock.** Edits made during a slow sync wait for it to finish. That's fine locally;
-   on a slow network it should become a snapshot-and-merge.
-7. **Migration path**: importing a Kotlin backup (`.nlkbak`) is the only supported way to bring data across. Direct
-   reading of the Room/SQLCipher database is deliberately not planned.
+1. **Hosted sign-in verification:** the Turnstile security check is implemented and tested end to end with a local test key,
+   and should be manually verified once against `https://notelikeus.pages.dev/captcha` and the hosted project using a
+   throwaway account.
+2. **Realtime wake-ups & editor inline WYSIWYG:** `nlk-native` syncs on start, focus, 3 seconds after edits, every 2 minutes,
+   and on manual `Sync now` (without a WebSocket Realtime subscription), and edits Markdown syntax (`**bold**`, `_italic_`,
+   `• `, `[label](url)`) in `TextInput` while stripping markers in card previews.
+3. **Authenticode signing & spoken screen-reader pass:** the per-user package is currently unsigned, and an interactive listening
+   pass with NVDA / Windows Narrator remains recommended alongside the automated Slint accessibility tests.
+4. **Migration path:** importing a Kotlin backup (`.nlkbak` or v3 `.json`) is the supported way to bring data across;
+   direct reading of `~/.notelikeus` Room/SQLCipher files is deliberately refused so both clients can coexist safely.
 
 ## Native reminders (2026-11-22)
 

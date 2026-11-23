@@ -1,8 +1,21 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use slint::ComponentHandle;
+use std::time::Duration;
+
+use nlk_native::instance::{self, AcquireOutcome};
+use slint::{ComponentHandle, Timer, TimerMode};
 
 fn main() {
+    let dir = notelikeus_app::data_dir_named(nlk_native::DATA_FOLDER);
+    let instance_guard = match instance::acquire(&dir) {
+        Ok(AcquireOutcome::Primary(guard)) => guard,
+        Ok(AcquireOutcome::AlreadyRunning) => return,
+        Err(message) => {
+            nlk_native::show_fatal_error(&message);
+            std::process::exit(1);
+        }
+    };
+
     match nlk_native::open() {
         Ok((ui, controller)) => {
             let tray = match nlk_native::TrayIcon::new() {
@@ -17,6 +30,7 @@ fn main() {
                 let weak_ui = weak_ui.clone();
                 move || {
                     if let Some(ui) = weak_ui.upgrade() {
+                        ui.window().set_minimized(false);
                         let _ = ui.window().show();
                         ui.invoke_focus_main();
                     }
@@ -27,22 +41,41 @@ fn main() {
                 let controller = controller.clone();
                 move || {
                     if let Some(ui) = weak_ui.upgrade() {
+                        ui.window().set_minimized(false);
                         let _ = ui.window().show();
                         ui.invoke_focus_main();
                         controller.new_note();
                     }
                 }
             });
-            tray.on_exit_requested(move || {
-                controller.save_now();
-                let _ = slint::quit_event_loop();
+            tray.on_exit_requested({
+                let controller = controller.clone();
+                move || {
+                    controller.save_now();
+                    controller.cleanup_notifications();
+                    let _ = slint::quit_event_loop();
+                }
             });
 
-            // The tray component owns the native icon; keep it alive while the event loop runs.
+            let activation_timer = Timer::default();
+            activation_timer.start(TimerMode::Repeated, Duration::from_millis(400), move || {
+                if instance_guard.consume_activation_request()
+                    && let Some(ui) = weak_ui.upgrade()
+                {
+                    ui.window().set_minimized(false);
+                    let _ = ui.window().show();
+                    ui.invoke_focus_main();
+                }
+            });
+
+            // The tray component owns the native icon and activation timer; keep both alive on the loop.
             let _tray = tray;
+            let _activation_timer = activation_timer;
             if let Err(error) = slint::ComponentHandle::run(&ui) {
                 nlk_native::show_fatal_error(&format!("Notelikeus stopped unexpectedly: {error}"));
             }
+            controller.save_now();
+            controller.cleanup_notifications();
         }
         Err(message) => {
             nlk_native::show_fatal_error(&message);

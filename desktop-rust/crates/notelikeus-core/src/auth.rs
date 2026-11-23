@@ -3,14 +3,13 @@
 //!
 //! Sign-in is by emailed one-time code: `POST /auth/v1/otp` with `create_user: true` (so the first
 //! sign-in creates the account), then `POST /auth/v1/verify` with the code. The hosted project also
-//! wants a Turnstile token in `gotrue_meta_security`; [`AuthClient::request_email_code`] takes one,
-//! but obtaining it (a browser challenge) is not implemented here, so hosted sign-in is not yet
-//! possible from this client. Password sign-in exists for local development and tests only, as on
-//! the other clients.
+//! expects a Turnstile token in `gotrue_meta_security`, provided via [`crate::captcha`] when
+//! `NLK_CAPTCHA_PAGE_URL` is configured. Password sign-in exists for local development and tests only,
+//! as on the other clients.
 
 use serde_json::{Value, json};
 
-use crate::http::{checked_base_url, tls_agent};
+use crate::http::{checked_base_url, checked_publishable_key, tls_agent};
 use crate::store::Session;
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -21,7 +20,7 @@ pub enum AuthError {
     InvalidCode,
     #[error("too many attempts; wait a little and try again")]
     RateLimited,
-    #[error("this project requires a verification check that this build cannot show yet")]
+    #[error("the security check failed; try again")]
     CaptchaRequired,
     #[error("the session has ended; sign in again")]
     SessionExpired,
@@ -60,13 +59,13 @@ pub fn parse_session(body: &Value, now_ms: i64) -> Result<Session, AuthError> {
     let access_token = text(body.get("access_token")).ok_or_else(|| AuthError::BadReply("no access token".into()))?;
     let user = body.get("user").ok_or_else(|| AuthError::BadReply("no user".into()))?;
     let user_id = text(user.get("id")).ok_or_else(|| AuthError::BadReply("no user id".into()))?;
-    let expires_in = body.get("expires_in").and_then(Value::as_i64).unwrap_or(3600);
+    let expires_in = body.get("expires_in").and_then(Value::as_i64).unwrap_or(3600).clamp(0, 86_400 * 365);
     Ok(Session {
         access_token,
         refresh_token: text(body.get("refresh_token")),
         user_id,
         email: text(user.get("email")),
-        expires_at_ms: now_ms + expires_in * 1000,
+        expires_at_ms: now_ms.saturating_add(expires_in.saturating_mul(1000)),
     })
 }
 
@@ -78,7 +77,7 @@ impl AuthClient {
     pub fn new(base_url: &str, publishable_key: &str) -> Result<Self, AuthError> {
         Ok(AuthClient {
             base_url: checked_base_url(base_url).map_err(AuthError::Config)?,
-            publishable_key: publishable_key.to_string(),
+            publishable_key: checked_publishable_key(publishable_key).map_err(AuthError::Config)?,
             agent: tls_agent().map_err(AuthError::Network)?,
         })
     }

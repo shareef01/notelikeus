@@ -58,6 +58,7 @@ enum Confirm {
     SignOut,
     RemoveImage(String, String),
     ImportBackup(PathBuf),
+    DeleteCloudData,
 }
 
 #[derive(Default)]
@@ -67,6 +68,8 @@ struct State {
     confirm: Option<Confirm>,
     /// What the grid shows: the sidebar's view, the search box and the Filters sheet, in one place.
     filters: Filters,
+    /// Saved character selection `[start, end]` when opening the Insert Link dialog.
+    link_selection: Option<(usize, usize)>,
 }
 
 pub struct Controller {
@@ -74,19 +77,32 @@ pub struct Controller {
     /// Shared with the worker thread that syncs and signs in; the window never waits for it (see
     /// [`background`]).
     service: Arc<Mutex<NotesService>>,
+    data_dir: PathBuf,
     state: RefCell<State>,
+    settings: RefCell<crate::settings::AppSettings>,
+    editor_dirty_hint: Cell<bool>,
+    tray_explained: Cell<bool>,
     autosave: Timer,
     toast: Timer,
     reminder_timer: Timer,
+    reminder_heartbeat: Timer,
     notification_timer: Timer,
     fired_reminders: RefCell<HashSet<(String, i64)>>,
     reminders_initialized: Cell<bool>,
     scheduled_reminder: Cell<Option<i64>>,
+    #[cfg(windows)]
+    active_notify_hwnd: Cell<Option<isize>>,
     jobs: background::Jobs,
     account: account::AccountState,
     pictures: pictures::PicturesState,
     /// While the grid is being built (a picture arriving then waits for it to finish).
     refreshing: Cell<bool>,
+}
+
+impl Drop for Controller {
+    fn drop(&mut self) {
+        self.cleanup_notifications();
+    }
 }
 
 fn scope_of(view: View) -> NoteScope {
@@ -207,17 +223,26 @@ impl Controller {
     /// As [`Controller::attach`]; [`Mode::Inline`] runs sign-in and sync on the calling thread, for
     /// tests that have no event loop to hand results back on.
     pub fn attach_with(ui: &AppWindow, service: NotesService, mode: Mode) -> Rc<Controller> {
+        let data_dir = service.root_dir().to_path_buf();
+        let initial_settings = crate::settings::load_settings(&data_dir);
         let controller = Rc::new(Controller {
             ui: ui.as_weak(),
             service: Arc::new(Mutex::new(service)),
+            data_dir,
             state: RefCell::default(),
+            settings: RefCell::new(initial_settings.clone()),
+            editor_dirty_hint: Cell::new(false),
+            tray_explained: Cell::new(false),
             autosave: Timer::default(),
             toast: Timer::default(),
             reminder_timer: Timer::default(),
+            reminder_heartbeat: Timer::default(),
             notification_timer: Timer::default(),
             fired_reminders: RefCell::default(),
             reminders_initialized: Cell::new(false),
             scheduled_reminder: Cell::new(None),
+            #[cfg(windows)]
+            active_notify_hwnd: Cell::new(None),
             jobs: background::Jobs::new(mode),
             account: account::AccountState::default(),
             pictures: pictures::PicturesState::default(),
@@ -229,11 +254,16 @@ impl Controller {
                 .map(|c| Swatch { name: c.name.into(), none: c.light == 0, light: argb(c.light), dark: argb(c.dark) })
                 .collect(),
         ));
-        ui.set_theme_mode(crate::settings::load_theme_mode());
+        ui.set_theme_mode(initial_settings.theme_mode);
+        ui.set_theme_accent(initial_settings.accent);
+        ui.set_theme_amoled(initial_settings.amoled);
+        ui.set_sort_order(initial_settings.sort_order);
+        ui.set_view_density(initial_settings.view_density);
+        ui.set_sidebar_collapsed(initial_settings.sidebar_collapsed);
         ui.set_app_version(env!("CARGO_PKG_VERSION").into());
 
-        // While a worker holds the notes (a sync, a sign-in), what the window asks for waits in a queue
-        // and runs when the worker is done, so the window never blocks on it.
+        // While a worker holds the notes (a sync, a sign-in), service-touching requests wait in a queue
+        // and run when the worker is done so the window never blocks. Pure UI/settings callbacks use `wire_ui!`.
         macro_rules! wire {
             ($setter:ident, |$c:ident $(, $arg:ident)*| $body:expr) => {{
                 let weak: Weak<Controller> = Rc::downgrade(&controller);
@@ -250,9 +280,19 @@ impl Controller {
                 });
             }};
         }
+        macro_rules! wire_ui {
+            ($setter:ident, |$c:ident $(, $arg:ident)*| $body:expr) => {{
+                let weak: Weak<Controller> = Rc::downgrade(&controller);
+                ui.$setter(move |$($arg),*| {
+                    if let Some($c) = weak.upgrade() {
+                        $body;
+                    }
+                });
+            }};
+        }
         wire!(on_new_note, |c| c.new_note());
         wire!(on_open_note, |c, id| c.open_note(&id));
-        wire!(on_editor_edited, |c| c.edited());
+        wire_ui!(on_editor_edited, |c| c.edited());
         wire!(on_close_editor, |c| c.close_editor());
         wire!(on_toggle_pin, |c| c.toggle_pin());
         wire!(on_archive_toggled, |c| c.toggle_archive());
@@ -261,7 +301,7 @@ impl Controller {
         wire!(on_delete_forever, |c| c.ask_delete_forever());
         wire!(on_empty_trash, |c| c.ask_empty_trash());
         wire!(on_confirm_accepted, |c| c.confirm_accepted());
-        wire!(on_confirm_cancelled, |c| c.confirm_cancelled());
+        wire_ui!(on_confirm_cancelled, |c| c.confirm_cancelled());
         wire!(on_view_selected, |c, view| c.select_view(view));
         wire!(on_open_options, |c| c.open_options());
         wire!(on_color_picked, |c, index, dark| c.pick_color(index as usize, dark));
@@ -273,13 +313,18 @@ impl Controller {
         wire!(on_item_added, |c| c.item_added());
         wire!(on_to_checklist, |c| c.to_checklist());
         wire!(on_to_text, |c| c.to_text());
+        wire_ui!(on_format_bold, |c, anchor, focus| c.format_markdown(anchor, focus, view::toggle_bold));
+        wire_ui!(on_format_italic, |c, anchor, focus| c.format_markdown(anchor, focus, view::toggle_italic));
+        wire_ui!(on_format_bullet, |c, anchor, focus| c.format_markdown(anchor, focus, view::toggle_bullet_list));
+        wire_ui!(on_open_link_dialog, |c, anchor, focus| c.open_link_dialog(anchor, focus));
+        wire_ui!(on_insert_link_submitted, |c| c.insert_link_submitted());
         wire!(on_open_labels, |c| c.open_labels());
         wire!(on_labels_created, |c, name| c.labels_created(&name));
         wire!(on_label_renamed, |c, old, new| c.label_renamed(&old, &new));
         wire!(on_label_deleted, |c, name| c.label_deleted(&name));
         wire!(on_toast_acted, |c| c.undo());
         wire!(on_autosave_due, |c| c.save_now());
-        wire!(on_toast_expired, |c| c.toast_expired());
+        wire_ui!(on_toast_expired, |c| c.toast_expired());
         wire!(on_columns_changed, |c, _count| c.refresh());
         wire!(on_query_edited, |c, query| c.search_edited(&query));
         wire!(on_smart_view_picked, |c, index| c.smart_view(index as usize));
@@ -306,6 +351,8 @@ impl Controller {
         wire!(on_filter_saved, |c, name| c.save_filter(&name));
         wire!(on_sync_requested, |c| c.sync_now());
         wire!(on_sign_out_requested, |c| c.ask_sign_out());
+        wire!(on_reupload_after_wipe_requested, |c| c.reupload_after_wipe());
+        wire!(on_delete_cloud_data_requested, |c| c.ask_delete_cloud_data());
         wire!(on_backup_export_json_requested, |c| c.export_json_backup());
         wire!(on_backup_export_bundle_requested, |c| c.export_bundle_backup());
         wire!(on_backup_import_requested, |c| c.pick_backup_to_import());
@@ -313,20 +360,26 @@ impl Controller {
         wire!(on_signin_send, |c| c.send_code(false));
         wire!(on_signin_resend, |c| c.send_code(true));
         wire!(on_signin_verify, |c| c.verify_code());
-        wire!(on_signin_change_email, |c| c.change_email());
-        wire!(on_signin_cancelled, |c| c.cancel_sign_in());
+        wire_ui!(on_signin_change_email, |c| c.change_email());
+        wire_ui!(on_signin_cancelled, |c| c.cancel_sign_in());
         wire!(on_review_opened, |c| c.open_review());
         wire!(on_review_keep_original, |c| c.review_keep_original());
         wire!(on_review_keep_copy, |c| c.review_keep_copy());
         wire!(on_review_keep_both, |c| c.review_keep_both());
         wire!(on_settings_requested, |c| c.open_settings());
-        wire!(on_theme_picked, |c, mode| c.pick_theme(mode));
+        wire_ui!(on_theme_picked, |c, mode| c.pick_theme(mode));
+        wire_ui!(on_accent_picked, |c, accent| c.pick_accent(accent));
+        wire_ui!(on_amoled_toggled, |c| c.toggle_amoled());
+        wire_ui!(on_sidebar_toggled, |c| c.toggle_sidebar());
+        wire_ui!(on_sort_picked, |c, sort| c.pick_sort(sort));
+        wire_ui!(on_density_picked, |c, density| c.pick_density(density));
         wire!(on_diagnostics_requested, |c| c.open_diagnostics());
+        wire_ui!(on_diagnostics_copied, |c| c.show_toast("Diagnostics copied to clipboard", None, None));
         wire!(on_diagnostics_export_requested, |c| c.export_diagnostics());
         wire!(on_delete_account_opened, |c| c.open_delete_account());
         wire!(on_delete_account_confirmed, |c| c.delete_account_confirmed());
         wire!(on_sync_due, |c| c.sync_now());
-        wire!(on_resend_tick, |c| c.resend_tick());
+        wire_ui!(on_resend_tick, |c| c.resend_tick());
         wire!(on_image_add_requested, |c| c.pick_image());
         wire!(on_picture_opened, |c, index| c.open_picture(index.max(0) as usize));
         wire!(on_viewer_moved, |c, step| c.move_viewer(step));
@@ -335,7 +388,7 @@ impl Controller {
         wire!(on_reminder_preset, |c, index| c.reminder_preset(index as usize));
         wire!(on_reminder_save, |c| c.save_reminder_input());
         wire!(on_reminder_remove, |c| c.remove_reminder());
-        wire!(on_reminder_cancel, |c| c.cancel_reminder_dialog());
+        wire_ui!(on_reminder_cancel, |c| c.cancel_reminder_dialog());
         wire!(on_reminder_due, |c| c.deliver_due_reminders());
         {
             // Never deferred: this is how a worker's result comes back.
@@ -350,16 +403,51 @@ impl Controller {
             let weak = Rc::downgrade(&controller);
             ui.window().on_close_requested(move || {
                 if let Some(c) = weak.upgrade() {
-                    // Waits for a running sync to finish rather than lose the editor's words.
-                    c.save_now();
+                    return c.on_window_close_requested();
                 }
                 slint::CloseRequestResponse::HideWindow
+            });
+        }
+        if mode == Mode::Threads {
+            let weak = controller.ui.clone();
+            controller.reminder_heartbeat.start(TimerMode::Repeated, Duration::from_secs(60), move || {
+                if let Some(ui) = weak.upgrade() {
+                    ui.invoke_reminder_due();
+                }
             });
         }
 
         controller.refresh();
         controller.start_account();
         controller
+    }
+
+    fn on_window_close_requested(&self) -> slint::CloseRequestResponse {
+        // Persist open draft edits cleanly before closing or minimizing to tray.
+        self.save_now();
+        if self.jobs.holds_notes() || !self.svc().has_pending_reminders() {
+            self.cleanup_notifications();
+            let _ = slint::quit_event_loop();
+            return slint::CloseRequestResponse::HideWindow;
+        }
+        #[cfg(windows)]
+        if !self.tray_explained.replace(true)
+            && let Some(ui) = self.ui()
+        {
+            self.replace_active_notice(crate::win_notify::show_notice_for_window(
+                &ui,
+                "Notelikeus",
+                "Notelikeus is still running in the tray for scheduled reminders.",
+            ));
+        }
+        slint::CloseRequestResponse::HideWindow
+    }
+
+    fn save_current_settings(&self) {
+        let current = self.settings.borrow().clone();
+        if let Err(message) = crate::settings::save_settings(&self.data_dir, &current) {
+            self.show_toast(&message, None, None);
+        }
     }
 
     /// The notes. Never called while a worker holds them (the `wire!` queue sees to that), so on the
@@ -386,29 +474,88 @@ impl Controller {
         let mode = mode.clamp(crate::settings::THEME_SYSTEM, crate::settings::THEME_DARK);
         let Some(ui) = self.ui() else { return };
         ui.set_theme_mode(mode);
-        if let Err(message) = crate::settings::save_theme_mode(mode) {
-            self.show_toast(&message, None, None);
+        self.settings.borrow_mut().theme_mode = mode;
+        self.save_current_settings();
+    }
+
+    pub fn pick_accent(&self, accent: i32) {
+        let accent = accent.clamp(crate::settings::ACCENT_NEUTRAL, crate::settings::ACCENT_GREEN);
+        let Some(ui) = self.ui() else { return };
+        ui.set_theme_accent(accent);
+        self.settings.borrow_mut().accent = accent;
+        self.save_current_settings();
+    }
+
+    pub fn toggle_amoled(&self) {
+        let Some(ui) = self.ui() else { return };
+        let next = !self.settings.borrow().amoled;
+        ui.set_theme_amoled(next);
+        self.settings.borrow_mut().amoled = next;
+        self.save_current_settings();
+    }
+
+    pub fn toggle_sidebar(&self) {
+        let Some(ui) = self.ui() else { return };
+        let next = !self.settings.borrow().sidebar_collapsed;
+        ui.set_sidebar_collapsed(next);
+        self.settings.borrow_mut().sidebar_collapsed = next;
+        self.save_current_settings();
+    }
+
+    pub fn pick_sort(&self, sort: i32) {
+        let sort = sort.clamp(crate::settings::SORT_MANUAL, crate::settings::SORT_OLDEST);
+        let Some(ui) = self.ui() else { return };
+        ui.set_sort_order(sort);
+        self.settings.borrow_mut().sort_order = sort;
+        self.save_current_settings();
+        if self.jobs.holds_notes() {
+            self.jobs.defer(Box::new(|c| c.refresh()));
+        } else {
+            self.refresh();
+        }
+    }
+
+    pub fn pick_density(&self, density: i32) {
+        let density = density.clamp(crate::settings::DENSITY_GRID, crate::settings::DENSITY_COMPACT);
+        let Some(ui) = self.ui() else { return };
+        ui.set_view_density(density);
+        self.settings.borrow_mut().view_density = density;
+        self.save_current_settings();
+        if self.jobs.holds_notes() {
+            self.jobs.defer(Box::new(|c| c.refresh()));
+        } else {
+            self.refresh();
         }
     }
 
     pub fn open_diagnostics(&self) {
         let Some(ui) = self.ui() else { return };
-        let report = self.svc().diagnostics_json();
-        ui.set_diagnostics_report(report.into());
-        ui.set_diagnostics_open(true);
+        match self.svc().diagnostics_json() {
+            Ok(report) => {
+                ui.set_diagnostics_report(report.into());
+                ui.set_diagnostics_open(true);
+            }
+            Err(error) => self.show_toast(&error, None, None),
+        }
     }
 
     pub fn export_diagnostics(&self) {
+        let Some(ui) = self.ui() else { return };
         let filename = format!("Notelikeus-diagnostics-{}.json", chrono::Local::now().format("%Y-%m-%d"));
+        let handle = ui.window().window_handle();
         let Some(path) = rfd::FileDialog::new()
             .set_title("Export diagnostics")
             .set_file_name(filename)
             .add_filter("JSON report", &["json"])
+            .set_parent(&handle)
             .save_file()
         else {
             return;
         };
-        let report = self.svc().diagnostics_json();
+        let report = match self.svc().diagnostics_json() {
+            Ok(report) => report,
+            Err(error) => return self.show_toast(&error, None, None),
+        };
         match std::fs::write(path, report) {
             Ok(()) => self.show_toast("Diagnostics report saved", None, None),
             Err(error) => self.show_toast(&format!("Couldn't save diagnostics: {error}"), None, None),
@@ -448,6 +595,7 @@ impl Controller {
             Ok(report) => {
                 self.account.reset_after_deletion();
                 self.pictures.clear();
+                self.reset_reminders();
                 ui.set_delete_account_open(false);
                 ui.set_delete_account_confirmation("".into());
                 ui.set_settings_open(false);
@@ -473,7 +621,7 @@ impl Controller {
         self.state.borrow().editing.as_ref().and_then(|e| e.id.clone())
     }
 
-    fn card(&self, note: &NoteView, now: &chrono::DateTime<chrono::Local>) -> NoteCard {
+    fn card(&self, note: &NoteView, now: &chrono::DateTime<chrono::Local>, now_ms: i64) -> NoteCard {
         let labels = sorted_labels(&note.labels);
         let items = sorted_items(&note.checklist);
         let cover = note.images.first().map(|image| self.picture(&note.id, image));
@@ -486,6 +634,7 @@ impl Controller {
             preview: if note.checklist.is_empty() { view::preview(&note.content).into() } else { SharedString::new() },
             time: view::card_time(note.timestamp, now).into(),
             reminder: note.reminder_timestamp.map_or_else(String::new, reminder_card_time).into(),
+            reminder_overdue: view::is_overdue(note.reminder_timestamp, now_ms),
             pinned: note.is_pinned,
             has_color: note.color != 0,
             color_light: argb(palette::for_theme(note.color, false)),
@@ -524,10 +673,14 @@ impl Controller {
     fn build_grid(&self) {
         let Some(ui) = self.ui() else { return };
         let filters = self.state.borrow().filters.clone();
+        let (sort, density) = {
+            let s = self.settings.borrow();
+            (s.to_sort_order(), s.view_density)
+        };
         let now = now_millis();
         let service = self.svc();
         let counts = service.counts();
-        let found = service.search(&filters, now);
+        let found = service.search_sorted(&filters, sort, now);
         let view_counts = service.smart_view_counts(now);
         let saved = service.saved_filters().to_vec();
         let labels = service.label_names();
@@ -550,13 +703,32 @@ impl Controller {
         ui.set_count_trash(counts.trash as i32);
         let local_now = chrono::Local::now();
         let shown = found.notes.len();
-        let columns = view::masonry(found.notes, ui.get_column_count().max(1) as usize, view::card_height)
-            .into_iter()
-            .map(|column| CardColumn { cards: model(column.iter().map(|n| self.card(n, &local_now)).collect()) })
-            .collect::<Vec<_>>();
+        let cols = if density == crate::settings::DENSITY_LIST { 1 } else { ui.get_column_count().max(1) as usize };
+        let make_cols = |notes: Vec<NoteView>| -> Vec<CardColumn> {
+            view::masonry(notes, cols, view::card_height)
+                .into_iter()
+                .map(|column| CardColumn {
+                    cards: model(column.iter().map(|n| self.card(n, &local_now, now)).collect()),
+                })
+                .collect()
+        };
+        if filters.scope == NoteScope::Active {
+            let (pinned, others): (Vec<_>, Vec<_>) = found.notes.into_iter().partition(|n| n.is_pinned);
+            let has_pinned = !pinned.is_empty();
+            let has_other = !others.is_empty();
+            ui.set_has_pinned_section(has_pinned);
+            ui.set_has_other_section(has_other);
+            ui.set_pinned_columns(model(if has_pinned { make_cols(pinned) } else { Vec::new() }));
+            ui.set_columns(model(if has_other { make_cols(others) } else { Vec::new() }));
+        } else {
+            let has_other = !found.notes.is_empty();
+            ui.set_has_pinned_section(false);
+            ui.set_has_other_section(has_other);
+            ui.set_pinned_columns(model(Vec::new()));
+            ui.set_columns(model(if has_other { make_cols(found.notes) } else { Vec::new() }));
+        }
         ui.set_note_count(shown as i32);
         ui.set_searching(filters.has_active());
-        ui.set_columns(model(columns));
         ui.set_notice_ignored(if found.unknown.is_empty() {
             SharedString::new()
         } else {
@@ -760,7 +932,90 @@ impl Controller {
         ));
     }
 
+    fn byte_to_char_idx(text: &str, byte_idx: i32) -> usize {
+        let mut boundary = (byte_idx.max(0) as usize).min(text.len());
+        while boundary > 0 && !text.is_char_boundary(boundary) {
+            boundary -= 1;
+        }
+        text[..boundary].chars().count()
+    }
+
+    fn char_to_byte_offset(text: &str, char_idx: usize) -> i32 {
+        text.char_indices().nth(char_idx).map_or(text.len(), |(byte_idx, _)| byte_idx) as i32
+    }
+
+    fn apply_body_selection(&self, ui: &AppWindow, text: &str, start_char: usize, end_char: usize) {
+        ui.set_editor_body_sel_anchor(Self::char_to_byte_offset(text, start_char));
+        ui.set_editor_body_sel_focus(Self::char_to_byte_offset(text, end_char));
+        ui.set_editor_body_sel_seq(ui.get_editor_body_sel_seq().wrapping_add(1));
+    }
+
+    pub fn format_markdown(
+        &self,
+        anchor_byte: i32,
+        focus_byte: i32,
+        transform: fn(&str, usize, usize) -> (String, usize, usize),
+    ) {
+        let Some(ui) = self.ui() else { return };
+        if ui.get_editor_mode() == View::Trash || ui.get_editor_is_checklist() {
+            return;
+        }
+        let body = ui.get_editor_body().to_string();
+        let start_char = Self::byte_to_char_idx(&body, anchor_byte);
+        let end_char = Self::byte_to_char_idx(&body, focus_byte);
+        let (updated, new_start, new_end) = transform(&body, start_char, end_char);
+        ui.set_editor_body(updated.as_str().into());
+        self.apply_body_selection(&ui, &updated, new_start, new_end);
+        self.edited();
+    }
+
+    pub fn open_link_dialog(&self, anchor_byte: i32, focus_byte: i32) {
+        let Some(ui) = self.ui() else { return };
+        if ui.get_editor_mode() == View::Trash || ui.get_editor_is_checklist() {
+            return;
+        }
+        let body = ui.get_editor_body().to_string();
+        let a = Self::byte_to_char_idx(&body, anchor_byte);
+        let b = Self::byte_to_char_idx(&body, focus_byte);
+        let (start, end) = (a.min(b), a.max(b));
+        self.state.borrow_mut().link_selection = Some((start, end));
+        let selected: String = body.chars().skip(start).take(end - start).collect();
+        ui.set_link_label_text(selected.trim().into());
+        ui.set_link_url_text("".into());
+        ui.set_link_error("".into());
+        ui.set_link_dialog_open(true);
+    }
+
+    pub fn insert_link_submitted(&self) {
+        let Some(ui) = self.ui() else { return };
+        if ui.get_editor_mode() == View::Trash || ui.get_editor_is_checklist() {
+            return;
+        }
+        let body = ui.get_editor_body().to_string();
+        let (start, end) = self.state.borrow().link_selection.unwrap_or_else(|| {
+            let len = body.chars().count();
+            (len, len)
+        });
+        let label = ui.get_link_label_text().to_string();
+        let url = ui.get_link_url_text().to_string();
+        match view::insert_link(&body, start, end, &label, &url) {
+            Ok((updated, caret_start, caret_end)) => {
+                self.state.borrow_mut().link_selection = None;
+                ui.set_link_error("".into());
+                ui.set_link_dialog_open(false);
+                ui.set_editor_body(updated.as_str().into());
+                self.apply_body_selection(&ui, &updated, caret_start, caret_end);
+                self.edited();
+            }
+            Err(message) => {
+                ui.set_link_error(message.into());
+            }
+        }
+    }
+
     fn show_editor(&self, ui: &AppWindow, note: Option<&NoteView>) {
+        self.editor_dirty_hint.set(false);
+        self.state.borrow_mut().link_selection = None;
         ui.set_editor_title(note.map(|n| n.title.as_str()).unwrap_or_default().into());
         ui.set_editor_body(note.map(|n| n.content.as_str()).unwrap_or_default().into());
         ui.set_editor_saved_once(note.is_some());
@@ -782,7 +1037,23 @@ impl Controller {
         self.show_rows(ui, None);
         ui.set_options_open(false);
         ui.set_reminder_open(false);
+        ui.set_link_dialog_open(false);
         ui.set_editor_open(true);
+    }
+
+    pub(super) fn reload_open_note(&self, note: &NoteView) {
+        let Some(ui) = self.ui() else { return };
+        self.editor_dirty_hint.set(false);
+        let is_checklist = !note.checklist.is_empty();
+        if let Some(editing) = self.state.borrow_mut().editing.as_mut() {
+            editing.dirty = false;
+            editing.is_checklist = is_checklist;
+            editing.checklist = note.checklist.clone();
+        }
+        ui.set_editor_title(note.title.as_str().into());
+        ui.set_editor_body(note.content.as_str().into());
+        self.show_note_details(&ui, note);
+        self.show_rows(&ui, None);
     }
 
     pub fn new_note(&self) {
@@ -811,6 +1082,7 @@ impl Controller {
 
     /// Typing in the editor: save shortly after the typing stops.
     pub fn edited(&self) {
+        self.editor_dirty_hint.set(true);
         if let Some(editing) = self.state.borrow_mut().editing.as_mut() {
             editing.dirty = true;
         }
@@ -834,15 +1106,17 @@ impl Controller {
         let (id, dirty, is_checklist, checklist) = {
             let state = self.state.borrow();
             let e = state.editing.as_ref()?;
-            (e.id.clone(), e.dirty, e.is_checklist, e.checklist.clone())
+            (e.id.clone(), e.dirty || self.editor_dirty_hint.get(), e.is_checklist, e.checklist.clone())
         };
         if !dirty && !force {
+            self.editor_dirty_hint.set(false);
             return id.and_then(|id| self.svc().note(&id));
         }
         let title = ui.get_editor_title().to_string();
         let body = if is_checklist { String::new() } else { ui.get_editor_body().to_string() };
         let result = match &id {
             None if !force && title.trim().is_empty() && body.trim().is_empty() => {
+                self.editor_dirty_hint.set(false);
                 if let Some(e) = self.state.borrow_mut().editing.as_mut() {
                     e.dirty = false;
                 }
@@ -850,16 +1124,12 @@ impl Controller {
                 return None;
             }
             None => self.svc().create(&title, &body),
-            Some(id) => {
-                let updated = self.svc().update(id, &title, &body);
-                match updated {
-                    Ok(_) if is_checklist => self.svc().set_checklist(id, checklist),
-                    other => other,
-                }
-            }
+            Some(id) if is_checklist => self.svc().update_checklist_note(id, &title, checklist),
+            Some(id) => self.svc().update(id, &title, &body),
         };
         match result {
             Ok(saved) => {
+                self.editor_dirty_hint.set(false);
                 if let Some(e) = self.state.borrow_mut().editing.as_mut() {
                     e.id = Some(saved.id.clone());
                     e.dirty = false;
@@ -1043,22 +1313,52 @@ impl Controller {
         self.schedule_reminders(reminders);
     }
 
+    pub(super) fn reset_reminders(&self) {
+        self.reminder_timer.stop();
+        self.scheduled_reminder.set(None);
+        self.reminders_initialized.set(false);
+        self.fired_reminders.borrow_mut().clear();
+        self.cleanup_notifications();
+    }
+
+    #[cfg(windows)]
+    fn replace_active_notice(&self, next: Option<windows_sys::Win32::Foundation::HWND>) {
+        if let Some(prev) = self.active_notify_hwnd.replace(next.map(|h| h as isize)) {
+            crate::win_notify::remove(prev as windows_sys::Win32::Foundation::HWND);
+        }
+    }
+
+    pub fn cleanup_notifications(&self) {
+        self.notification_timer.stop();
+        #[cfg(windows)]
+        if let Some(hwnd) = self.active_notify_hwnd.take() {
+            crate::win_notify::remove(hwnd as windows_sys::Win32::Foundation::HWND);
+        }
+    }
+
     fn show_reminder_notification(&self) {
         #[cfg(windows)]
         if let Some(ui) = self.ui()
             && let Some(hwnd) = crate::win_notify::show_for_window(&ui)
         {
+            self.replace_active_notice(Some(hwnd));
+            let hwnd_val = hwnd as isize;
             self.notification_timer.start(TimerMode::SingleShot, Duration::from_secs(20), move || {
-                crate::win_notify::remove(hwnd);
+                crate::win_notify::remove(hwnd_val as windows_sys::Win32::Foundation::HWND);
             });
         }
     }
 
     fn close_sheet(&self) {
-        self.state.borrow_mut().editing = None;
+        self.editor_dirty_hint.set(false);
+        let mut state = self.state.borrow_mut();
+        state.editing = None;
+        state.link_selection = None;
+        drop(state);
         if let Some(ui) = self.ui() {
             ui.set_options_open(false);
             ui.set_reminder_open(false);
+            ui.set_link_dialog_open(false);
             ui.set_editor_open(false);
             ui.invoke_focus_main();
         }
@@ -1186,66 +1486,80 @@ impl Controller {
             Some(Confirm::SignOut) => self.sign_out(),
             Some(Confirm::RemoveImage(note, image)) => self.remove_picture(&note, &image),
             Some(Confirm::ImportBackup(path)) => self.import_backup(&path),
+            Some(Confirm::DeleteCloudData) => self.delete_cloud_data_confirmed(),
             None => {}
         }
     }
 
     pub fn export_json_backup(&self) {
+        let Some(ui) = self.ui() else { return };
         let filename = format!("Notelikeus-backup-{}.json", chrono::Local::now().format("%Y-%m-%d"));
+        let handle = ui.window().window_handle();
         let Some(path) = rfd::FileDialog::new()
             .set_title("Export JSON backup")
             .set_file_name(filename)
             .add_filter("JSON backup", &["json"])
+            .set_parent(&handle)
             .save_file()
         else {
             return;
         };
-        let result = crate::backup::export_json(&self.svc(), &path);
-        match result {
-            Ok(()) => self.show_toast("JSON backup saved", None, None),
-            Err(message) => self.show_toast(&message, None, None),
-        }
+        self.with_notes_in_background(
+            move |service| crate::backup::export_json(service, &path),
+            |controller, result| match result {
+                Ok(()) => controller.show_toast("JSON backup saved", None, None),
+                Err(message) => controller.show_toast(&message, None, None),
+            },
+        );
     }
 
     pub fn export_bundle_backup(&self) {
+        let Some(ui) = self.ui() else { return };
         let filename = format!("Notelikeus-backup-{}.nlkbak", chrono::Local::now().format("%Y-%m-%d"));
+        let handle = ui.window().window_handle();
         let Some(path) = rfd::FileDialog::new()
             .set_title("Export backup with pictures")
             .set_file_name(filename)
             .add_filter("Notelikeus backup bundle", &["nlkbak"])
+            .set_parent(&handle)
             .save_file()
         else {
             return;
         };
-        let result = crate::backup::export_bundle(&self.svc(), &path);
-        match result {
-            Ok(report) if report.images_skipped == 0 => self.show_toast(
-                &format!(
-                    "Backup saved with {} picture{}",
-                    report.images_included,
-                    if report.images_included == 1 { "" } else { "s" }
+        self.with_notes_in_background(
+            move |service| crate::backup::export_bundle(service, &path),
+            |controller, result| match result {
+                Ok(report) if report.images_skipped == 0 => controller.show_toast(
+                    &format!(
+                        "Backup saved with {} picture{}",
+                        report.images_included,
+                        if report.images_included == 1 { "" } else { "s" }
+                    ),
+                    None,
+                    None,
                 ),
-                None,
-                None,
-            ),
-            Ok(report) => self.show_toast(
-                &format!(
-                    "Backup saved with {} picture{}; {} skipped because local bytes were unavailable or over the limit",
-                    report.images_included,
-                    if report.images_included == 1 { "" } else { "s" },
-                    report.images_skipped
+                Ok(report) => controller.show_toast(
+                    &format!(
+                        "Backup saved with {} picture{}; {} skipped because local bytes were unavailable or over the limit",
+                        report.images_included,
+                        if report.images_included == 1 { "" } else { "s" },
+                        report.images_skipped
+                    ),
+                    None,
+                    None,
                 ),
-                None,
-                None,
-            ),
-            Err(message) => self.show_toast(&message, None, None),
-        }
+                Err(message) => controller.show_toast(&message, None, None),
+            },
+        );
     }
 
     pub fn pick_backup_to_import(&self) {
+        let Some(ui) = self.ui() else { return };
+        let handle = ui.window().window_handle();
         let Some(path) = rfd::FileDialog::new()
             .set_title("Import a backup")
             .add_filter("Notelikeus backups", &["json", "nlkbak"])
+            .set_parent(&handle)
             .pick_file()
         else {
             return;
@@ -1259,24 +1573,30 @@ impl Controller {
     }
 
     fn import_backup(&self, path: &std::path::Path) {
-        let result = crate::backup::import_file(&mut self.svc(), path);
-        match result {
-            Ok(report) if report.notes_imported == 0 => {
-                self.show_toast("No notes were found in that backup", None, None)
-            }
-            Ok(report) => {
-                self.refresh();
-                let message = if report.attachments_skipped > 0 {
-                    format!("Imported {} notes; {} pictures skipped", report.notes_imported, report.attachments_skipped)
-                } else if report.attachments_imported > 0 {
-                    format!("Imported {} notes and {} pictures", report.notes_imported, report.attachments_imported)
-                } else {
-                    format!("Imported {} notes", report.notes_imported)
-                };
-                self.show_toast(&message, None, None);
-            }
-            Err(message) => self.show_toast(&message, None, None),
-        }
+        let path = path.to_path_buf();
+        self.with_notes_in_background(
+            move |service| crate::backup::import_file(service, &path),
+            |controller, result| match result {
+                Ok(report) if report.notes_imported == 0 => {
+                    controller.show_toast("No notes were found in that backup", None, None)
+                }
+                Ok(report) => {
+                    controller.refresh();
+                    let message = if report.attachments_skipped > 0 {
+                        format!(
+                            "Imported {} notes; {} pictures skipped",
+                            report.notes_imported, report.attachments_skipped
+                        )
+                    } else if report.attachments_imported > 0 {
+                        format!("Imported {} notes and {} pictures", report.notes_imported, report.attachments_imported)
+                    } else {
+                        format!("Imported {} notes", report.notes_imported)
+                    };
+                    controller.show_toast(&message, None, None);
+                }
+                Err(message) => controller.show_toast(&message, None, None),
+            },
+        );
     }
 
     // --- Note options: colour and labels --------------------------------------------------------------
@@ -1373,13 +1693,19 @@ impl Controller {
     }
 
     pub fn item_added(&self) {
-        let next = self
-            .state
-            .borrow()
-            .editing
-            .as_ref()
-            .map_or(0, |e| e.checklist.iter().map(|i| i.position + 1).max().unwrap_or(0));
-        if next as usize >= notelikeus_app::MAX_CHECKLIST_ITEMS {
+        let (count, next) = {
+            let state = self.state.borrow();
+            let Some(editing) = state.editing.as_ref() else { return };
+            let next = editing
+                .checklist
+                .iter()
+                .map(|i| i.position.saturating_add(1))
+                .max()
+                .unwrap_or(0)
+                .min(notelikeus_app::MAX_CHECKLIST_POSITION);
+            (editing.checklist.len(), next)
+        };
+        if count >= notelikeus_app::MAX_CHECKLIST_ITEMS {
             self.show_toast("A checklist can't hold any more items.", None, None);
             return;
         }

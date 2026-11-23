@@ -73,6 +73,9 @@ pub fn status_line(account: &AccountView, syncing: bool, now: i64) -> (String, b
     if syncing {
         return ("Syncing…".into(), false);
     }
+    if account.uploads_blocked_after_wipe {
+        return ("Cloud notes were wiped from another device. Uploads are paused.".into(), true);
+    }
     if let Some(error) = &account.last_error {
         return (error.clone(), true);
     }
@@ -170,6 +173,7 @@ impl Controller {
         let service = self.svc();
         let account = service.account();
         ui.set_can_delete_account(service.can_delete_account());
+        ui.set_uploads_blocked_after_wipe(account.uploads_blocked_after_wipe);
         ui.set_account_mode(if !account.sync_available {
             mode::NO_SYNC
         } else if account.signed_in {
@@ -194,7 +198,7 @@ impl Controller {
             return;
         }
         let account = self.svc().account();
-        if account.signed_in && account.waiting > 0 {
+        if account.signed_in && account.waiting > 0 && !account.uploads_blocked_after_wipe {
             self.raise_sync_due(&self.account.soon, TimerMode::SingleShot, SYNC_AFTER_CHANGE);
         }
         self.show_account();
@@ -220,30 +224,108 @@ impl Controller {
 
     fn synced(&self, result: Result<SyncSummary, String>) {
         self.account.syncing.set(false);
-        match result {
-            Ok(summary) if summary.conflicted_copies > 0 => {
-                let copies = if summary.conflicted_copies == 1 {
-                    "1 conflicted copy".to_string()
-                } else {
-                    format!("{} conflicted copies", summary.conflicted_copies)
-                };
-                self.show_toast(
-                    &format!("A note changed on two devices. Sync kept {copies} so nothing was lost."),
-                    None,
-                    None,
-                );
+        let still_signed_in = self.svc().account().signed_in;
+        if !still_signed_in {
+            self.close_sheet();
+            self.pictures.clear();
+            self.reset_reminders();
+        }
+        match &result {
+            Ok(summary) => {
+                self.pictures.clear_transient_failures();
+                if summary.conflicted_copies > 0 {
+                    let copies = if summary.conflicted_copies == 1 {
+                        "1 conflicted copy".to_string()
+                    } else {
+                        format!("{} conflicted copies", summary.conflicted_copies)
+                    };
+                    self.show_toast(
+                        &format!("A note changed on two devices. Sync kept {copies} so nothing was lost."),
+                        None,
+                        None,
+                    );
+                }
             }
-            Ok(_) => {}
-            // A sign-in that ended is worth interrupting for; other problems show in the account area.
-            Err(message) if message.contains("sign in again") => self.show_toast(&message, None, None),
+            // A sign-in that ended or account deleted is worth interrupting for.
+            Err(message) if message.contains("sign in again") || !still_signed_in => {
+                self.show_toast(message, None, None);
+            }
             Err(_) => {}
         }
-        // The notes a sync brought in, but not under an open editor's feet.
+        if still_signed_in && let Some(open_id) = self.editing_id() {
+            let dirty = self.state.borrow().editing.as_ref().is_some_and(|e| e.dirty) || self.editor_dirty_hint.get();
+            if !dirty {
+                let latest = self.svc().note(&open_id);
+                match latest {
+                    Some(note) => self.reload_open_note(&note),
+                    None => {
+                        self.close_sheet();
+                        self.show_toast("That note was deleted on another device.", None, None);
+                    }
+                }
+            }
+        }
         self.refresh();
         self.show_account();
-        if self.account.sync_again.replace(false) {
+        if still_signed_in && self.account.sync_again.replace(false) {
             self.sync_now();
         }
+    }
+
+    pub fn ask_delete_cloud_data(&self) {
+        self.ask(
+            "Delete cloud notes?",
+            "All notes and pictures in the cloud will be permanently erased across devices. Notes stored on this device remain local.",
+            "Delete cloud data",
+            Confirm::DeleteCloudData,
+        );
+    }
+
+    pub(super) fn delete_cloud_data_confirmed(&self) {
+        self.save_now();
+        self.account.soon.stop();
+        self.with_notes_in_background(
+            |s| s.delete_cloud_data(),
+            |c, result: Result<(), String>| {
+                if !c.svc().account().signed_in {
+                    c.close_sheet();
+                    c.pictures.clear();
+                    c.reset_reminders();
+                }
+                match result {
+                    Ok(()) => {
+                        if let Some(ui) = c.ui() {
+                            ui.set_settings_open(false);
+                        }
+                        c.show_toast("Cloud notes deleted. Local notes stay on this device.", None, None);
+                    }
+                    Err(message) => c.show_toast(&message, None, None),
+                }
+                c.refresh();
+                c.show_account();
+            },
+        );
+    }
+
+    pub fn reupload_after_wipe(&self) {
+        let account = self.svc().account();
+        if !account.signed_in || !account.sync_available || self.account.syncing.get() {
+            return;
+        }
+        self.save_now();
+        self.account.soon.stop();
+        self.account.syncing.set(true);
+        self.show_account();
+        self.with_notes_in_background(
+            |s| s.reupload_after_wipe(),
+            |c, result: Result<SyncSummary, String>| {
+                let reuploaded = result.is_ok();
+                c.synced(result);
+                if reuploaded {
+                    c.show_toast("Local notes re-uploaded to cloud.", None, None);
+                }
+            },
+        );
     }
 
     pub fn ask_sign_out(&self) {
@@ -263,6 +345,8 @@ impl Controller {
         self.save_now();
         self.close_sheet();
         let result = self.svc().sign_out();
+        self.pictures.clear();
+        self.reset_reminders();
         match result {
             Ok(_) => self.show_toast("Signed out. These are the notes on this device.", None, None),
             Err(message) => self.show_toast(&message, None, None),
@@ -308,7 +392,8 @@ impl Controller {
             return self.request_code(email, None, resend);
         };
         let started = Loopback::start().and_then(|loopback| {
-            open_browser(&loopback.challenge_url(&page))?;
+            let url = loopback.challenge_url(&page)?;
+            open_browser(&url)?;
             Ok(loopback)
         });
         let loopback = match started {
@@ -318,7 +403,7 @@ impl Controller {
         ui.set_signin_step(step::CHECKING);
         let cancel = Arc::new(AtomicBool::new(false));
         *self.account.captcha_cancel.borrow_mut() = Some(cancel.clone());
-        self.in_background(
+        self.in_background_unbounded(
             move || loopback.wait(CAPTCHA_TIMEOUT, &cancel),
             move |c, token: Result<String, String>| {
                 c.account.captcha_cancel.borrow_mut().take();
@@ -397,6 +482,8 @@ impl Controller {
             |c, result: Result<(), String>| match result {
                 Ok(()) => {
                     c.account.resend.stop();
+                    c.pictures.clear();
+                    c.reset_reminders();
                     if let Some(ui) = c.ui() {
                         ui.set_signin_busy(false);
                         ui.set_signin_open(false);
@@ -513,6 +600,7 @@ mod tests {
             waiting,
             last_synced_at,
             last_error: last_error.map(str::to_string),
+            uploads_blocked_after_wipe: false,
         }
     }
 
@@ -520,6 +608,12 @@ mod tests {
     fn the_status_line_says_what_matters_most() {
         let now = 10_000_000;
         assert_eq!(status_line(&account(0, None, None), true, now), ("Syncing…".into(), false));
+        let mut wiped = account(0, None, None);
+        wiped.uploads_blocked_after_wipe = true;
+        assert_eq!(
+            status_line(&wiped, false, now),
+            ("Cloud notes were wiped from another device. Uploads are paused.".into(), true)
+        );
         assert_eq!(status_line(&account(2, None, Some("Offline.")), false, now), ("Offline.".into(), true));
         assert_eq!(status_line(&account(1, None, None), false, now).0, "1 edit waiting to sync");
         assert_eq!(status_line(&account(3, None, None), false, now).0, "3 edits waiting to sync");

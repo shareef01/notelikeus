@@ -5,7 +5,7 @@
 // Every interactive element carries an accessible role and label: screen readers use them, and so do the
 // headless UI tests (tests/ui.rs).
 
-import { AboutSlint, ScrollView } from "std-widgets.slint";
+import { AboutSlint, ScrollView, TextEdit } from "std-widgets.slint";
 import { Theme, Icons, Icon, IconButton } from "theme.slint";
 import "fonts/inter_regular.ttf";
 import "fonts/inter_medium.ttf";
@@ -34,6 +34,7 @@ export struct NoteCard {
     preview: string,
     time: string,
     reminder: string,
+    reminder-overdue: bool,
     pinned: bool,
     has-color: bool,
     color-light: color,
@@ -105,54 +106,53 @@ component SectionLabel inherits Text {
 }
 
 /// A chip that is on or off, as the web app's filter chips. Announced as a checkbox.
-component FilterChip inherits Rectangle {
+component FilterChip inherits FocusScope {
     in property <string> text;
     in property <bool> on;
     callback clicked();
     height: 32px;
     width: chip-label.preferred-width + (root.on ? 42px : 26px);
-    border-radius: 16px;
-    background: root.on ? Theme.on-surface : (touch.has-hover ? Theme.hover : transparent);
-    border-width: focus-scope.has-focus ? 2px : (root.on ? 0 : 1px);
-    border-color: focus-scope.has-focus ? Theme.accent : Theme.outline;
-    forward-focus: focus-scope;
     accessible-role: checkbox;
     accessible-checkable: true;
     accessible-checked: root.on;
     accessible-label: root.text;
     accessible-action-default => { root.clicked(); }
-    HorizontalLayout {
-        padding-left: 13px;
-        padding-right: 13px;
-        spacing: 4px;
-        if root.on: Icon {
-            y: (parent.height - self.height) / 2;
-            width: 14px;
-            height: 14px;
-            path: Icons.check;
-            color: Theme.background;
+    key-pressed(event) => {
+        if (event.text == Key.Space || event.text == Key.Return) {
+            root.clicked();
+            return accept;
         }
-        chip-label := Text {
-            text: root.text;
-            vertical-alignment: center;
-            font-size: 13px;
-            font-weight: 500;
-            color: root.on ? Theme.background : Theme.on-surface-secondary;
-        }
+        reject
     }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { focus-scope.focus(); root.clicked(); }
-    }
-    focus-scope := FocusScope {
-        x: 0;
-        width: 0;
-        key-pressed(event) => {
-            if (event.text == Key.Space || event.text == Key.Return) {
-                root.clicked();
-                return accept;
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 16px;
+        background: root.on ? Theme.on-surface : (touch.has-hover ? Theme.hover : transparent);
+        border-width: root.has-focus ? 2px : (root.on ? 0 : 1px);
+        border-color: root.has-focus ? Theme.accent : Theme.outline;
+        HorizontalLayout {
+            padding-left: 13px;
+            padding-right: 13px;
+            spacing: 4px;
+            if root.on: Icon {
+                y: (parent.height - self.height) / 2;
+                width: 14px;
+                height: 14px;
+                path: Icons.check;
+                color: Theme.background;
             }
-            reject
+            chip-label := Text {
+                text: root.text;
+                vertical-alignment: center;
+                font-size: 13px;
+                font-weight: 500;
+                color: root.on ? Theme.background : Theme.on-surface-secondary;
+            }
+        }
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.focus(); root.clicked(); }
         }
     }
 }
@@ -223,378 +223,405 @@ component ReviewVersion inherits Rectangle {
 }
 
 /// A rounded text button. `strong` is the filled, primary look.
-component PillButton inherits Rectangle {
+component PillButton inherits FocusScope {
     in property <string> text;
     /// What a screen reader announces, when it should differ from what is shown.
     in property <string> label: root.text;
     in property <bool> strong: false;
     in property <bool> danger: false;
-    in property <bool> enabled: true;
     callback clicked();
     height: 36px;
-    width: label.preferred-width + 28px;
-    border-radius: self.height / 2;
-    opacity: enabled ? 1 : 0.45;
-    background: strong ? (danger ? Theme.danger : Theme.on-surface) : (touch.has-hover && enabled ? Theme.hover : transparent);
-    border-width: focus-scope.has-focus ? 2px : (strong ? 0 : 1px);
-    border-color: focus-scope.has-focus ? Theme.accent : Theme.outline;
+    width: label-text.preferred-width + 28px;
+    focus-on-tab-navigation: root.enabled;
+    focus-on-click: root.enabled;
     accessible-role: button;
     accessible-label: root.label;
-    accessible-enabled: enabled;
+    accessible-enabled: root.enabled;
     accessible-action-default => { if (root.enabled) { root.clicked(); } }
-    forward-focus: focus-scope;
-    public function focus-button() { focus-scope.focus(); }
-    label := Text {
-        text: root.text;
-        font-size: 13px;
-        font-weight: 600;
-        color: root.strong ? Theme.background : (root.danger ? Theme.danger : Theme.on-surface);
+    public function focus-button() { root.focus(); }
+    key-pressed(event) => {
+        if ((event.text == Key.Space || event.text == Key.Return) && root.enabled) {
+            root.clicked();
+            return accept;
+        }
+        reject
     }
-    touch := TouchArea {
-        mouse-cursor: root.enabled ? pointer : default;
-        clicked => { if (root.enabled) { focus-scope.focus(); root.clicked(); } }
-    }
-    focus-scope := FocusScope {
-        x: 0;
-        width: 0;
-        enabled: root.enabled;
-        key-pressed(event) => {
-            if ((event.text == Key.Space || event.text == Key.Return) && root.enabled) {
-                root.clicked();
-                return accept;
-            }
-            reject
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: self.height / 2;
+        opacity: root.enabled ? 1 : 0.45;
+        background: root.strong ? (root.danger ? Theme.danger : Theme.on-surface) : (touch.has-hover && root.enabled ? Theme.hover : transparent);
+        border-width: root.has-focus ? 2px : (root.strong ? 0 : 1px);
+        border-color: root.has-focus ? Theme.accent : Theme.outline;
+        label-text := Text {
+            text: root.text;
+            font-size: 13px;
+            font-weight: 600;
+            color: root.strong ? Theme.background : (root.danger ? Theme.danger : Theme.on-surface);
+        }
+        touch := TouchArea {
+            mouse-cursor: root.enabled ? pointer : default;
+            clicked => { if (root.enabled) { root.focus(); root.clicked(); } }
         }
     }
 }
 
 /// A theme selector announced as a selected or unselected radio button.
-component ThemeOption inherits Rectangle {
+component ThemeOption inherits FocusScope {
     in property <string> text;
     in property <bool> selected;
     in property <int> option-index: -1;
+    in property <int> option-count: 3;
     callback clicked();
     callback move-option(int);
     height: 36px;
     width: option-label.preferred-width + 28px;
-    border-radius: self.height / 2;
-    background: selected ? Theme.on-surface : (touch.has-hover ? Theme.hover : transparent);
-    border-width: focus-scope.has-focus ? 2px : (selected ? 0 : 1px);
-    border-color: focus-scope.has-focus ? Theme.accent : Theme.outline;
-    forward-focus: focus-scope;
-    public function focus-option() { focus-scope.focus(); }
+    public function focus-option() { root.focus(); }
     accessible-role: radio-button;
     accessible-checkable: true;
     accessible-checked <=> selected;
     accessible-label: text;
     accessible-item-index: option-index;
     accessible-action-default => { root.clicked(); }
-    option-label := Text {
-        text: root.text;
-        font-size: 13px;
-        font-weight: 600;
-        color: root.selected ? Theme.background : Theme.on-surface;
+    key-pressed(event) => {
+        if (event.text == Key.Space || event.text == Key.Return) {
+            root.clicked();
+            return accept;
+        }
+        if (event.text == Key.LeftArrow || event.text == Key.UpArrow) {
+            root.move-option(root.option-index == 0 ? root.option-count - 1 : root.option-index - 1);
+            return accept;
+        }
+        if (event.text == Key.RightArrow || event.text == Key.DownArrow) {
+            root.move-option(root.option-index >= root.option-count - 1 ? 0 : root.option-index + 1);
+            return accept;
+        }
+        reject
     }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { focus-scope.focus(); root.clicked(); }
-    }
-    focus-scope := FocusScope {
-        x: 0;
-        width: 0;
-        key-pressed(event) => {
-            if (event.text == Key.Space || event.text == Key.Return) {
-                root.clicked();
-                return accept;
-            }
-            if (event.text == Key.LeftArrow || event.text == Key.UpArrow) {
-                root.move-option(root.option-index == 0 ? 2 : root.option-index - 1);
-                return accept;
-            }
-            if (event.text == Key.RightArrow || event.text == Key.DownArrow) {
-                root.move-option(root.option-index == 2 ? 0 : root.option-index + 1);
-                return accept;
-            }
-            reject
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: self.height / 2;
+        background: root.selected ? Theme.on-surface : (touch.has-hover ? Theme.hover : transparent);
+        border-width: root.has-focus ? 2px : (root.selected ? 0 : 1px);
+        border-color: root.has-focus ? Theme.accent : Theme.outline;
+        option-label := Text {
+            text: root.text;
+            font-size: 13px;
+            font-weight: 600;
+            color: root.selected ? Theme.background : Theme.on-surface;
+        }
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.focus(); root.clicked(); }
         }
     }
 }
 
 /// A checkbox: a rounded square with a tick.
-component CheckBox inherits Rectangle {
+component CheckBox inherits FocusScope {
     in property <bool> checked;
     in property <string> label;
-    in property <bool> enabled: true;
     in property <length> box: 20px;
+    in property <color> ink: Theme.on-surface;
+    in property <color> border-ink: Theme.muted;
+    in property <color> tick-ink: Theme.background;
     callback toggled();
     width: box;
     height: box;
-    border-radius: 5px;
-    border-width: focus-scope.has-focus ? 2px : (checked ? 0 : 2px);
-    background: checked ? Theme.on-surface : transparent;
-    border-color: focus-scope.has-focus ? Theme.accent : Theme.muted;
+    focus-on-tab-navigation: root.enabled;
+    focus-on-click: root.enabled;
     accessible-role: checkbox;
     accessible-checkable: true;
     accessible-checked: checked;
     accessible-label: label;
     accessible-action-default => { if (root.enabled) { root.toggled(); } }
-    forward-focus: focus-scope;
-    if root.checked: Icon {
-        width: root.box - 4px;
-        height: root.box - 4px;
-        path: Icons.check;
-        color: Theme.background;
+    key-pressed(event) => {
+        if ((event.text == Key.Space || event.text == Key.Return) && root.enabled) {
+            root.toggled();
+            return accept;
+        }
+        reject
     }
-    TouchArea {
-        mouse-cursor: root.enabled ? pointer : default;
-        clicked => { if (root.enabled) { focus-scope.focus(); root.toggled(); } }
-    }
-    focus-scope := FocusScope {
-        x: 0;
-        width: 0;
-        enabled: root.enabled;
-        key-pressed(event) => {
-            if ((event.text == Key.Space || event.text == Key.Return) && root.enabled) {
-                root.toggled();
-                return accept;
-            }
-            reject
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 5px;
+        border-width: root.has-focus ? 2px : (root.checked ? 0 : 2px);
+        background: root.checked ? root.ink : transparent;
+        border-color: root.has-focus ? Theme.accent : root.border-ink;
+        if root.checked: Icon {
+            width: root.box - 4px;
+            height: root.box - 4px;
+            path: Icons.check;
+            color: root.tick-ink;
+        }
+        TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: root.enabled ? pointer : default;
+            clicked => { if (root.enabled) { root.focus(); root.toggled(); } }
         }
     }
 }
 
-component NavItem inherits Rectangle {
+component NavItem inherits FocusScope {
     in property <string> icon;
     in property <string> label;
     in property <int> count: -1;
     in property <bool> selected;
+    in property <bool> compact: false;
     callback clicked();
     height: 44px;
-    border-radius: Theme.radius-md;
-    background: selected ? Theme.surface-variant : (touch.has-hover ? Theme.hover : transparent);
-    border-width: focus-scope.has-focus ? 2px : 0;
-    border-color: Theme.accent;
+    preferred-width: root.compact ? 44px : nav-row.preferred-width;
     accessible-role: button;
     accessible-label: label;
     accessible-action-default => { root.clicked(); }
-    forward-focus: focus-scope;
-
-    // The web app's selection bar on the left edge.
-    if selected: Rectangle {
-        x: -12px;
-        width: 3px;
-        height: 24px;
-        border-radius: 2px;
-        background: Theme.on-surface;
+    key-pressed(event) => {
+        if (event.text == Key.Space || event.text == Key.Return) {
+            root.clicked();
+            return accept;
+        }
+        reject
     }
 
-    HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 12px;
-        spacing: 14px;
-        Icon {
-            y: (parent.height - self.height) / 2;
-            path: root.icon;
-            color: root.selected ? Theme.on-surface : Theme.on-surface-secondary;
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: Theme.radius-md;
+        background: root.selected ? Theme.surface-variant : (touch.has-hover ? Theme.hover : transparent);
+        border-width: root.has-focus ? 2px : 0;
+        border-color: Theme.accent;
+
+        // The web app's selection bar on the left edge.
+        if root.selected && !root.compact: Rectangle {
+            x: -12px;
+            width: 3px;
+            height: 24px;
+            border-radius: 2px;
+            background: Theme.on-surface;
         }
-        Text {
-            text: root.label;
-            vertical-alignment: center;
-            font-size: 14px;
-            font-weight: root.selected ? 600 : 500;
-            color: root.selected ? Theme.on-surface : Theme.on-surface-secondary;
-            horizontal-stretch: 1;
-        }
-        if root.count > 0: Rectangle {
-            y: (parent.height - self.height) / 2;
-            width: max(20px, count-text.preferred-width + 10px);
-            height: 20px;
-            border-radius: 10px;
-            background: Theme.outline;
-            count-text := Text {
-                text: root.count;
-                font-size: 11px;
-                font-weight: 600;
-                color: Theme.on-surface;
+
+        nav-row := HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 14px;
+            alignment: root.compact ? center : start;
+            Icon {
+                y: (parent.height - self.height) / 2;
+                path: root.icon;
+                color: root.selected ? Theme.on-surface : Theme.on-surface-secondary;
+            }
+            if !root.compact: Text {
+                text: root.label;
+                vertical-alignment: center;
+                font-size: 14px;
+                font-weight: root.selected ? 600 : 500;
+                color: root.selected ? Theme.on-surface : Theme.on-surface-secondary;
+                horizontal-stretch: 1;
+            }
+            if !root.compact && root.count > 0: Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: max(20px, count-text.preferred-width + 10px);
+                height: 20px;
+                border-radius: 10px;
+                background: Theme.outline;
+                count-text := Text {
+                    text: root.count;
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: Theme.on-surface;
+                }
             }
         }
-    }
 
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { focus-scope.focus(); root.clicked(); }
-    }
-    focus-scope := FocusScope {
-        x: 0;
-        width: 0;
-        key-pressed(event) => {
-            if (event.text == Key.Space || event.text == Key.Return) {
-                root.clicked();
-                return accept;
-            }
-            reject
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.focus(); root.clicked(); }
         }
     }
 }
 
 component Chip inherits Rectangle {
     in property <string> text;
+    in property <color> fg: Theme.on-surface-secondary;
+    in property <color> bg: Theme.on-surface.transparentize(0.9);
     height: 24px;
     width: chip-text.preferred-width + 16px;
     border-radius: 12px;
-    background: Theme.on-surface.transparentize(0.9);
+    background: root.bg;
     chip-text := Text {
         text: root.text;
         font-size: 12px;
         font-weight: 500;
-        color: Theme.on-surface-secondary;
+        color: root.fg;
     }
 }
 
-component Card inherits Rectangle {
+component Card inherits FocusScope {
     in property <NoteCard> card;
+    in property <bool> compact: false;
     callback clicked();
-    border-radius: Theme.radius-note;
-    border-width: focus-scope.has-focus ? 2px : 1px;
-    border-color: focus-scope.has-focus ? Theme.accent : (card.has-color ? transparent : (touch.has-hover ? Theme.muted : Theme.outline));
-    background: card.has-color ? (Theme.dark ? card.color-dark : card.color-light) : Theme.surface;
+    property <color> fg: card.has-color ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
+    property <color> fg-secondary: card.has-color ? (Theme.dark ? #f0f0f0 : #292927) : Theme.on-surface-secondary;
+    property <color> fg-muted: card.has-color ? (Theme.dark ? #e5e5e5 : #3b3b38) : Theme.muted;
+    property <color> chip-bg: card.has-color ? (Theme.dark ? #ffffff24 : #00000018) : Theme.on-surface.transparentize(0.9);
+    property <color> cb-bg: card.has-color ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
+    property <color> cb-tick: card.has-color ? (Theme.dark ? #151515 : #ffffff) : Theme.background;
+    preferred-width: card-layout.preferred-width;
+    preferred-height: card-layout.preferred-height;
     accessible-role: button;
     accessible-label: card.title != "" ? card.title : "Untitled note";
     accessible-description: card.preview;
     accessible-action-default => { root.clicked(); }
-    forward-focus: focus-scope;
+    key-pressed(event) => {
+        if (event.text == Key.Space || event.text == Key.Return) {
+            root.clicked();
+            return accept;
+        }
+        reject
+    }
 
-    VerticalLayout {
-        padding: 20px;
-        spacing: 10px;
-        // The note's first picture leads the card, as on the web.
-        if card.has-cover: Rectangle {
-            height: 160px;
-            border-radius: Theme.radius-md;
-            clip: true;
-            background: Theme.surface-variant;
-            if card.cover.ready: Image {
-                width: parent.width;
-                height: parent.height;
-                source: card.cover.image;
-                image-fit: cover;
-                accessible-role: image;
-                accessible-label: "Picture";
-            }
-            if !card.cover.ready && card.cover.problem == "": Icon {
-                path: Icons.image;
-                color: Theme.muted;
-            }
-            if card.more-images > 0: Rectangle {
-                x: parent.width - self.width - 8px;
-                y: parent.height - self.height - 8px;
-                width: more-text.preferred-width + 14px;
-                height: 22px;
-                border-radius: 11px;
-                background: #000000aa;
-                more-text := Text {
-                    text: "+" + card.more-images;
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: Theme.radius-note;
+        border-width: root.has-focus ? 2px : 1px;
+        border-color: root.has-focus ? Theme.accent : (card.has-color ? transparent : (touch.has-hover ? Theme.muted : Theme.outline));
+        background: card.has-color ? (Theme.dark ? card.color-dark : card.color-light) : Theme.surface;
+
+        card-layout := VerticalLayout {
+            padding: root.compact ? 14px : 20px;
+            spacing: root.compact ? 6px : 10px;
+            // The note's first picture leads the card, as on the web.
+            if card.has-cover: Rectangle {
+                height: root.compact ? 112px : 160px;
+                border-radius: Theme.radius-md;
+                clip: true;
+                background: Theme.surface-variant;
+                if card.cover.ready: Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: card.cover.image;
+                    image-fit: cover;
+                    accessible-role: image;
+                    accessible-label: "Picture";
+                }
+                if !card.cover.ready && card.cover.problem == "": Icon {
+                    path: Icons.image;
+                    color: Theme.muted;
+                }
+                if card.cover.problem != "": Text {
+                    width: parent.width - 20px;
+                    text: card.cover.problem;
                     font-size: 12px;
-                    font-weight: 600;
-                    color: #ffffff;
+                    color: Theme.on-surface-secondary;
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                }
+                if card.more-images > 0: Rectangle {
+                    x: parent.width - self.width - 8px;
+                    y: parent.height - self.height - 8px;
+                    width: more-text.preferred-width + 14px;
+                    height: 22px;
+                    border-radius: 11px;
+                    background: #000000cc;
+                    more-text := Text {
+                        text: "+" + card.more-images;
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #ffffff;
+                    }
                 }
             }
-        }
-        HorizontalLayout {
-            spacing: 8px;
-            if card.title != "": Text {
-                text: card.title;
-                font-size: 18px;
-                font-weight: 600;
-                letter-spacing: -0.3px;
-                color: Theme.on-surface;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
-            }
-            if card.title == "": Rectangle { horizontal-stretch: 1; }
-            if card.pinned: Icon {
-                width: 16px;
-                height: 16px;
-                path: Icons.pin;
-                color: Theme.muted;
-                accessible-role: image;
-                accessible-label: "Pinned";
-            }
-        }
-        if card.preview != "": Text {
-            text: card.preview;
-            font-size: 15px;
-            color: card.title != "" ? Theme.on-surface-secondary : Theme.on-surface;
-            wrap: word-wrap;
-        }
-        for line in card.checklist: HorizontalLayout {
-            spacing: 10px;
-            CheckBox {
-                y: 2px;
-                box: 16px;
-                checked: line.checked;
-                enabled: false;
-                label: line.text;
-            }
-            Text {
-                text: line.text;
-                font-size: 15px;
-                color: line.checked ? Theme.muted : Theme.on-surface-secondary;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
-            }
-        }
-        if card.more-items > 0: Text {
-            text: "+ " + card.more-items + (card.more-items == 1 ? " more item" : " more items");
-            font-size: 13px;
-            color: Theme.muted;
-        }
-        HorizontalLayout {
-            spacing: 6px;
-            for name in card.labels: Chip { text: name; }
-            if card.more-labels > 0: Chip { text: "+" + card.more-labels; }
-            Rectangle { horizontal-stretch: 1; }
-            if card.reminder != "": HorizontalLayout {
-                spacing: 4px;
-                Icon {
-                    width: 14px;
-                    height: 14px;
-                    path: Icons.notification;
-                    color: Theme.muted;
+            HorizontalLayout {
+                spacing: 8px;
+                if card.title != "": Text {
+                    text: card.title;
+                    font-size: root.compact ? 16px : 18px;
+                    font-weight: 600;
+                    letter-spacing: -0.3px;
+                    color: root.fg;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+                if card.title == "": Rectangle { horizontal-stretch: 1; }
+                if card.pinned: Icon {
+                    width: 16px;
+                    height: 16px;
+                    path: Icons.pin;
+                    color: root.fg-muted;
                     accessible-role: image;
-                    accessible-label: "Reminder";
+                    accessible-label: "Pinned";
+                }
+            }
+            if card.preview != "": Text {
+                text: card.preview;
+                font-size: root.compact ? 14px : 15px;
+                color: card.title != "" ? root.fg-secondary : root.fg;
+                wrap: word-wrap;
+            }
+            for line in card.checklist: HorizontalLayout {
+                spacing: 10px;
+                CheckBox {
+                    y: 2px;
+                    box: 16px;
+                    checked: line.checked;
+                    enabled: false;
+                    ink: root.cb-bg;
+                    border-ink: root.fg-muted;
+                    tick-ink: root.cb-tick;
+                    label: line.text;
                 }
                 Text {
-                    text: card.reminder;
+                    text: line.text;
+                    font-size: root.compact ? 14px : 15px;
+                    color: line.checked ? root.fg-muted : root.fg-secondary;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+            }
+            if card.more-items > 0: Text {
+                text: "+ " + card.more-items + (card.more-items == 1 ? " more item" : " more items");
+                font-size: 13px;
+                color: root.fg-muted;
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                for name in card.labels: Chip { text: name; fg: root.fg-secondary; bg: root.chip-bg; }
+                if card.more-labels > 0: Chip { text: "+" + card.more-labels; fg: root.fg-secondary; bg: root.chip-bg; }
+                Rectangle { horizontal-stretch: 1; }
+                if card.reminder != "": HorizontalLayout {
+                    spacing: 4px;
+                    Icon {
+                        width: 14px;
+                        height: 14px;
+                        path: Icons.notification;
+                        color: card.reminder-overdue ? Theme.danger : root.fg-muted;
+                        accessible-role: image;
+                        accessible-label: card.reminder-overdue ? "Overdue reminder" : "Reminder";
+                    }
+                    Text {
+                        text: card.reminder;
+                        vertical-alignment: center;
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: card.reminder-overdue ? Theme.danger : root.fg-muted;
+                    }
+                }
+                Text {
+                    text: card.time;
                     vertical-alignment: center;
                     font-size: 12px;
                     font-weight: 600;
-                    color: Theme.muted;
+                    color: root.fg-muted;
                 }
             }
-            Text {
-                text: card.time;
-                vertical-alignment: center;
-                font-size: 12px;
-                font-weight: 600;
-                color: Theme.muted;
-            }
         }
-    }
 
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { focus-scope.focus(); root.clicked(); }
-    }
-    focus-scope := FocusScope {
-        x: 0;
-        width: 0;
-        key-pressed(event) => {
-            if (event.text == Key.Space || event.text == Key.Return) {
-                root.clicked();
-                return accept;
-            }
-            reject
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.focus(); root.clicked(); }
         }
     }
 }
@@ -608,6 +635,7 @@ component Sidebar inherits Rectangle {
     in property <int> count-trash;
     in property <[SidebarRow]> views;
     in property <[SidebarRow]> saved;
+    in property <bool> collapsed: false;
     // The account area: 0 no sync in this build, 1 guest, 2 signed in.
     in property <int> account-mode;
     in property <string> account-email;
@@ -615,6 +643,7 @@ component Sidebar inherits Rectangle {
     in property <string> account-status;
     in property <bool> account-problem;
     in property <bool> syncing;
+    callback toggle-collapsed();
     callback sign-in();
     callback sync();
     callback sign-out();
@@ -628,37 +657,46 @@ component Sidebar inherits Rectangle {
     callback export-json();
     callback export-bundle();
     callback import-backup();
-    width: Theme.sidebar-width;
+    width: root.collapsed ? 72px : Theme.sidebar-width;
     background: Theme.surface;
 
     VerticalLayout {
-        padding-top: 20px;
-        padding-bottom: 20px;
+        padding-top: 16px;
+        padding-bottom: 16px;
         spacing: 0px;
 
-        // Brand.
+        // Brand & collapse control.
         HorizontalLayout {
-            padding-left: 20px;
-            padding-right: 20px;
-            padding-bottom: 20px;
-            spacing: 12px;
-            Rectangle {
-                width: 40px;
-                height: 40px;
-                border-radius: 20px;
+            padding-left: root.collapsed ? 16px : 20px;
+            padding-right: root.collapsed ? 16px : 12px;
+            padding-bottom: 16px;
+            spacing: 10px;
+            alignment: root.collapsed ? center : start;
+            if !root.collapsed: Rectangle {
+                width: 38px;
+                height: 38px;
+                border-radius: 19px;
                 background: Theme.on-surface;
                 Image {
-                    width: 28px;
-                    height: 28px;
+                    width: 26px;
+                    height: 26px;
                     source: @image-url("images/icon.png");
                     accessible-role: image;
                     accessible-label: "Notelikeus";
                 }
             }
-            VerticalLayout {
+            if !root.collapsed: VerticalLayout {
+                horizontal-stretch: 1;
                 alignment: center;
                 Text { text: "Notelikeus"; font-size: 16px; font-weight: 700; color: Theme.on-surface; }
                 Text { text: "Capture what matters"; font-size: 12px; color: Theme.on-surface-secondary; }
+            }
+            IconButton {
+                y: (parent.height - self.height) / 2;
+                size: 36px;
+                icon: Icons.menu;
+                label: root.collapsed ? "Expand sidebar" : "Collapse sidebar";
+                clicked => { root.toggle-collapsed(); }
             }
         }
         Rectangle { height: 1px; background: Theme.outline; }
@@ -670,15 +708,16 @@ component Sidebar inherits Rectangle {
             nav := VerticalLayout {
                 width: nav-scroll.width;
                 padding: 12px;
-                padding-top: 20px;
+                padding-top: 16px;
                 spacing: 4px;
                 alignment: start;
-                HorizontalLayout { padding-left: 12px; SectionLabel { text: "LIBRARY"; } }
-                Rectangle { height: 6px; }
+                if !root.collapsed: HorizontalLayout { padding-left: 12px; SectionLabel { text: "LIBRARY"; } }
+                if !root.collapsed: Rectangle { height: 6px; }
                 NavItem {
                     icon: Icons.notes;
                     label: "Notes";
                     count: root.count-notes;
+                    compact: root.collapsed;
                     selected: root.library-current && root.view == View.notes;
                     clicked => { root.view-selected(View.notes); }
                 }
@@ -686,6 +725,7 @@ component Sidebar inherits Rectangle {
                     icon: Icons.archive;
                     label: "Archive";
                     count: root.count-archive;
+                    compact: root.collapsed;
                     selected: root.library-current && root.view == View.archive;
                     clicked => { root.view-selected(View.archive); }
                 }
@@ -693,73 +733,80 @@ component Sidebar inherits Rectangle {
                     icon: Icons.trash;
                     label: "Trash";
                     count: root.count-trash;
+                    compact: root.collapsed;
                     selected: root.library-current && root.view == View.trash;
                     clicked => { root.view-selected(View.trash); }
                 }
 
                 // Smart views, as the web app's "Views": each is a search, typed into the box when chosen.
-                Rectangle { height: 20px; }
-                HorizontalLayout { padding-left: 12px; SectionLabel { text: "VIEWS"; } }
-                Rectangle { height: 6px; }
+                Rectangle { height: root.collapsed ? 10px : 20px; }
+                if !root.collapsed: HorizontalLayout { padding-left: 12px; SectionLabel { text: "VIEWS"; } }
+                if !root.collapsed: Rectangle { height: 6px; }
                 for row[index] in root.views: NavItem {
                     icon: index == 0 ? Icons.notification : index == 1 ? Icons.checklist : Icons.label;
                     label: row.label;
                     count: row.count;
+                    compact: root.collapsed;
                     selected: row.current;
                     clicked => { root.smart-view(index); }
                 }
 
                 // Only when there are any, as the web app: an empty heading would show a hole.
-                if root.saved.length > 0: Rectangle { height: 20px; }
-                if root.saved.length > 0: HorizontalLayout { padding-left: 12px; SectionLabel { text: "SAVED"; } }
-                if root.saved.length > 0: Rectangle { height: 6px; }
-                for row in root.saved: HorizontalLayout {
-                    spacing: 2px;
-                    NavItem {
-                        horizontal-stretch: 1;
-                        icon: Icons.bookmark;
-                        label: row.label;
-                        selected: row.current;
-                        clicked => { root.saved-applied(row.label); }
-                    }
-                    IconButton {
-                        y: (parent.height - self.height) / 2;
-                        size: 32px;
-                        icon: Icons.close;
-                        label: "Delete saved filter " + row.label;
-                        clicked => { root.saved-deleted(row.label); }
+                if !root.collapsed && root.saved.length > 0: VerticalLayout {
+                    spacing: 4px;
+                    Rectangle { height: 16px; }
+                    HorizontalLayout { padding-left: 12px; SectionLabel { text: "SAVED"; } }
+                    Rectangle { height: 2px; }
+                    for row in root.saved: HorizontalLayout {
+                        spacing: 2px;
+                        NavItem {
+                            horizontal-stretch: 1;
+                            icon: Icons.bookmark;
+                            label: row.label;
+                            selected: row.current;
+                            clicked => { root.saved-applied(row.label); }
+                        }
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            size: 32px;
+                            icon: Icons.close;
+                            label: "Delete saved filter " + row.label;
+                            clicked => { root.saved-deleted(row.label); }
+                        }
                     }
                 }
 
-                Rectangle { height: 20px; }
-                HorizontalLayout { padding-left: 12px; SectionLabel { text: "MANAGE"; } }
-                Rectangle { height: 6px; }
+                Rectangle { height: root.collapsed ? 10px : 20px; }
+                if !root.collapsed: HorizontalLayout { padding-left: 12px; SectionLabel { text: "MANAGE"; } }
+                if !root.collapsed: Rectangle { height: 6px; }
                 NavItem {
                     icon: Icons.label;
                     label: "Edit labels";
+                    compact: root.collapsed;
                     clicked => { root.edit-labels(); }
                 }
                 NavItem {
                     icon: Icons.settings;
                     label: "Settings";
+                    compact: root.collapsed;
                     clicked => { root.open-settings(); }
                 }
-                NavItem {
+                if !root.collapsed: NavItem {
                     icon: Icons.info;
                     label: "About Notelikeus";
                     clicked => { root.open-about(); }
                 }
-                NavItem {
+                if !root.collapsed: NavItem {
                     icon: Icons.notes;
                     label: "Export JSON backup";
                     clicked => { root.export-json(); }
                 }
-                NavItem {
+                if !root.collapsed: NavItem {
                     icon: Icons.archive;
                     label: "Export backup with pictures";
                     clicked => { root.export-bundle(); }
                 }
-                NavItem {
+                if !root.collapsed: NavItem {
                     icon: Icons.restore;
                     label: "Import backup";
                     clicked => { root.import-backup(); }
@@ -769,7 +816,25 @@ component Sidebar inherits Rectangle {
 
         // The account: who is signed in and how sync is going, or a way to sign in.
         Rectangle { height: 1px; background: Theme.outline; }
-        if root.account-mode == 0: HorizontalLayout {
+        if root.collapsed && root.account-mode == 1: HorizontalLayout {
+            padding: 14px;
+            alignment: center;
+            IconButton {
+                icon: Icons.cloud;
+                label: "Sign in";
+                clicked => { root.sign-in(); }
+            }
+        }
+        if root.collapsed && root.account-mode == 2: HorizontalLayout {
+            padding: 14px;
+            alignment: center;
+            IconButton {
+                icon: Icons.sync;
+                label: "Sync now";
+                clicked => { root.sync(); }
+            }
+        }
+        if !root.collapsed && root.account-mode == 0: HorizontalLayout {
             padding: 16px;
             padding-left: 24px;
             Text {
@@ -779,7 +844,7 @@ component Sidebar inherits Rectangle {
                 wrap: word-wrap;
             }
         }
-        if root.account-mode == 1: VerticalLayout {
+        if !root.collapsed && root.account-mode == 1: VerticalLayout {
             padding: 16px;
             padding-left: 20px;
             padding-right: 20px;
@@ -799,7 +864,7 @@ component Sidebar inherits Rectangle {
                 }
             }
         }
-        if root.account-mode == 2: VerticalLayout {
+        if !root.collapsed && root.account-mode == 2: VerticalLayout {
             padding: 14px;
             padding-left: 16px;
             padding-right: 16px;
@@ -1012,6 +1077,11 @@ component EditorSheet inherits Rectangle {
     in property <[EditRow]> rows;
     in property <bool> conflict;
     in property <[Picture]> pictures;
+    in property <int> body-sel-anchor;
+    in property <int> body-sel-focus;
+    in property <int> body-sel-seq;
+    out property <int> body-cursor-byte: body-input.cursor-position-byte-offset;
+    out property <int> body-anchor-byte: body-input.anchor-position-byte-offset;
     callback add-image();
     callback open-picture(int);
     callback compare();
@@ -1030,7 +1100,18 @@ component EditorSheet inherits Rectangle {
     callback item-added();
     callback to-checklist();
     callback to-text();
+    callback format-bold(int, int);
+    callback format-italic(int, int);
+    callback format-bullet(int, int);
+    callback format-link(int, int);
     property <bool> read-only: root.mode == View.trash;
+    property <color> fg: root.has-color ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
+    property <color> fg-secondary: root.has-color ? (Theme.dark ? #f0f0f0 : #292927) : Theme.on-surface-secondary;
+    property <color> fg-muted: root.has-color ? (Theme.dark ? #e5e5e5 : #3b3b38) : Theme.muted;
+    property <color> chip-bg: root.has-color ? (Theme.dark ? #ffffff24 : #00000018) : Theme.on-surface.transparentize(0.9);
+    property <color> cb-bg: root.has-color ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
+    property <color> cb-tick: root.has-color ? (Theme.dark ? #151515 : #ffffff) : Theme.background;
+    property <color> divider: root.has-color ? (Theme.dark ? #ffffff28 : #00000022) : Theme.outline;
     forward-focus: body-input;
     border-radius: Theme.radius-sheet;
     border-width: 1px;
@@ -1038,6 +1119,11 @@ component EditorSheet inherits Rectangle {
     background: has-color ? (Theme.dark ? color-dark : color-light) : Theme.surface;
     drop-shadow-blur: 32px;
     drop-shadow-color: #00000066;
+
+    changed body-sel-seq => {
+        body-input.set-selection-offsets(root.body-sel-anchor, root.body-sel-focus);
+        body-input.focus();
+    }
 
     public function focus-title() {
         title-input.focus();
@@ -1056,51 +1142,60 @@ component EditorSheet inherits Rectangle {
             IconButton {
                 icon: Icons.back;
                 label: "Back to notes";
+                fg-color: root.fg;
                 clicked => { root.close(); }
             }
             Rectangle { horizontal-stretch: 1; }
             if root.mode != View.trash: IconButton {
                 icon: Icons.image;
                 label: "Add image";
+                fg-color: root.fg;
                 clicked => { root.add-image(); }
             }
             if root.can-act && root.mode == View.notes: IconButton {
                 icon: Icons.notification;
                 label: root.reminder-set ? "Change reminder" : "Set reminder";
+                fg-color: root.fg;
                 clicked => { root.open-reminder(); }
             }
             if root.can-act && root.mode != View.trash: IconButton {
                 icon: Icons.palette;
                 label: "Note options";
+                fg-color: root.fg;
                 clicked => { root.open-options(); }
             }
             if root.can-act && root.mode == View.notes: IconButton {
                 icon: root.pinned ? Icons.pin-off : Icons.pin;
                 label: root.pinned ? "Unpin" : "Pin";
+                fg-color: root.fg;
                 clicked => { root.toggle-pin(); }
             }
             if root.can-act && root.mode != View.trash: IconButton {
                 icon: root.mode == View.archive ? Icons.unarchive : Icons.archive;
                 label: root.mode == View.archive ? "Unarchive note" : "Archive note";
+                fg-color: root.fg;
                 clicked => { root.archive(); }
             }
             if root.can-act && root.mode != View.trash: IconButton {
                 icon: Icons.trash;
                 label: "Move to trash";
+                fg-color: root.fg;
                 clicked => { root.trash(); }
             }
             if root.mode == View.trash: IconButton {
                 icon: Icons.restore;
                 label: "Restore";
+                fg-color: root.fg;
                 clicked => { root.restore(); }
             }
             if root.mode == View.trash: IconButton {
                 icon: Icons.delete-forever;
                 label: "Delete forever";
+                fg-color: root.fg;
                 clicked => { root.delete-forever(); }
             }
         }
-        Rectangle { height: 1px; background: Theme.outline; }
+        Rectangle { height: 1px; background: root.divider; }
 
         if root.read-only: Rectangle {
             height: 40px;
@@ -1108,13 +1203,13 @@ component EditorSheet inherits Rectangle {
             Text {
                 text: "This note is in the trash. Restore it to edit.";
                 font-size: 13px;
-                color: Theme.on-surface;
+                color: root.fg;
             }
         }
 
         // As the web app's: a copy kept from a sync conflict says so, and offers the comparison.
         if root.conflict && !root.read-only: Rectangle {
-            background: #f59e0b.transparentize(0.86);
+            background: #f59e0b.transparentize(0.84);
             HorizontalLayout {
                 padding: 10px;
                 padding-left: 40px;
@@ -1124,7 +1219,7 @@ component EditorSheet inherits Rectangle {
                     text: "This note was kept from a sync conflict so neither version was lost.";
                     vertical-alignment: center;
                     font-size: 13px;
-                    color: Theme.on-surface;
+                    color: root.fg;
                     wrap: word-wrap;
                     horizontal-stretch: 1;
                     accessible-role: text;
@@ -1198,7 +1293,7 @@ component EditorSheet inherits Rectangle {
                     text: "Title";
                     font-size: 32px;
                     font-weight: 700;
-                    color: Theme.muted;
+                    color: root.fg-muted;
                 }
                 title-input := TextInput {
                     y: 0;
@@ -1207,7 +1302,7 @@ component EditorSheet inherits Rectangle {
                     font-size: 32px;
                     font-weight: 700;
                     letter-spacing: -0.6px;
-                    color: Theme.on-surface;
+                    color: root.fg;
                     single-line: false;
                     wrap: word-wrap;
                     accessible-role: text-input;
@@ -1226,21 +1321,69 @@ component EditorSheet inherits Rectangle {
             if root.labels.length > 0: HorizontalLayout {
                 spacing: 6px;
                 alignment: start;
-                for name in root.labels: Chip { text: name; }
+                for name in root.labels: Chip { text: name; fg: root.fg-secondary; bg: root.chip-bg; }
             }
 
-            // Text mode: a toolbar (for now, the checklist switch) and the body.
+            // Text mode: Markdown formatting controls and the checklist switch.
             if !root.is-checklist && !root.read-only: HorizontalLayout {
                 alignment: start;
                 Rectangle {
                     height: 40px;
                     width: tools.preferred-width;
                     border-radius: Theme.radius-md;
-                    background: Theme.on-surface.transparentize(0.94);
+                    background: root.has-color ? root.chip-bg : Theme.on-surface.transparentize(0.94);
                     tools := HorizontalLayout {
                         padding: 4px;
+                        spacing: 2px;
                         IconButton {
                             size: 32px;
+                            focus-on-click: false;
+                            fg-color: root.fg;
+                            icon: Icons.bold;
+                            label: "Bold";
+                            clicked => {
+                                root.format-bold(body-input.anchor-position-byte-offset, body-input.cursor-position-byte-offset);
+                            }
+                        }
+                        IconButton {
+                            size: 32px;
+                            focus-on-click: false;
+                            fg-color: root.fg;
+                            icon: Icons.italic;
+                            label: "Italic";
+                            clicked => {
+                                root.format-italic(body-input.anchor-position-byte-offset, body-input.cursor-position-byte-offset);
+                            }
+                        }
+                        IconButton {
+                            size: 32px;
+                            focus-on-click: false;
+                            fg-color: root.fg;
+                            icon: Icons.bullet-list;
+                            label: "Bullet list";
+                            clicked => {
+                                root.format-bullet(body-input.anchor-position-byte-offset, body-input.cursor-position-byte-offset);
+                            }
+                        }
+                        IconButton {
+                            size: 32px;
+                            focus-on-click: false;
+                            fg-color: root.fg;
+                            icon: Icons.link;
+                            label: "Insert link";
+                            clicked => {
+                                root.format-link(body-input.anchor-position-byte-offset, body-input.cursor-position-byte-offset);
+                            }
+                        }
+                        Rectangle {
+                            y: (parent.height - self.height) / 2;
+                            width: 1px;
+                            height: 20px;
+                            background: root.divider;
+                        }
+                        IconButton {
+                            size: 32px;
+                            fg-color: root.fg;
                             icon: Icons.checklist;
                             label: "Make a checklist";
                             clicked => { root.to-checklist(); }
@@ -1260,19 +1403,32 @@ component EditorSheet inherits Rectangle {
                     y: 0;
                     text: root.read-only ? "" : "Start writing…";
                     font-size: 17px;
-                    color: Theme.muted;
+                    color: root.fg-muted;
                 }
                 body-input := TextInput {
                     width: body-scroll.width;
                     text <=> root.body;
                     read-only: root.read-only;
                     font-size: 17px;
-                    color: Theme.on-surface;
+                    color: root.fg;
                     single-line: false;
                     wrap: word-wrap;
                     accessible-role: text-input;
                     accessible-label: "Note";
                     edited => { root.edited(); }
+                    key-pressed(event) => {
+                        if (!root.read-only && event.modifiers.control) {
+                            if (event.text == "b" || event.text == "B") {
+                                root.format-bold(self.anchor-position-byte-offset, self.cursor-position-byte-offset);
+                                return accept;
+                            }
+                            if (event.text == "i" || event.text == "I") {
+                                root.format-italic(self.anchor-position-byte-offset, self.cursor-position-byte-offset);
+                                return accept;
+                            }
+                        }
+                        reject
+                    }
                     // Keep the caret in view as the note grows past the sheet.
                     cursor-position-changed(position) => {
                         if (position.y + 40px > body-scroll.height - body-scroll.content-y) {
@@ -1298,6 +1454,9 @@ component EditorSheet inherits Rectangle {
                             y: 4px;
                             checked: row.checked;
                             enabled: !root.read-only;
+                            ink: root.cb-bg;
+                            border-ink: root.fg-muted;
+                            tick-ink: root.cb-tick;
                             label: row.text != "" ? row.text : "Checklist item";
                             toggled => { root.item-toggled(row.position); }
                         }
@@ -1310,21 +1469,21 @@ component EditorSheet inherits Rectangle {
                                 y: 3px;
                                 text: "List item";
                                 font-size: 17px;
-                                color: Theme.muted;
+                                color: root.fg-muted;
                             }
                             item-input := TextInput {
                                 y: 3px;
                                 text: row.text;
                                 read-only: root.read-only;
                                 font-size: 17px;
-                                color: row.checked ? Theme.muted : Theme.on-surface;
+                                color: row.checked ? root.fg-muted : root.fg;
                                 single-line: false;
                                 wrap: word-wrap;
                                 accessible-role: text-input;
                                 accessible-label: row.text != "" ? "Edit " + row.text : "Edit empty item";
                                 edited => { root.item-edited(row.position, self.text); }
                                 key-pressed(event) => {
-                                    if (event.text == Key.Return) {
+                                    if (!root.read-only && event.text == Key.Return) {
                                         root.item-added();
                                         return accept;
                                     }
@@ -1339,6 +1498,7 @@ component EditorSheet inherits Rectangle {
                         }
                         if !root.read-only: IconButton {
                             size: 28px;
+                            fg-color: root.fg;
                             icon: Icons.close;
                             label: row.text != "" ? "Remove " + row.text : "Remove empty item";
                             clicked => { root.item-removed(row.position); }
@@ -1361,7 +1521,7 @@ component EditorSheet inherits Rectangle {
             }
         }
 
-        Rectangle { height: 1px; background: Theme.outline; }
+        Rectangle { height: 1px; background: root.divider; }
         HorizontalLayout {
             padding: 16px;
             padding-left: 40px;
@@ -1369,7 +1529,7 @@ component EditorSheet inherits Rectangle {
                 text: root.footer;
                 font-size: 13px;
                 font-weight: 600;
-                color: Theme.on-surface-secondary;
+                color: root.fg-secondary;
                 accessible-role: text;
                 accessible-label: "Save status";
             }
@@ -1379,6 +1539,11 @@ component EditorSheet inherits Rectangle {
 
 export component AppWindow inherits Window {
     in-out property <int> theme-mode <=> Theme.mode;
+    in-out property <int> theme-accent <=> Theme.accent-mode;
+    in-out property <bool> theme-amoled <=> Theme.amoled;
+    in-out property <bool> sidebar-collapsed: false;
+    in-out property <int> sort-order: 0; // 0 manual, 1 newest, 2 oldest.
+    in-out property <int> view-density: 0; // 0 grid, 1 list, 2 compact.
 
     title: "Notelikeus";
     icon: @image-url("images/icon.png");
@@ -1391,7 +1556,10 @@ export component AppWindow inherits Window {
 
     // The view and its notes, from Rust.
     in-out property <View> view: View.notes;
+    in property <[CardColumn]> pinned-columns;
     in property <[CardColumn]> columns;
+    in property <bool> has-pinned-section: false;
+    in property <bool> has-other-section: false;
     in property <int> note-count;
     in property <int> count-notes;
     in property <int> count-archive;
@@ -1412,6 +1580,7 @@ export component AppWindow inherits Window {
     in property <string> account-initial;
     in property <string> account-status;
     in property <bool> account-problem;
+    in property <bool> uploads-blocked-after-wipe: false;
     in property <bool> syncing;
     in property <string> app-version;
 
@@ -1484,10 +1653,19 @@ export component AppWindow inherits Window {
     in property <[string]> editor-labels;
     in property <bool> editor-is-checklist;
     in property <[EditRow]> editor-rows;
+    in-out property <int> editor-body-sel-anchor;
+    in-out property <int> editor-body-sel-focus;
+    in-out property <int> editor-body-sel-seq;
     in-out property <bool> reminder-open;
     in-out property <string> reminder-input;
     in property <string> reminder-error;
     in property <bool> reminder-set;
+
+    // Insert Link dialog.
+    in-out property <bool> link-dialog-open: false;
+    in-out property <string> link-label-text;
+    in-out property <string> link-url-text;
+    in property <string> link-error;
 
     // Note options: colour and labels.
     in-out property <bool> options-open;
@@ -1510,10 +1688,20 @@ export component AppWindow inherits Window {
     in property <string> toast-text;
     in property <string> toast-action;
 
+    property <bool> any-modal-open: root.editor-open || root.filters-open || root.viewer-open || root.signin-open
+        || root.review-open || root.options-open || root.reminder-open || root.labels-open || root.naming
+        || root.settings-open || root.diagnostics-open || root.about-open || root.delete-account-open
+        || root.link-dialog-open || root.confirm-title != "";
+
+    property <length> min-card-w: root.view-density == 2 ? 230px : Theme.card-min-width;
     // How many card columns fit; Rust lays the cards out into that many.
-    out property <int> column-count: max(1, min(4, floor((scroll.visible-width - 48px + Theme.note-gap) / (Theme.card-min-width + Theme.note-gap))));
+    out property <int> column-count: root.view-density == 1
+        ? 1
+        : max(1, min(4, floor((scroll.visible-width - 48px + Theme.note-gap) / (root.min-card-w + Theme.note-gap))));
     // Every column the same width, whatever its cards say.
-    property <length> column-width: (scroll.visible-width - 48px - (root.column-count - 1) * Theme.note-gap) / root.column-count;
+    property <length> column-width: root.view-density == 1
+        ? min(760px, max(200px, scroll.visible-width - 48px))
+        : (scroll.visible-width - 48px - (root.column-count - 1) * Theme.note-gap) / root.column-count;
 
     callback columns-changed(int);
     callback view-selected(View);
@@ -1534,7 +1722,15 @@ export component AppWindow inherits Window {
     callback sign-out-requested();
     callback settings-requested();
     callback theme-picked(int);
+    callback accent-picked(int);
+    callback amoled-toggled();
+    callback sidebar-toggled();
+    callback sort-picked(int);
+    callback density-picked(int);
+    callback reupload-after-wipe-requested();
+    callback delete-cloud-data-requested();
     callback diagnostics-requested();
+    callback diagnostics-copied();
     callback diagnostics-export-requested();
     callback delete-account-opened();
     callback delete-account-confirmed();
@@ -1585,6 +1781,11 @@ export component AppWindow inherits Window {
     callback item-added();
     callback to-checklist();
     callback to-text();
+    callback format-bold(int, int);
+    callback format-italic(int, int);
+    callback format-bullet(int, int);
+    callback open-link-dialog(int, int);
+    callback insert-link-submitted();
     callback open-labels();
     callback label-renamed(string, string);
     callback label-deleted(string);
@@ -1597,6 +1798,19 @@ export component AppWindow inherits Window {
     callback toast-expired();
 
     changed column-count => { root.columns-changed(self.column-count); }
+    changed diagnostics-open => { if (!self.diagnostics-open) { keys.focus(); } }
+    changed about-open => { if (!self.about-open) { keys.focus(); } }
+    changed delete-account-open => { if (!self.delete-account-open) { keys.focus(); } }
+    changed settings-open => { if (!self.settings-open) { keys.focus(); } }
+    changed signin-open => { if (!self.signin-open) { keys.focus(); } }
+    changed review-open => { if (!self.review-open) { keys.focus(); } }
+    changed link-dialog-open => { if (!self.link-dialog-open) { keys.focus(); } }
+    changed reminder-open => { if (!self.reminder-open) { keys.focus(); } }
+    changed options-open => { if (!self.options-open) { keys.focus(); } }
+    changed labels-open => { if (!self.labels-open) { keys.focus(); } }
+    changed filters-open => { if (!self.filters-open) { keys.focus(); } }
+    changed viewer-open => { if (!self.viewer-open) { keys.focus(); } }
+    changed confirm-title => { if (self.confirm-title == "") { keys.focus(); } }
 
     public function focus-search() {
         search.focus-search();
@@ -1609,14 +1823,12 @@ export component AppWindow inherits Window {
 
     keys := FocusScope {
         key-pressed(event) => {
-            if (event.modifiers.control && (event.text == "n" || event.text == "N")) {
+            if (!root.any-modal-open && event.modifiers.control && (event.text == "n" || event.text == "N")) {
                 root.new-note();
                 return accept;
             }
-            if (event.modifiers.control && (event.text == "k" || event.text == "K" || event.text == "f" || event.text == "F")) {
-                if (!root.editor-open) {
-                    search.focus-search();
-                }
+            if (!root.any-modal-open && event.modifiers.control && (event.text == "k" || event.text == "K" || event.text == "f" || event.text == "F")) {
+                search.focus-search();
                 return accept;
             }
             if (event.text == Key.Escape) {
@@ -1624,10 +1836,21 @@ export component AppWindow inherits Window {
                     root.confirm-cancelled();
                 } else if (root.viewer-open) {
                     root.viewer-open = false;
+                } else if (root.link-dialog-open) {
+                    root.link-dialog-open = false;
                 } else if (root.review-open) {
                     root.review-open = false;
                 } else if (root.signin-open) {
                     root.signin-cancelled();
+                } else if (root.diagnostics-open) {
+                    root.diagnostics-open = false;
+                } else if (root.about-open) {
+                    root.about-open = false;
+                } else if (root.delete-account-open) {
+                    root.delete-account-open = false;
+                    root.delete-account-confirmation = "";
+                } else if (root.settings-open) {
+                    root.settings-open = false;
                 } else if (root.reminder-open) {
                     root.reminder-cancel();
                 } else if (root.options-open) {
@@ -1638,15 +1861,6 @@ export component AppWindow inherits Window {
                     root.naming = false;
                 } else if (root.filters-open) {
                     root.filters-open = false;
-                } else if (root.about-open) {
-                    root.about-open = false;
-                } else if (root.diagnostics-open) {
-                    root.diagnostics-open = false;
-                } else if (root.delete-account-open) {
-                    root.delete-account-open = false;
-                    root.delete-account-confirmation = "";
-                } else if (root.settings-open) {
-                    root.settings-open = false;
                 } else if (root.editor-open) {
                     root.close-editor();
                 }
@@ -1664,12 +1878,14 @@ export component AppWindow inherits Window {
                 count-trash: root.count-trash;
                 views: root.smart-views;
                 saved: root.saved-filters;
+                collapsed: root.sidebar-collapsed;
                 account-mode: root.account-mode;
                 account-email: root.account-email;
                 account-initial: root.account-initial;
                 account-status: root.account-status;
                 account-problem: root.account-problem;
                 syncing: root.syncing;
+                toggle-collapsed => { root.sidebar-toggled(); }
                 sign-in => { root.signin-opened(); }
                 sync => { root.sync-requested(); }
                 sign-out => { root.sign-out-requested(); }
@@ -1709,13 +1925,12 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // The filter row: the sheet's button with how many choices it holds, and a way out.
+                // Filter, sort and view-density bar.
                 HorizontalLayout {
                     padding-left: 24px;
                     padding-right: 24px;
                     padding-bottom: 12px;
                     spacing: 8px;
-                    alignment: start;
                     PillButton {
                         text: root.filter-count > 0 ? "Filters · " + root.filter-count : "Filters";
                         label: "Filters";
@@ -1724,6 +1939,58 @@ export component AppWindow inherits Window {
                     if root.filters-active: PillButton {
                         text: "Clear filters";
                         clicked => { root.filters-cleared(); }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    HorizontalLayout {
+                        spacing: 4px;
+                        FilterChip {
+                            text: "Manual";
+                            on: root.sort-order == 0;
+                            clicked => { root.sort-picked(0); }
+                        }
+                        FilterChip {
+                            text: "Newest";
+                            on: root.sort-order == 1;
+                            clicked => { root.sort-picked(1); }
+                        }
+                        FilterChip {
+                            text: "Oldest";
+                            on: root.sort-order == 2;
+                            clicked => { root.sort-picked(2); }
+                        }
+                    }
+                    Rectangle {
+                        y: (parent.height - self.height) / 2;
+                        width: 1px;
+                        height: 22px;
+                        background: Theme.outline;
+                    }
+                    HorizontalLayout {
+                        spacing: 2px;
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            size: 32px;
+                            icon: Icons.grid-view;
+                            label: "Grid view";
+                            fg-color: root.view-density == 0 ? Theme.accent : Theme.on-surface-secondary;
+                            clicked => { root.density-picked(0); }
+                        }
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            size: 32px;
+                            icon: Icons.list-view;
+                            label: "List view";
+                            fg-color: root.view-density == 1 ? Theme.accent : Theme.on-surface-secondary;
+                            clicked => { root.density-picked(1); }
+                        }
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            size: 32px;
+                            icon: Icons.compact-view;
+                            label: "Compact view";
+                            fg-color: root.view-density == 2 ? Theme.accent : Theme.on-surface-secondary;
+                            clicked => { root.density-picked(2); }
+                        }
                     }
                 }
 
@@ -1752,6 +2019,38 @@ export component AppWindow inherits Window {
                         wrap: word-wrap;
                         accessible-role: text;
                         accessible-label: self.text;
+                    }
+                }
+
+                // Cloud-wipe caution banner when another device erased cloud data.
+                if root.uploads-blocked-after-wipe && root.account-mode == 2: Rectangle {
+                    background: #f59e0b.transparentize(0.84);
+                    HorizontalLayout {
+                        padding: 12px;
+                        padding-left: 24px;
+                        padding-right: 24px;
+                        spacing: 12px;
+                        Icon {
+                            y: (parent.height - self.height) / 2;
+                            path: Icons.warning;
+                            color: Theme.on-surface;
+                        }
+                        Text {
+                            text: "Cloud notes were wiped from another device. Local notes remain safe on this device while cloud uploads are paused.";
+                            vertical-alignment: center;
+                            font-size: 13px;
+                            color: Theme.on-surface;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                            accessible-role: text;
+                            accessible-label: self.text;
+                        }
+                        PillButton {
+                            y: (parent.height - self.height) / 2;
+                            text: "Re-upload local notes";
+                            strong: true;
+                            clicked => { root.reupload-after-wipe-requested(); }
+                        }
                     }
                 }
 
@@ -1785,29 +2084,94 @@ export component AppWindow inherits Window {
                     scroll := ScrollView {
                         visible: root.note-count > 0;
                         content-width: self.visible-width;
-                        content-height: grid.preferred-height;
-                        grid := HorizontalLayout {
+                        content-height: grid-wrap.preferred-height;
+                        grid-wrap := VerticalLayout {
                             width: scroll.visible-width;
-                            alignment: start;
                             padding-left: 24px;
                             padding-right: 24px;
                             padding-top: 8px;
                             padding-bottom: 24px;
-                            spacing: Theme.note-gap;
-                            for column in root.columns: VerticalLayout {
-                                alignment: start;
+                            spacing: 16px;
+                            alignment: start;
+
+                            if root.has-pinned-section: VerticalLayout {
+                                spacing: 10px;
+                                HorizontalLayout {
+                                    alignment: root.view-density == 1 ? center : start;
+                                    Rectangle {
+                                        width: root.view-density == 1 ? root.column-width : 120px;
+                                        height: pinned-section-hdr.preferred-height;
+                                        pinned-section-hdr := SectionLabel {
+                                            x: 0;
+                                            text: "PINNED";
+                                        }
+                                    }
+                                }
+                                HorizontalLayout {
+                                    alignment: root.view-density == 1 ? center : start;
+                                    spacing: Theme.note-gap;
+                                    for column in root.pinned-columns: VerticalLayout {
+                                        alignment: start;
+                                        spacing: Theme.note-gap;
+                                        width: root.column-width;
+                                        for card in column.cards: Card {
+                                            card: card;
+                                            compact: root.view-density == 2;
+                                            clicked => { root.open-note(card.id); }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if root.has-pinned-section && root.has-other-section: HorizontalLayout {
+                                alignment: root.view-density == 1 ? center : start;
+                                Rectangle {
+                                    width: root.view-density == 1 ? root.column-width : 120px;
+                                    height: other-section-hdr.preferred-height;
+                                    other-section-hdr := SectionLabel {
+                                        x: 0;
+                                        text: "OTHERS";
+                                    }
+                                }
+                            }
+
+                            if root.has-other-section: HorizontalLayout {
+                                alignment: root.view-density == 1 ? center : start;
                                 spacing: Theme.note-gap;
-                                width: root.column-width;
-                                for card in column.cards: Card {
-                                    card: card;
-                                    clicked => { root.open-note(card.id); }
+                                for column in root.columns: VerticalLayout {
+                                    alignment: start;
+                                    spacing: Theme.note-gap;
+                                    width: root.column-width;
+                                    for card in column.cards: Card {
+                                        card: card;
+                                        compact: root.view-density == 2;
+                                        clicked => { root.open-note(card.id); }
+                                    }
                                 }
                             }
                         }
                     }
                     if root.note-count == 0: VerticalLayout {
                         alignment: center;
-                        spacing: 8px;
+                        spacing: 12px;
+                        HorizontalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 56px;
+                                height: 56px;
+                                border-radius: 28px;
+                                background: Theme.surface-variant;
+                                Icon {
+                                    width: 28px;
+                                    height: 28px;
+                                    path: root.searching ? Icons.filter
+                                        : root.view == View.archive ? Icons.archive
+                                        : root.view == View.trash ? Icons.trash
+                                        : Icons.notes;
+                                    color: Theme.muted;
+                                }
+                            }
+                        }
                         Text {
                             text: root.searching ? "No notes match your search"
                                 : root.view == View.archive ? "Archive is empty"
@@ -1827,12 +2191,30 @@ export component AppWindow inherits Window {
                             font-size: 14px;
                             color: Theme.on-surface-secondary;
                         }
+                        if root.searching: HorizontalLayout {
+                            alignment: center;
+                            PillButton {
+                                text: "Clear filters";
+                                strong: true;
+                                clicked => { root.filters-cleared(); }
+                            }
+                        }
+                        if !root.searching && root.view == View.notes: HorizontalLayout {
+                            alignment: center;
+                            PillButton {
+                                text: "New note";
+                                strong: true;
+                                clicked => { root.new-note(); }
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // The editor floats over the grid, as the web app's "Float" mode.
+        // --- Overlays in strict bottom-to-top Z-order ---
+
+        // 1. Editor sheet
         if root.editor-open: Rectangle {
             background: Theme.scrim;
             TouchArea { clicked => { root.close-editor(); } }
@@ -1856,6 +2238,9 @@ export component AppWindow inherits Window {
                 rows: root.editor-rows;
                 conflict: root.editor-conflict;
                 pictures: root.editor-pictures;
+                body-sel-anchor: root.editor-body-sel-anchor;
+                body-sel-focus: root.editor-body-sel-focus;
+                body-sel-seq: root.editor-body-sel-seq;
                 add-image => { root.image-add-requested(); }
                 open-picture(index) => { root.picture-opened(index); }
                 compare => { root.review-opened(); }
@@ -1874,6 +2259,10 @@ export component AppWindow inherits Window {
                 item-added => { root.item-added(); }
                 to-checklist => { root.to-checklist(); }
                 to-text => { root.to-text(); }
+                format-bold(anchor, focus) => { root.format-bold(anchor, focus); }
+                format-italic(anchor, focus) => { root.format-italic(anchor, focus); }
+                format-bullet(anchor, focus) => { root.format-bullet(anchor, focus); }
+                format-link(anchor, focus) => { root.open-link-dialog(anchor, focus); }
                 init => {
                     if (root.editor-title == "" && root.editor-mode != View.trash) {
                         self.focus-title();
@@ -1884,8 +2273,192 @@ export component AppWindow inherits Window {
             }
         }
 
-        // Filters, as the web app's sheet: every choice applies at once, the grid behind is the preview, and
-        // the button at the foot says how many notes it holds.
+        // 2. Editor sub-dialogs: options, reminder, insert link
+        if root.options-open: Dialog {
+            title: "Note options";
+            card-width: 460px;
+            SectionLabel { text: "COLOR"; }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                for swatch[index] in root.swatches: Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: swatch.none ? transparent : (Theme.dark ? swatch.dark : swatch.light);
+                    border-width: index == root.editor-color-index ? 2px : 1px;
+                    border-color: index == root.editor-color-index ? Theme.on-surface : Theme.outline;
+                    accessible-role: radio-button;
+                    accessible-checkable: true;
+                    accessible-checked: index == root.editor-color-index;
+                    accessible-label: swatch.name;
+                    accessible-action-default => { root.color-picked(index, Theme.dark); }
+                    if swatch.none: Path {
+                        width: 22px;
+                        height: 22px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M5 19 L19 5";
+                        stroke: Theme.muted;
+                        stroke-width: 2px;
+                    }
+                    if index == root.editor-color-index && !swatch.none: Icon {
+                        width: 18px;
+                        height: 18px;
+                        path: Icons.check;
+                        color: Theme.on-surface;
+                    }
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.color-picked(index, Theme.dark); }
+                    }
+                }
+            }
+            Rectangle { height: 1px; background: Theme.outline; }
+            SectionLabel { text: "LABELS"; }
+            if root.label-choices.length == 0: Text {
+                text: "No labels yet. Add one below.";
+                font-size: 13px;
+                color: Theme.muted;
+            }
+            options-labels := ScrollView {
+                vertical-stretch: 1;
+                height: min(260px, label-list.preferred-height);
+                content-width: self.visible-width;
+                content-height: label-list.preferred-height;
+                label-list := VerticalLayout {
+                    width: options-labels.visible-width;
+                    spacing: 4px;
+                    for choice in root.label-choices: HorizontalLayout {
+                        spacing: 12px;
+                        height: 36px;
+                        CheckBox {
+                            y: (parent.height - self.height) / 2;
+                            checked: choice.on;
+                            label: choice.name;
+                            toggled => { root.label-toggled(choice.name); }
+                        }
+                        Text {
+                            text: choice.name;
+                            vertical-alignment: center;
+                            font-size: 15px;
+                            color: Theme.on-surface;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                new-label-field := Field {
+                    horizontal-stretch: 1;
+                    text <=> root.new-label;
+                    placeholder: "New label";
+                    label: "New label name";
+                    accepted => { root.label-created(root.new-label); }
+                }
+                PillButton {
+                    y: (parent.height - self.height) / 2;
+                    text: "Add";
+                    strong: true;
+                    enabled: root.new-label != "";
+                    clicked => { root.label-created(root.new-label); }
+                }
+            }
+            HorizontalLayout {
+                alignment: end;
+                PillButton {
+                    text: "Done";
+                    strong: true;
+                    clicked => { root.options-open = false; }
+                }
+            }
+        }
+
+        if root.reminder-open: Dialog {
+            title: "Set a reminder";
+            card-width: 460px;
+            Text {
+                text: root.reminder-set ? "Choose a new time or remove this reminder." : "Choose when to be reminded. Times use your local time zone.";
+                font-size: 13px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                PillButton { text: "In 1 hour"; clicked => { root.reminder-preset(0); } }
+                PillButton { text: "Tomorrow 9:00"; clicked => { root.reminder-preset(1); } }
+                PillButton { text: "Next week"; clicked => { root.reminder-preset(2); } }
+            }
+            Field {
+                text <=> root.reminder-input;
+                placeholder: "YYYY-MM-DD HH:MM";
+                label: "Reminder date and time in local time";
+                accepted => { root.reminder-save(); }
+            }
+            Text {
+                text: root.reminder-error != "" ? root.reminder-error : "Enter a local date and time, for example 2026-11-23 09:00.";
+                font-size: 12px;
+                color: root.reminder-error != "" ? Theme.danger : Theme.muted;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                if root.reminder-set: PillButton {
+                    text: "Remove reminder";
+                    danger: true;
+                    clicked => { root.reminder-remove(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                PillButton { text: "Cancel"; clicked => { root.reminder-cancel(); } }
+                PillButton {
+                    text: "Set reminder";
+                    strong: true;
+                    enabled: root.reminder-input != "";
+                    clicked => { root.reminder-save(); }
+                }
+            }
+        }
+
+        if root.link-dialog-open: Dialog {
+            title: "Insert link";
+            card-width: 440px;
+            init => { link-label-field.focus-field(); }
+            link-label-field := Field {
+                text <=> root.link-label-text;
+                placeholder: "Label (optional)";
+                label: "Link label";
+                accepted => { link-url-field.focus-field(); }
+            }
+            link-url-field := Field {
+                text <=> root.link-url-text;
+                placeholder: "https://example.com";
+                label: "Link URL";
+                accepted => { root.insert-link-submitted(); }
+            }
+            if root.link-error != "": Text {
+                text: root.link-error;
+                font-size: 13px;
+                color: Theme.danger;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                PillButton {
+                    text: "Cancel";
+                    clicked => { root.link-dialog-open = false; }
+                }
+                PillButton {
+                    text: "Insert";
+                    strong: true;
+                    clicked => { root.insert-link-submitted(); }
+                }
+            }
+        }
+
+        // 3. Filters and Edit labels sheets
         if root.filters-open: Rectangle {
             background: Theme.scrim;
             TouchArea { clicked => { root.filters-open = false; } }
@@ -1928,11 +2501,12 @@ export component AppWindow inherits Window {
                     }
                     Rectangle { height: 1px; background: Theme.outline; }
 
-                    filters-scroll := Flickable {
+                    filters-scroll := ScrollView {
                         vertical-stretch: 1;
+                        content-width: self.visible-width;
                         content-height: filters-body.preferred-height;
                         filters-body := VerticalLayout {
-                            width: filters-scroll.width;
+                            width: filters-scroll.visible-width;
                             padding: 24px;
                             padding-top: 16px;
                             spacing: 12px;
@@ -1995,7 +2569,6 @@ export component AppWindow inherits Window {
                                     vertical-alignment: center;
                                     horizontal-stretch: 1;
                                 }
-                                // Any or all only means something once two labels are chosen.
                                 if root.filter-label-count > 1: FilterChip {
                                     text: root.filter-label-all ? "All of these" : "Any of these";
                                     on: root.filter-label-all;
@@ -2041,7 +2614,6 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            // Saved filters live here as well as in the sidebar: this is where they are made.
                             if root.saved-filters.length > 0: Rectangle { height: 1px; background: Theme.outline; }
                             if root.saved-filters.length > 0: SectionLabel { text: "SAVED"; }
                             for row in root.saved-filters: HorizontalLayout {
@@ -2090,7 +2662,6 @@ export component AppWindow inherits Window {
                     }
 
                     Rectangle { height: 1px; background: Theme.outline; }
-                    // Naming a filter takes the footer's place, so the field and Save are always in view.
                     if root.naming: VerticalLayout {
                         padding: 16px;
                         padding-left: 24px;
@@ -2123,7 +2694,6 @@ export component AppWindow inherits Window {
                                 text: "Cancel";
                                 clicked => { root.naming = false; }
                             }
-                            // An unnamed filter is not saveable: a Save that does nothing is worse.
                             PillButton {
                                 text: "Save";
                                 strong: true;
@@ -2137,7 +2707,6 @@ export component AppWindow inherits Window {
                         padding-left: 24px;
                         padding-right: 24px;
                         spacing: 8px;
-                        // Nothing to save when nothing narrows: an unfiltered list is not a filter.
                         PillButton {
                             text: "Save these filters";
                             enabled: root.filters-active;
@@ -2163,85 +2732,296 @@ export component AppWindow inherits Window {
             }
         }
 
-        // A picture at full size, with the note's others a step away.
-        if root.viewer-open: Rectangle {
-            background: #000000e6;
-            accessible-role: groupbox;
-            accessible-label: "Picture " + (root.viewer-index + 1) + " of " + root.viewer-count;
-            TouchArea { clicked => { root.viewer-open = false; } }
-            if root.viewer-picture.ready: Image {
-                x: 72px;
-                y: 72px;
-                width: parent.width - 144px;
-                height: parent.height - 144px;
-                source: root.viewer-picture.image;
-                image-fit: contain;
+        if root.labels-open: Dialog {
+            title: "Edit labels";
+            card-width: 460px;
+            HorizontalLayout {
+                spacing: 8px;
+                Field {
+                    horizontal-stretch: 1;
+                    text <=> root.labels-new;
+                    placeholder: "Create a label";
+                    label: "Create a label";
+                    accepted => { root.labels-created(root.labels-new); }
+                }
+                PillButton {
+                    y: (parent.height - self.height) / 2;
+                    text: "Create";
+                    strong: true;
+                    enabled: root.labels-new != "";
+                    clicked => { root.labels-created(root.labels-new); }
+                }
             }
-            if !root.viewer-picture.ready: Text {
-                text: root.viewer-picture.problem != "" ? root.viewer-picture.problem : "Loading…";
-                font-size: 15px;
-                color: #ffffffcc;
+            if root.all-labels.length == 0: Text {
+                text: "No labels yet.";
+                font-size: 13px;
+                color: Theme.muted;
+            }
+            edit-scroll := ScrollView {
+                vertical-stretch: 1;
+                height: min(320px, edit-list.preferred-height);
+                content-width: self.visible-width;
+                content-height: edit-list.preferred-height;
+                edit-list := VerticalLayout {
+                    width: edit-scroll.visible-width;
+                    spacing: 6px;
+                    for name in root.all-labels: HorizontalLayout {
+                        spacing: 8px;
+                        Icon {
+                            y: (parent.height - self.height) / 2;
+                            path: Icons.label;
+                            color: Theme.muted;
+                        }
+                        rename := Field {
+                            horizontal-stretch: 1;
+                            text: name;
+                            placeholder: name;
+                            label: "Rename " + name;
+                            accepted => {
+                                if (self.text != name && self.text != "") {
+                                    root.label-renamed(name, self.text);
+                                }
+                            }
+                        }
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            size: 36px;
+                            icon: Icons.trash;
+                            label: "Delete label " + name;
+                            clicked => { root.label-deleted(name); }
+                        }
+                    }
+                }
+            }
+            Text {
+                text: "Press Enter to rename. Deleting a label keeps its notes.";
+                font-size: 12px;
+                color: Theme.muted;
             }
             HorizontalLayout {
-                y: 16px;
-                height: 48px;
-                padding-left: 16px;
-                padding-right: 16px;
-                spacing: 8px;
-                Text {
-                    text: root.viewer-count > 1 ? (root.viewer-index + 1) + " of " + root.viewer-count : "";
-                    vertical-alignment: center;
-                    font-size: 14px;
-                    color: #ffffffcc;
-                    horizontal-stretch: 1;
+                alignment: end;
+                PillButton {
+                    text: "Done";
+                    strong: true;
+                    clicked => { root.labels-open = false; }
                 }
-                if !root.viewer-read-only: PillButton {
-                    y: (parent.height - self.height) / 2;
-                    text: "Remove image";
-                    danger: true;
-                    clicked => { root.picture-remove-requested(); }
-                }
-                Rectangle {
-                    width: 40px;
-                    height: 40px;
-                    border-radius: 20px;
-                    background: close-touch.has-hover ? #ffffff26 : #ffffff14;
-                    accessible-role: button;
-                    accessible-label: "Close picture";
-                    accessible-action-default => { root.viewer-open = false; }
-                    Icon { path: Icons.close; color: #ffffff; }
-                    close-touch := TouchArea { clicked => { root.viewer-open = false; } }
-                }
-            }
-            if root.viewer-count > 1: Rectangle {
-                x: 16px;
-                y: (parent.height - self.height) / 2;
-                width: 44px;
-                height: 44px;
-                border-radius: 22px;
-                background: prev-touch.has-hover ? #ffffff26 : #ffffff14;
-                accessible-role: button;
-                accessible-label: "Previous picture";
-                accessible-action-default => { root.viewer-moved(-1); }
-                Icon { path: Icons.chevron-left; color: #ffffff; width: 28px; height: 28px; }
-                prev-touch := TouchArea { clicked => { root.viewer-moved(-1); } }
-            }
-            if root.viewer-count > 1: Rectangle {
-                x: parent.width - self.width - 16px;
-                y: (parent.height - self.height) / 2;
-                width: 44px;
-                height: 44px;
-                border-radius: 22px;
-                background: next-touch.has-hover ? #ffffff26 : #ffffff14;
-                accessible-role: button;
-                accessible-label: "Next picture";
-                accessible-action-default => { root.viewer-moved(1); }
-                Icon { path: Icons.chevron-right; color: #ffffff; width: 28px; height: 28px; }
-                next-touch := TouchArea { clicked => { root.viewer-moved(1); } }
             }
         }
 
-        // Sign in with an emailed code, as the web app's: no password.
+        // 4. Settings (below sign-in, review, diagnostics, about and delete-account)
+        if root.settings-open: Dialog {
+            title: "Settings";
+            card-width: 580px;
+            init => { theme-system.focus-option(); }
+            settings-scroll := ScrollView {
+                vertical-stretch: 1;
+                height: min(520px, max(220px, root.height - 200px));
+                content-width: self.visible-width;
+                content-height: settings-content.preferred-height;
+                settings-content := VerticalLayout {
+                    width: settings-scroll.visible-width;
+                    padding-right: 12px;
+                    spacing: 14px;
+                    SectionLabel { text: "APPEARANCE"; }
+                    Text {
+                        text: "Theme";
+                        font-size: 14px;
+                        color: Theme.on-surface;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        accessible-role: radio-group;
+                        accessible-label: "Theme";
+                        theme-system := ThemeOption {
+                            text: "System"; option-index: 0; selected: root.theme-mode == 0;
+                            clicked => { root.theme-picked(0); }
+                            move-option(index) => {
+                                root.theme-picked(index);
+                                if (index == 0) { theme-system.focus-option(); }
+                                else if (index == 1) { theme-light.focus-option(); }
+                                else { theme-dark.focus-option(); }
+                            }
+                        }
+                        theme-light := ThemeOption {
+                            text: "Light"; option-index: 1; selected: root.theme-mode == 1;
+                            clicked => { root.theme-picked(1); }
+                            move-option(index) => {
+                                root.theme-picked(index);
+                                if (index == 0) { theme-system.focus-option(); }
+                                else if (index == 1) { theme-light.focus-option(); }
+                                else { theme-dark.focus-option(); }
+                            }
+                        }
+                        theme-dark := ThemeOption {
+                            text: "Dark"; option-index: 2; selected: root.theme-mode == 2;
+                            clicked => { root.theme-picked(2); }
+                            move-option(index) => {
+                                root.theme-picked(index);
+                                if (index == 0) { theme-system.focus-option(); }
+                                else if (index == 1) { theme-light.focus-option(); }
+                                else { theme-dark.focus-option(); }
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Accent";
+                        font-size: 14px;
+                        color: Theme.on-surface;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        accessible-role: radio-group;
+                        accessible-label: "Accent";
+                        accent-neutral := ThemeOption {
+                            text: "Neutral"; option-index: 0; selected: root.theme-accent == 0;
+                            clicked => { root.accent-picked(0); }
+                            move-option(index) => {
+                                root.accent-picked(index);
+                                if (index == 0) { accent-neutral.focus-option(); }
+                                else if (index == 1) { accent-blue.focus-option(); }
+                                else { accent-green.focus-option(); }
+                            }
+                        }
+                        accent-blue := ThemeOption {
+                            text: "Blue"; option-index: 1; selected: root.theme-accent == 1;
+                            clicked => { root.accent-picked(1); }
+                            move-option(index) => {
+                                root.accent-picked(index);
+                                if (index == 0) { accent-neutral.focus-option(); }
+                                else if (index == 1) { accent-blue.focus-option(); }
+                                else { accent-green.focus-option(); }
+                            }
+                        }
+                        accent-green := ThemeOption {
+                            text: "Green"; option-index: 2; selected: root.theme-accent == 2;
+                            clicked => { root.accent-picked(2); }
+                            move-option(index) => {
+                                root.accent-picked(index);
+                                if (index == 0) { accent-neutral.focus-option(); }
+                                else if (index == 1) { accent-blue.focus-option(); }
+                                else { accent-green.focus-option(); }
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        CheckBox {
+                            y: (parent.height - self.height) / 2;
+                            checked: root.theme-amoled;
+                            label: "AMOLED black";
+                            toggled => { root.amoled-toggled(); }
+                        }
+                        VerticalLayout {
+                            spacing: 2px;
+                            Text {
+                                text: "AMOLED black";
+                                font-size: 14px;
+                                color: Theme.on-surface;
+                            }
+                            Text {
+                                text: "Pure black surfaces in dark mode.";
+                                font-size: 12px;
+                                color: Theme.muted;
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Theme.outline; }
+                    SectionLabel { text: "BACKUPS"; }
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 8px;
+                        PillButton { text: "Export JSON"; clicked => { root.backup-export-json-requested(); } }
+                        PillButton { text: "Export with pictures"; clicked => { root.backup-export-bundle-requested(); } }
+                        PillButton { text: "Import"; label: "Import backup from settings"; clicked => { root.backup-import-requested(); } }
+                    }
+
+                    Rectangle { height: 1px; background: Theme.outline; }
+                    SectionLabel { text: "CLOUD & ACCOUNT"; }
+                    if root.account-mode == 0: Text {
+                        text: "Sync is not configured in this build. Notes stay on this device.";
+                        font-size: 13px;
+                        color: Theme.on-surface-secondary;
+                        wrap: word-wrap;
+                    }
+                    if root.account-mode == 1: VerticalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: "Guest mode. Notes stay on this device.";
+                            font-size: 13px;
+                            color: Theme.on-surface-secondary;
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            PillButton { text: "Sign in to sync"; strong: true; clicked => { root.signin-opened(); } }
+                        }
+                    }
+                    if root.account-mode == 2: VerticalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: root.account-email;
+                            font-size: 14px;
+                            font-weight: 600;
+                            color: Theme.on-surface;
+                        }
+                        Text {
+                            text: root.account-status;
+                            font-size: 13px;
+                            color: root.account-problem ? Theme.danger : Theme.on-surface-secondary;
+                            wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: 8px;
+                            PillButton { text: root.syncing ? "Syncing…" : "Sync now"; enabled: !root.syncing; clicked => { root.sync-requested(); } }
+                            PillButton { text: "Sign out"; clicked => { root.sign-out-requested(); } }
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: 8px;
+                            PillButton {
+                                text: "Delete cloud notes";
+                                danger: true;
+                                enabled: !root.syncing && !root.deleting-account;
+                                clicked => { root.delete-cloud-data-requested(); }
+                            }
+                            PillButton {
+                                text: "Delete account";
+                                danger: true;
+                                enabled: root.can-delete-account && !root.deleting-account;
+                                clicked => { root.delete-account-opened(); }
+                            }
+                        }
+                    }
+                    Text {
+                        text: "Account deletion permanently removes the online account, its notes, and pictures.";
+                        font-size: 12px;
+                        color: Theme.muted;
+                        wrap: word-wrap;
+                    }
+
+                    Rectangle { height: 1px; background: Theme.outline; }
+                    SectionLabel { text: "DIAGNOSTICS"; }
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 8px;
+                        PillButton { text: "View diagnostics"; clicked => { root.diagnostics-requested(); } }
+                        PillButton { text: "About"; label: "Open about dialog"; clicked => { root.about-open = true; } }
+                    }
+                }
+            }
+            HorizontalLayout {
+                alignment: end;
+                PillButton { text: "Done"; strong: true; clicked => { root.settings-open = false; } }
+            }
+        }
+
+        // 5. Sub-sheets & modal workflows above Settings
         if root.signin-open: Dialog {
             title: root.signin-step == 2 ? "Enter your code" : "Sign in to Notelikeus";
             card-width: 440px;
@@ -2338,8 +3118,6 @@ export component AppWindow inherits Window {
             }
         }
 
-        // A conflicted copy beside the note it was split from. Nothing here deletes: a version not kept
-        // goes to the trash, where it can still be restored.
         if root.review-open: Rectangle {
             background: Theme.scrim;
             TouchArea { }
@@ -2347,7 +3125,6 @@ export component AppWindow inherits Window {
                 x: (parent.width - self.width) / 2;
                 y: 40px;
                 width: min(860px, parent.width - 48px);
-                // As tall as the versions need, up to the window.
                 height: min(parent.height - 80px, review-layout.preferred-height);
                 border-radius: Theme.radius-sheet;
                 background: Theme.surface;
@@ -2385,12 +3162,13 @@ export component AppWindow inherits Window {
                             }
                         }
                     }
-                    review-scroll := Flickable {
+                    review-scroll := ScrollView {
                         vertical-stretch: 1;
                         preferred-height: versions.preferred-height;
+                        content-width: self.visible-width;
                         content-height: versions.preferred-height;
                         versions := HorizontalLayout {
-                            width: review-scroll.width;
+                            width: review-scroll.visible-width;
                             spacing: 12px;
                             alignment: stretch;
                             if root.review-has-original: ReviewVersion {
@@ -2453,381 +3231,9 @@ export component AppWindow inherits Window {
             }
         }
 
-        // Note options: colour and labels, as the web app's options sheet.
-        if root.options-open: Dialog {
-            title: "Note options";
-            card-width: 460px;
-            SectionLabel { text: "COLOR"; }
-            HorizontalLayout {
-                spacing: 8px;
-                alignment: start;
-                for swatch[index] in root.swatches: Rectangle {
-                    width: 36px;
-                    height: 36px;
-                    border-radius: 18px;
-                    background: swatch.none ? transparent : (Theme.dark ? swatch.dark : swatch.light);
-                    border-width: index == root.editor-color-index ? 2px : 1px;
-                    border-color: index == root.editor-color-index ? Theme.on-surface : Theme.outline;
-                    accessible-role: radio-button;
-                    accessible-checkable: true;
-                    accessible-checked: index == root.editor-color-index;
-                    accessible-label: swatch.name;
-                    accessible-action-default => { root.color-picked(index, Theme.dark); }
-                    if swatch.none: Path {
-                        width: 22px;
-                        height: 22px;
-                        viewbox-width: 24;
-                        viewbox-height: 24;
-                        commands: "M5 19 L19 5";
-                        stroke: Theme.muted;
-                        stroke-width: 2px;
-                    }
-                    if index == root.editor-color-index && !swatch.none: Icon {
-                        width: 18px;
-                        height: 18px;
-                        path: Icons.check;
-                        color: Theme.on-surface;
-                    }
-                    TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.color-picked(index, Theme.dark); }
-                    }
-                }
-            }
-            Rectangle { height: 1px; background: Theme.outline; }
-            SectionLabel { text: "LABELS"; }
-            if root.label-choices.length == 0: Text {
-                text: "No labels yet. Add one below.";
-                font-size: 13px;
-                color: Theme.muted;
-            }
-            options-labels := Flickable {
-                height: min(260px, label-list.preferred-height);
-                content-height: label-list.preferred-height;
-                label-list := VerticalLayout {
-                    width: options-labels.width;
-                    spacing: 4px;
-                    for choice in root.label-choices: HorizontalLayout {
-                        spacing: 12px;
-                        height: 36px;
-                        CheckBox {
-                            y: (parent.height - self.height) / 2;
-                            checked: choice.on;
-                            label: choice.name;
-                            toggled => { root.label-toggled(choice.name); }
-                        }
-                        Text {
-                            text: choice.name;
-                            vertical-alignment: center;
-                            font-size: 15px;
-                            color: Theme.on-surface;
-                            horizontal-stretch: 1;
-                        }
-                    }
-                }
-            }
-            HorizontalLayout {
-                spacing: 8px;
-                new-label-field := Field {
-                    horizontal-stretch: 1;
-                    text <=> root.new-label;
-                    placeholder: "New label";
-                    label: "New label name";
-                    accepted => { root.label-created(root.new-label); }
-                }
-                PillButton {
-                    y: (parent.height - self.height) / 2;
-                    text: "Add";
-                    strong: true;
-                    enabled: root.new-label != "";
-                    clicked => { root.label-created(root.new-label); }
-                }
-            }
-            HorizontalLayout {
-                alignment: end;
-                PillButton {
-                    text: "Done";
-                    strong: true;
-                    clicked => { root.options-open = false; }
-                }
-            }
-        }
-
-        if root.reminder-open: Dialog {
-            title: "Set a reminder";
-            card-width: 460px;
-            Text {
-                text: root.reminder-set ? "Choose a new time or remove this reminder." : "Choose when to be reminded. Times use your local time zone.";
-                font-size: 13px;
-                color: Theme.on-surface-secondary;
-                wrap: word-wrap;
-            }
-            HorizontalLayout {
-                spacing: 8px;
-                alignment: start;
-                PillButton { text: "In 1 hour"; clicked => { root.reminder-preset(0); } }
-                PillButton { text: "Tomorrow 9:00"; clicked => { root.reminder-preset(1); } }
-                PillButton { text: "Next week"; clicked => { root.reminder-preset(2); } }
-            }
-            Field {
-                text <=> root.reminder-input;
-                placeholder: "YYYY-MM-DD HH:MM";
-                label: "Reminder date and time in local time";
-                accepted => { root.reminder-save(); }
-            }
-            Text {
-                text: root.reminder-error != "" ? root.reminder-error : "Enter a local date and time, for example 2026-11-23 09:00.";
-                font-size: 12px;
-                color: root.reminder-error != "" ? Theme.danger : Theme.muted;
-                wrap: word-wrap;
-            }
-            HorizontalLayout {
-                spacing: 8px;
-                if root.reminder-set: PillButton {
-                    text: "Remove reminder";
-                    danger: true;
-                    clicked => { root.reminder-remove(); }
-                }
-                Rectangle { horizontal-stretch: 1; }
-                PillButton { text: "Cancel"; clicked => { root.reminder-cancel(); } }
-                PillButton {
-                    text: "Set reminder";
-                    strong: true;
-                    enabled: root.reminder-input != "";
-                    clicked => { root.reminder-save(); }
-                }
-            }
-        }
-
-        // Edit labels: create, rename (Enter) and delete, everywhere at once.
-        if root.labels-open: Dialog {
-            title: "Edit labels";
-            card-width: 460px;
-            HorizontalLayout {
-                spacing: 8px;
-                Field {
-                    horizontal-stretch: 1;
-                    text <=> root.labels-new;
-                    placeholder: "Create a label";
-                    label: "Create a label";
-                    accepted => { root.labels-created(root.labels-new); }
-                }
-                PillButton {
-                    y: (parent.height - self.height) / 2;
-                    text: "Create";
-                    strong: true;
-                    enabled: root.labels-new != "";
-                    clicked => { root.labels-created(root.labels-new); }
-                }
-            }
-            if root.all-labels.length == 0: Text {
-                text: "No labels yet.";
-                font-size: 13px;
-                color: Theme.muted;
-            }
-            edit-scroll := Flickable {
-                height: min(320px, edit-list.preferred-height);
-                content-height: edit-list.preferred-height;
-                edit-list := VerticalLayout {
-                    width: edit-scroll.width;
-                    spacing: 6px;
-                    for name in root.all-labels: HorizontalLayout {
-                        spacing: 8px;
-                        Icon {
-                            y: (parent.height - self.height) / 2;
-                            path: Icons.label;
-                            color: Theme.muted;
-                        }
-                        rename := Field {
-                            horizontal-stretch: 1;
-                            text: name;
-                            placeholder: name;
-                            label: "Rename " + name;
-                            accepted => {
-                                if (self.text != name && self.text != "") {
-                                    root.label-renamed(name, self.text);
-                                }
-                            }
-                        }
-                        IconButton {
-                            y: (parent.height - self.height) / 2;
-                            size: 36px;
-                            icon: Icons.trash;
-                            label: "Delete label " + name;
-                            clicked => { root.label-deleted(name); }
-                        }
-                    }
-                }
-            }
-            Text {
-                text: "Press Enter to rename. Deleting a label keeps its notes.";
-                font-size: 12px;
-                color: Theme.muted;
-            }
-            HorizontalLayout {
-                alignment: end;
-                PillButton {
-                    text: "Done";
-                    strong: true;
-                    clicked => { root.labels-open = false; }
-                }
-            }
-        }
-
-        if root.confirm-title != "": Dialog {
-            title: root.confirm-title;
-            init => { confirm-cancel.focus-button(); }
-            Text {
-                text: root.confirm-body;
-                font-size: 14px;
-                color: Theme.on-surface-secondary;
-                wrap: word-wrap;
-            }
-            HorizontalLayout {
-                alignment: end;
-                spacing: 8px;
-                confirm-cancel := PillButton {
-                    text: "Cancel";
-                    clicked => { root.confirm-cancelled(); }
-                }
-                PillButton {
-                    text: root.confirm-action;
-                    strong: true;
-                    danger: true;
-                    clicked => { root.confirm-accepted(); }
-                }
-            }
-        }
-
-        if root.settings-open: Dialog {
-            title: "Settings";
-            card-width: 580px;
-            init => { theme-system.focus-option(); }
-            settings-scroll := Flickable {
-                height: min(520px, settings-content.preferred-height);
-                content-height: settings-content.preferred-height;
-                settings-content := VerticalLayout {
-                    width: settings-scroll.width;
-                    spacing: 14px;
-                    SectionLabel { text: "APPEARANCE"; }
-                    Text {
-                        text: "Theme";
-                        font-size: 14px;
-                        color: Theme.on-surface;
-                    }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        alignment: start;
-                        accessible-role: radio-group;
-                        accessible-label: "Theme";
-                        theme-system := ThemeOption {
-                            text: "System"; option-index: 0; selected: root.theme-mode == 0;
-                            clicked => { root.theme-picked(0); }
-                            move-option(index) => {
-                                root.theme-picked(index);
-                                if (index == 0) { theme-system.focus-option(); }
-                                else if (index == 1) { theme-light.focus-option(); }
-                                else { theme-dark.focus-option(); }
-                            }
-                        }
-                        theme-light := ThemeOption {
-                            text: "Light"; option-index: 1; selected: root.theme-mode == 1;
-                            clicked => { root.theme-picked(1); }
-                            move-option(index) => {
-                                root.theme-picked(index);
-                                if (index == 0) { theme-system.focus-option(); }
-                                else if (index == 1) { theme-light.focus-option(); }
-                                else { theme-dark.focus-option(); }
-                            }
-                        }
-                        theme-dark := ThemeOption {
-                            text: "Dark"; option-index: 2; selected: root.theme-mode == 2;
-                            clicked => { root.theme-picked(2); }
-                            move-option(index) => {
-                                root.theme-picked(index);
-                                if (index == 0) { theme-system.focus-option(); }
-                                else if (index == 1) { theme-light.focus-option(); }
-                                else { theme-dark.focus-option(); }
-                            }
-                        }
-                    }
-
-                    Rectangle { height: 1px; background: Theme.outline; }
-                    SectionLabel { text: "ACCOUNT"; }
-                    if root.account-mode == 0: Text {
-                        text: "Sync is not configured in this build. Notes stay on this device.";
-                        font-size: 13px;
-                        color: Theme.on-surface-secondary;
-                        wrap: word-wrap;
-                    }
-                    if root.account-mode == 1: VerticalLayout {
-                        spacing: 8px;
-                        Text {
-                            text: "Guest mode. Notes stay on this device.";
-                            font-size: 13px;
-                            color: Theme.on-surface-secondary;
-                        }
-                        HorizontalLayout {
-                            alignment: start;
-                            PillButton { text: "Sign in to sync"; strong: true; clicked => { root.signin-opened(); } }
-                        }
-                    }
-                    if root.account-mode == 2: VerticalLayout {
-                        spacing: 8px;
-                        Text {
-                            text: root.account-email;
-                            font-size: 14px;
-                            font-weight: 600;
-                            color: Theme.on-surface;
-                        }
-                        Text {
-                            text: root.account-status;
-                            font-size: 13px;
-                            color: root.account-problem ? Theme.danger : Theme.on-surface-secondary;
-                            wrap: word-wrap;
-                        }
-                        HorizontalLayout {
-                            alignment: start;
-                            spacing: 8px;
-                            PillButton { text: root.syncing ? "Syncing…" : "Sync now"; enabled: !root.syncing; clicked => { root.sync-requested(); } }
-                            PillButton { text: "Sign out"; clicked => { root.sign-out-requested(); } }
-                        }
-                    }
-                    Text {
-                        text: "Account deletion permanently removes the online account, its notes, and pictures.";
-                        font-size: 12px;
-                        color: Theme.muted;
-                        wrap: word-wrap;
-                    }
-                    HorizontalLayout {
-                        alignment: start;
-                        PillButton {
-                            text: "Delete account";
-                            danger: true;
-                            enabled: root.can-delete-account && root.account-mode == 2 && !root.deleting-account;
-                            clicked => { root.delete-account-opened(); }
-                        }
-                    }
-
-                    Rectangle { height: 1px; background: Theme.outline; }
-                    SectionLabel { text: "SUPPORT"; }
-                    HorizontalLayout {
-                        alignment: start;
-                        spacing: 8px;
-                        PillButton { text: "Diagnostics"; clicked => { root.diagnostics-requested(); } }
-                        PillButton { text: "About Notelikeus"; clicked => { root.about-open = true; } }
-                    }
-                }
-            }
-            HorizontalLayout {
-                alignment: end;
-                PillButton { text: "Done"; strong: true; clicked => { root.settings-open = false; } }
-            }
-        }
-
         if root.diagnostics-open: Dialog {
             title: "Diagnostics";
-            card-width: 600px;
+            card-width: 620px;
             init => { diagnostics-export.focus-button(); }
             Text {
                 text: "This report contains app and sync counts only. It does not include note text, your email, or raw account identifiers.";
@@ -2835,21 +3241,28 @@ export component AppWindow inherits Window {
                 color: Theme.on-surface-secondary;
                 wrap: word-wrap;
             }
-            diagnostics-scroll := Flickable {
-                height: min(360px, diagnostics-text.preferred-height);
-                content-height: diagnostics-text.preferred-height;
-                diagnostics-text := Text {
-                    width: diagnostics-scroll.width;
-                    text: root.diagnostics-report;
-                    font-size: 12px;
-                    color: Theme.on-surface;
-                    wrap: word-wrap;
-                }
+            diag-edit := TextEdit {
+                height: min(340px, max(160px, root.height - 250px));
+                text: root.diagnostics-report;
+                read-only: true;
+                wrap: word-wrap;
+                font-size: 12px;
             }
             HorizontalLayout {
                 alignment: end;
                 spacing: 8px;
-                diagnostics-export := PillButton { text: "Export report"; clicked => { root.diagnostics-export-requested(); } }
+                PillButton {
+                    text: "Copy report";
+                    clicked => {
+                        diag-edit.select-all();
+                        diag-edit.copy();
+                        root.diagnostics-copied();
+                    }
+                }
+                diagnostics-export := PillButton {
+                    text: "Export JSON";
+                    clicked => { root.diagnostics-export-requested(); }
+                }
                 PillButton { text: "Done"; strong: true; clicked => { root.diagnostics-open = false; } }
             }
         }
@@ -2911,6 +3324,130 @@ export component AppWindow inherits Window {
             }
         }
 
+        // 6. Full-screen image viewer
+        if root.viewer-open: Rectangle {
+            background: #000000eb;
+            accessible-role: groupbox;
+            accessible-label: "Picture " + (root.viewer-index + 1) + " of " + root.viewer-count;
+            TouchArea { clicked => { root.viewer-open = false; } }
+            if root.viewer-picture.ready: Image {
+                x: 72px;
+                y: 72px;
+                width: parent.width - 144px;
+                height: parent.height - 144px;
+                source: root.viewer-picture.image;
+                image-fit: contain;
+            }
+            if !root.viewer-picture.ready: Rectangle {
+                width: min(420px, parent.width - 96px);
+                height: viewer-msg.preferred-height + 28px;
+                border-radius: Theme.radius-md;
+                background: #1c1c1e;
+                border-width: 1px;
+                border-color: #ffffff2a;
+                viewer-msg := Text {
+                    width: parent.width - 32px;
+                    text: root.viewer-picture.problem != "" ? root.viewer-picture.problem : "Loading…";
+                    font-size: 15px;
+                    color: #f5f5f5;
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                }
+            }
+            HorizontalLayout {
+                y: 16px;
+                height: 48px;
+                padding-left: 20px;
+                padding-right: 20px;
+                spacing: 10px;
+                Text {
+                    text: root.viewer-count > 1 ? (root.viewer-index + 1) + " of " + root.viewer-count : "";
+                    vertical-alignment: center;
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: #f5f5f5;
+                    horizontal-stretch: 1;
+                }
+                if !root.viewer-read-only: PillButton {
+                    y: (parent.height - self.height) / 2;
+                    text: "Remove image";
+                    strong: true;
+                    danger: true;
+                    clicked => { root.picture-remove-requested(); }
+                }
+                Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 20px;
+                    background: #ffffff1f;
+                    IconButton {
+                        icon: Icons.close;
+                        label: "Close picture";
+                        fg-color: #ffffff;
+                        clicked => { root.viewer-open = false; }
+                    }
+                }
+            }
+            if root.viewer-count > 1: Rectangle {
+                x: 16px;
+                y: (parent.height - self.height) / 2;
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                background: #ffffff1f;
+                IconButton {
+                    size: 44px;
+                    icon: Icons.chevron-left;
+                    label: "Previous picture";
+                    fg-color: #ffffff;
+                    clicked => { root.viewer-moved(-1); }
+                }
+            }
+            if root.viewer-count > 1: Rectangle {
+                x: parent.width - self.width - 16px;
+                y: (parent.height - self.height) / 2;
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                background: #ffffff1f;
+                IconButton {
+                    size: 44px;
+                    icon: Icons.chevron-right;
+                    label: "Next picture";
+                    fg-color: #ffffff;
+                    clicked => { root.viewer-moved(1); }
+                }
+            }
+        }
+
+        // 7. Confirmation modal above all sheets & dialogs
+        if root.confirm-title != "": Dialog {
+            title: root.confirm-title;
+            init => { confirm-cancel.focus-button(); }
+            Text {
+                text: root.confirm-body;
+                font-size: 14px;
+                color: Theme.on-surface-secondary;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                confirm-cancel := PillButton {
+                    text: "Cancel";
+                    clicked => { root.confirm-cancelled(); }
+                }
+                PillButton {
+                    text: root.confirm-action;
+                    strong: true;
+                    danger: true;
+                    clicked => { root.confirm-accepted(); }
+                }
+            }
+        }
+
+        // 8. Toast above everything
         if root.toast-text != "": Rectangle {
             x: (parent.width - self.width) / 2;
             y: parent.height - self.height - 32px;
