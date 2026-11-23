@@ -14,6 +14,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{IDI_INFORMATION, LoadIconW};
 const REMINDER_ICON_ID: u32 = 0x4E4C4B;
 
 fn copy_text(buffer: &mut [u16], text: &str) {
+    buffer.fill(0);
     let capacity = buffer.len().saturating_sub(1);
     for (slot, unit) in buffer.iter_mut().take(capacity).zip(text.encode_utf16()) {
         *slot = unit;
@@ -29,7 +30,7 @@ fn icon_data(hwnd: HWND) -> NOTIFYICONDATAW {
     data
 }
 
-pub fn show_for_window(ui: &crate::AppWindow) -> Option<HWND> {
+pub fn show_notice_for_window(ui: &crate::AppWindow, title: &str, body: &str) -> Option<HWND> {
     let window_handle = ui.window().window_handle();
     let handle = window_handle.window_handle().ok()?;
     let RawWindowHandle::Win32(raw_handle) = handle.as_raw() else { return None };
@@ -38,23 +39,27 @@ pub fn show_for_window(ui: &crate::AppWindow) -> Option<HWND> {
     data.uFlags = NIF_ICON | NIF_TIP;
     // SAFETY: IDI_INFORMATION is a Windows stock icon and does not need to be destroyed.
     data.hIcon = unsafe { LoadIconW(std::ptr::null_mut(), IDI_INFORMATION) };
-    copy_text(&mut data.szTip, "Notelikeus reminder");
+    copy_text(&mut data.szTip, "Notelikeus");
 
-    // Reuse this app-owned notification icon if a second reminder is already visible.
+    // Reuse this app-owned notification icon if an earlier notice is already visible.
     unsafe { Shell_NotifyIconW(NIM_DELETE, &data) };
     if unsafe { Shell_NotifyIconW(NIM_ADD, &data) } == 0 {
         return None;
     }
 
     data.uFlags = NIF_INFO;
-    copy_text(&mut data.szInfoTitle, "Reminder");
-    copy_text(&mut data.szInfo, "You have a note reminder");
+    copy_text(&mut data.szInfoTitle, title);
+    copy_text(&mut data.szInfo, body);
     data.dwInfoFlags = NIIF_INFO;
     if unsafe { Shell_NotifyIconW(NIM_MODIFY, &data) } == 0 {
         unsafe { Shell_NotifyIconW(NIM_DELETE, &data) };
         return None;
     }
     Some(hwnd)
+}
+
+pub fn show_for_window(ui: &crate::AppWindow) -> Option<HWND> {
+    show_notice_for_window(ui, "Reminder", "You have a note reminder")
 }
 
 pub fn remove(hwnd: HWND) {

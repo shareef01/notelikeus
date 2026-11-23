@@ -136,10 +136,12 @@ impl Loopback {
         self.listener.local_addr().map(|a| a.port()).unwrap_or(0)
     }
 
-    /// The challenge page asked to hand its token back to this listener.
-    pub fn challenge_url(&self, page_url: &str) -> String {
-        let separator = if page_url.contains('?') { '&' } else { '?' };
-        format!("{page_url}{separator}port={}&state={}", self.port(), self.state)
+    /// The challenge page asked to hand its token back to this listener, after checking that `page_url`
+    /// is HTTPS or loopback.
+    pub fn challenge_url(&self, page_url: &str) -> Result<String, String> {
+        let checked = checked_page_url(page_url)?;
+        let separator = if checked.contains('?') { '&' } else { '?' };
+        Ok(format!("{checked}{separator}port={}&state={}", self.port(), self.state))
     }
 
     /// Waits for the token until `timeout`, or until `cancelled` turns true.
@@ -159,7 +161,7 @@ impl Loopback {
                 return Err("The security check in your browser timed out. Try again.".into());
             }
             match self.listener.accept() {
-                Ok((stream, _)) => match self.answer(stream) {
+                Ok((stream, _)) => match self.answer(stream, deadline, cancelled) {
                     Answer::Token(token) => return Ok(token),
                     Answer::WrongState => {
                         bad += 1;
@@ -177,17 +179,35 @@ impl Loopback {
         }
     }
 
-    fn answer(&self, mut stream: std::net::TcpStream) -> Answer {
+    fn answer(
+        &self,
+        mut stream: std::net::TcpStream,
+        deadline: std::time::Instant,
+        cancelled: &std::sync::atomic::AtomicBool,
+    ) -> Answer {
         use std::io::{Read, Write};
+        use std::sync::atomic::Ordering;
         let _ = stream.set_nonblocking(false);
-        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
         let mut request = Vec::new();
         let mut buffer = [0u8; 2048];
         // The request line and headers; a GET has no body. Capped, since anything may connect.
         while !request.windows(4).any(|w| w == b"\r\n\r\n") && request.len() < 16 * 1024 {
+            if cancelled.load(Ordering::Relaxed) {
+                return Answer::Ignored;
+            }
+            let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
+                return Answer::Ignored;
+            };
+            let _ = stream.set_read_timeout(Some(remaining.min(std::time::Duration::from_secs(2))));
             match stream.read(&mut buffer) {
-                Ok(0) | Err(_) => break,
+                Ok(0) => break,
                 Ok(n) => request.extend_from_slice(&buffer[..n]),
+                Err(e) if matches!(e.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock) => {
+                    if std::time::Instant::now() >= deadline || cancelled.load(Ordering::Relaxed) {
+                        return Answer::Ignored;
+                    }
+                }
+                Err(_) => break,
             }
         }
         let text = String::from_utf8_lossy(&request);
@@ -246,8 +266,10 @@ mod loopback_tests {
     fn the_token_comes_back_only_with_the_right_state() {
         let loopback = Loopback::start().unwrap();
         let port = loopback.port();
-        let url = loopback.challenge_url("https://notelikeus.example/captcha.html");
+        let url = loopback.challenge_url("https://notelikeus.example/captcha.html").unwrap();
         assert!(url.starts_with(&format!("https://notelikeus.example/captcha.html?port={port}&state=")));
+        assert!(loopback.challenge_url("file:///C:/Windows/win.ini").is_err());
+        assert!(loopback.challenge_url("http://evil.example/captcha.html").is_err());
         let state = url.split("state=").nth(1).unwrap().to_string();
         let client = std::thread::spawn(move || {
             let favicon = get(port, "/favicon.ico");

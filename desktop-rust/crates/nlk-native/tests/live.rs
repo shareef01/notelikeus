@@ -39,8 +39,9 @@ fn type_note(ui: &AppWindow, title: &str, body: &str) {
 
 fn card_titles(ui: &AppWindow) -> Vec<String> {
     let mut titles: Vec<String> = ui
-        .get_columns()
+        .get_pinned_columns()
         .iter()
+        .chain(ui.get_columns().iter())
         .flat_map(|c| c.cards.iter().map(|card| card.title.to_string()).collect::<Vec<_>>())
         .collect();
     titles.sort();

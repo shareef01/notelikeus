@@ -45,6 +45,13 @@ fn fold_char(c: char) -> Option<&'static str> {
     })
 }
 
+fn is_combining_mark(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF | 0xFE20..=0xFE2F
+    )
+}
+
 /// Lower case, diacritics stripped, everything that is not a letter or digit collapsed to one space.
 pub fn fold(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -57,6 +64,9 @@ pub fn fold(input: &str) -> String {
         out.push_str(word);
     };
     for c in input.chars() {
+        if is_combining_mark(c) {
+            continue;
+        }
         if c.is_ascii() {
             if c.is_ascii_alphanumeric() {
                 let lower = c.to_ascii_lowercase();

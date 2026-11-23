@@ -62,11 +62,19 @@ impl Note {
 /// skipping ids still taken. The id is the note's id in the cloud too, so it must never reuse one the
 /// account had (a reused id meets the old note's tombstone and is read as deleted).
 pub fn allocate_note_id(now_millis: i64, random_below_1000: u32, is_taken: impl Fn(i64) -> bool) -> i64 {
-    let mut id = now_millis * 1000 + i64::from(random_below_1000 % 1000);
+    let mut id = now_millis.saturating_mul(1000).saturating_add(i64::from(random_below_1000 % 1000));
     while is_taken(id) {
-        id += 1;
+        id = id.saturating_add(1);
     }
     id
+}
+
+fn null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(|opt| opt.unwrap_or_default())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,26 +88,26 @@ pub struct CloudNoteRow {
     pub note_id: String,
     pub local_id: i64,
     pub revision: Option<i64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub title: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub content: String,
     pub client_timestamp: i64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub color: i32,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_pinned: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_archived: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub is_trashed: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub position: i64,
     pub reminder_timestamp: Option<i64>,
     pub server_updated_at: Option<i64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub labels: Vec<LabelName>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub checklist: Vec<ChecklistItem>,
 }
 

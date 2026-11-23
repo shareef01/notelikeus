@@ -13,13 +13,18 @@ mod settings;
 pub use backup::{BackupAttachmentSource, BackupImportReport};
 pub use settings::DeleteAccountReport;
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use notelikeus_core::Error as CoreError;
 use notelikeus_core::attachments::{self, Attachment, Location, MAX_ATTACHMENT_BYTES};
 use notelikeus_core::auth::{AuthClient, AuthError};
+use notelikeus_core::captcha::checked_page_url;
 use notelikeus_core::conflict;
 use notelikeus_core::crypto::KeyProtector;
-use notelikeus_core::http::{AttachmentError, AttachmentsClient, SupabaseTransport};
+use notelikeus_core::http::{
+    AttachmentError, AttachmentsClient, SupabaseTransport, checked_base_url, checked_publishable_key,
+};
 use notelikeus_core::model::{ChecklistItem, Note};
 use notelikeus_core::query::{self, Filters, NoteScope, SavedFilter};
 
@@ -47,26 +52,25 @@ pub struct SyncConfig {
 
 impl SyncConfig {
     /// `NLK_SUPABASE_URL` and `NLK_SUPABASE_KEY`, read at run time, falling back to the values a
-    /// build was compiled with. Unset in both places means no sync, so this experiment never reaches
-    /// a project by accident.
+    /// build was compiled with. Unset in both places, or invalid URLs/secret keys, mean no sync.
     pub fn from_env() -> Option<SyncConfig> {
-        let url = std::env::var("NLK_SUPABASE_URL").ok().or(option_env!("NLK_SUPABASE_URL").map(str::to_string))?;
-        let publishable_key =
-            std::env::var("NLK_SUPABASE_KEY").ok().or(option_env!("NLK_SUPABASE_KEY").map(str::to_string))?;
+        let raw_url = std::env::var("NLK_SUPABASE_URL").ok().or(option_env!("NLK_SUPABASE_URL").map(str::to_string))?;
+        let raw_key = std::env::var("NLK_SUPABASE_KEY").ok().or(option_env!("NLK_SUPABASE_KEY").map(str::to_string))?;
+        let url = checked_base_url(&raw_url).ok()?;
+        let publishable_key = checked_publishable_key(&raw_key).ok()?;
         let captcha_page_url = std::env::var("NLK_CAPTCHA_PAGE_URL")
             .ok()
             .or(option_env!("NLK_CAPTCHA_PAGE_URL").map(str::to_string))
-            .filter(|page| !page.trim().is_empty());
+            .map(|p| p.trim().to_string())
+            .filter(|page| !page.is_empty())
+            .and_then(|page| checked_page_url(&page).ok());
         let attachments_url = std::env::var("NLK_ATTACHMENTS_URL")
             .ok()
             .or(option_env!("NLK_ATTACHMENTS_URL").map(str::to_string))
-            .filter(|url| !url.trim().is_empty());
-        (!url.trim().is_empty() && !publishable_key.trim().is_empty()).then_some(SyncConfig {
-            url,
-            publishable_key,
-            captcha_page_url,
-            attachments_url,
-        })
+            .map(|u| u.trim().to_string())
+            .filter(|url| !url.is_empty())
+            .and_then(|url| checked_base_url(&url).ok());
+        Some(SyncConfig { url, publishable_key, captcha_page_url, attachments_url })
     }
 }
 
@@ -108,10 +112,19 @@ pub struct ImageView {
 
 /// What a background thread needs to show an image without holding the notes: this account's sealed
 /// files, and the Worker to fetch an uploaded image this device has not got yet.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ImageSource {
     blobs: notelikeus_core::attachments::Blobs,
     worker: Option<(String, String)>,
+}
+
+impl std::fmt::Debug for ImageSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImageSource")
+            .field("blobs", &self.blobs)
+            .field("worker_configured", &self.worker.is_some())
+            .finish()
+    }
 }
 
 impl ImageSource {
@@ -170,10 +183,23 @@ pub struct ScopeCounts {
     pub trash: usize,
 }
 
-/// `validate_note_payload`'s limits on labels and checklists.
+/// `validate_note_payload`'s limits on labels, checklists, and attachments.
 pub const MAX_LABELS_PER_NOTE: usize = 100;
 pub const MAX_CHECKLIST_ITEMS: usize = 500;
+pub const MAX_CHECKLIST_ITEM_CHARS: usize = 2_000;
+pub const MAX_CHECKLIST_POSITION: i64 = 1_000_000_000;
 pub const MAX_LABEL_CHARS: usize = 2_000;
+pub const MAX_ATTACHMENTS_PER_NOTE: usize = 20;
+pub const MAX_TIMESTAMP_MS: i64 = 9_999_999_999_999;
+
+/// How notes are ordered inside a scope when not searching by typed relevance.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+pub enum SortOrder {
+    #[default]
+    Manual,
+    Newest,
+    Oldest,
+}
 
 /// The form two label names are compared in, as the Kotlin client compares them: trimmed, inner
 /// whitespace collapsed, lower case. "Work", " work " and "WORK" are one label.
@@ -206,6 +232,8 @@ pub struct AccountView {
     /// Epoch millis of the last sync that finished.
     pub last_synced_at: Option<i64>,
     pub last_error: Option<String>,
+    /// Set when another device wiped the cloud account and uploads are paused until the user acts.
+    pub uploads_blocked_after_wipe: bool,
 }
 
 /// What one sync did, in the words the UI shows.
@@ -243,6 +271,7 @@ pub struct NotesService {
     ids: Box<dyn IdSource + Send>,
     last_synced_at: Option<i64>,
     last_error: Option<String>,
+    account_generation: u64,
 }
 
 /// `%APPDATA%\<folder>`, or `NLK_RUST_DATA_DIR` when set (tests, side-by-side runs). Each front end has
@@ -274,8 +303,9 @@ fn auth_message(error: AuthError) -> String {
 }
 
 impl NotesService {
-    /// Opens the signed-in account's notes, or the guest notes when nobody is signed in. A saved
-    /// session that cannot be read is forgotten (with a message) rather than hiding the notes.
+    /// Opens the signed-in account's notes, or the guest notes when nobody is signed in. Only a
+    /// permanently unreadable saved session is cleared; transient I/O errors fail loudly without
+    /// forgetting the sign-in.
     pub fn open(
         root: &Path,
         protector: Box<dyn KeyProtector + Send + Sync>,
@@ -286,11 +316,12 @@ impl NotesService {
         let mut last_error = None;
         let session = match vault.load() {
             Ok(session) => session,
-            Err(error) => {
+            Err(error @ (CoreError::Crypto(_) | CoreError::Json(_) | CoreError::Corrupt(_))) => {
                 let _ = vault.clear();
                 last_error = Some(format!("The saved sign-in could not be read ({error}); sign in again."));
                 None
             }
+            Err(error) => return Err(format!("Could not read the saved sign-in: {error}")),
         };
         let owner = session.as_ref().map_or(GUEST.to_string(), |s| s.user_id.clone());
         let store = Store::open(root, &owner, protector.as_ref()).map_err(|e| e.to_string())?;
@@ -306,7 +337,24 @@ impl NotesService {
             ids,
             last_synced_at: None,
             last_error,
+            account_generation: 0,
         })
+    }
+
+    pub fn root_dir(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn account_generation(&self) -> u64 {
+        self.account_generation
+    }
+
+    pub fn uploads_blocked_after_wipe(&self) -> bool {
+        self.state.uploads_blocked_after_wipe
+    }
+
+    pub fn has_pending_reminders(&self) -> bool {
+        self.state.notes.values().any(|n| !n.is_trashed && !n.is_archived && n.reminder_timestamp.is_some())
     }
 
     fn switch_to(&mut self, owner: &str) -> Result<(), String> {
@@ -314,6 +362,7 @@ impl NotesService {
         self.state = store.load().map_err(|e| e.to_string())?;
         self.store = store;
         self.last_synced_at = None;
+        self.account_generation = self.account_generation.saturating_add(1);
         Ok(())
     }
 
@@ -352,11 +401,14 @@ impl NotesService {
 
     // --- Images -------------------------------------------------------------------------------------------
 
-    /// Adds an image to a note: its type is read from the bytes, at most 10 MB, sealed on this device
-    /// until a sync uploads it. Adding an image is an edit, so the note syncs too.
+    /// Adds an image to a note: its type is read from the bytes, at most 10 MB and 20 per note,
+    /// sealed on this device until a sync uploads it. Adding an image is an edit, so the note syncs too.
     pub fn add_image(&mut self, id: &str, bytes: &[u8]) -> Result<NoteView, String> {
         if !self.state.notes.contains_key(id) {
             return Err("That note no longer exists.".into());
+        }
+        if self.state.attachments.get(id).map_or(0, Vec::len) >= MAX_ATTACHMENTS_PER_NOTE {
+            return Err(format!("A note can have at most {MAX_ATTACHMENTS_PER_NOTE} images."));
         }
         if bytes.len() > MAX_ATTACHMENT_BYTES {
             return Err("That image is larger than 10 MB.".into());
@@ -375,10 +427,12 @@ impl NotesService {
             location: Location::Pending,
         });
         let now = self.ids.now_millis();
-        let result = sync::edit_note(&mut self.state, id, now, |_| {})
-            .map_err(|e| e.to_string())
-            .and_then(|()| self.commit(before));
-        if let Err(message) = result {
+        if let Err(error) = sync::edit_note(&mut self.state, id, now, |_| {}) {
+            self.state = before;
+            let _ = blobs.remove(&image_id);
+            return Err(error.to_string());
+        }
+        if let Err(message) = self.commit(before) {
             let _ = blobs.remove(&image_id);
             return Err(message);
         }
@@ -405,7 +459,10 @@ impl NotesService {
             self.state.attachment_removals.entry(id.to_string()).or_default().push(removed.id.clone());
         }
         let now = self.ids.now_millis();
-        sync::edit_note(&mut self.state, id, now, |_| {}).map_err(|e| e.to_string())?;
+        if let Err(error) = sync::edit_note(&mut self.state, id, now, |_| {}) {
+            self.state = before;
+            return Err(error.to_string());
+        }
         self.commit(before)?;
         let _ = self.store.blobs().remove(image_id);
         Ok(self.view(&self.state.notes[id]))
@@ -433,10 +490,16 @@ impl NotesService {
         images.into_iter().map(|a| a.id).collect()
     }
 
-    /// Uploads this account's pending images, then deletes the ones removed here, before a sync pushes
-    /// the notes that name them. A failure leaves that image as it was, to retry next time. Returns how
-    /// many images could not be uploaded.
-    fn sync_images(&mut self, client: &AttachmentsClient) -> Result<usize, AttachmentError> {
+    /// Uploads pending images for either already-known notes (before note push) or newly created/forked
+    /// notes (after note push). Never uploads while `uploads_blocked_after_wipe` is set.
+    fn upload_pending_images(
+        &mut self,
+        client: &AttachmentsClient,
+        only_existing_notes: bool,
+    ) -> Result<usize, AttachmentError> {
+        if self.state.uploads_blocked_after_wipe {
+            return Ok(self.state.attachments.values().flatten().filter(|a| a.is_pending()).count());
+        }
         let blobs = self.store.blobs();
         let mut uploaded_ids = Vec::new();
         let mut failed = 0;
@@ -444,6 +507,11 @@ impl NotesService {
             .state
             .attachments
             .iter()
+            .filter(|(note_id, _)| {
+                !only_existing_notes
+                    || self.state.revisions.contains_key(*note_id)
+                    || self.state.known_cloud_ids.contains(*note_id)
+            })
             .flat_map(|(note, images)| images.iter().filter(|a| a.is_pending()).map(move |a| (note.clone(), a.clone())))
             .collect();
         for (note_id, image) in pending {
@@ -472,26 +540,121 @@ impl NotesService {
                     }
                     uploaded_ids.push(image.id.clone());
                 }
-                Err(AttachmentError::Unauthorized) => return Err(AttachmentError::Unauthorized),
+                Err(AttachmentError::Unauthorized) => {
+                    if !uploaded_ids.is_empty() && self.store.save(&self.state).is_ok() {
+                        for id in &uploaded_ids {
+                            let _ = blobs.release_pending(id);
+                        }
+                    }
+                    return Err(AttachmentError::Unauthorized);
+                }
                 Err(_) => failed += 1,
             }
         }
         // The pending copies go only once the state that points at the uploads is on disk (AUD-011).
-        if self.store.save(&self.state).is_ok() {
+        if !uploaded_ids.is_empty() && self.store.save(&self.state).is_ok() {
             for id in &uploaded_ids {
                 let _ = blobs.release_pending(id);
             }
         }
+        Ok(failed)
+    }
+
+    /// Runs AFTER `sync::sync` (`push_deletes`) so delete conflicts that resurrect a note preserve its
+    /// R2 objects. Also purges stale soft-deleted rows once confirmed absent.
+    fn flush_attachment_removals(
+        &mut self,
+        client: &AttachmentsClient,
+        transport: &SupabaseTransport,
+    ) -> Result<(), AttachmentError> {
+        let mut remaining: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
         let removals = std::mem::take(&mut self.state.attachment_removals);
+        let mut unauthorized = false;
+
         for (note_id, ids) in removals {
             for id in ids {
-                // Kept for the next sync when the delete did not go through.
-                if client.delete(&note_id, &id).is_err() {
-                    self.state.attachment_removals.entry(note_id.clone()).or_default().push(id);
+                if unauthorized {
+                    remaining.entry(note_id.clone()).or_default().push(id);
+                    continue;
+                }
+                let resurrected = self.state.notes.contains_key(&note_id)
+                    && self.state.attachments.get(&note_id).is_some_and(|list| list.iter().any(|a| a.id == id));
+                if resurrected {
+                    continue;
+                }
+                match client.delete(&note_id, &id) {
+                    Ok(()) | Err(AttachmentError::NotFound) => {}
+                    Err(AttachmentError::Unauthorized) => {
+                        unauthorized = true;
+                        remaining.entry(note_id.clone()).or_default().push(id);
+                    }
+                    Err(_) => {
+                        remaining.entry(note_id.clone()).or_default().push(id);
+                    }
                 }
             }
         }
-        Ok(failed)
+        self.state.attachment_removals = remaining;
+        if unauthorized {
+            return Err(AttachmentError::Unauthorized);
+        }
+
+        if let Ok(pending_deleted) = transport.list_pending_deleted_attachments() {
+            for row in pending_deleted {
+                if !self.state.notes.contains_key(&row.note_id)
+                    && matches!(
+                        client.delete(&row.note_id, &row.attachment_id),
+                        Ok(()) | Err(AttachmentError::NotFound)
+                    )
+                {
+                    let _ = transport.purge_deleted_note_attachment(&row.note_id, &row.attachment_id);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Copies locally available attachment bytes onto conflicted copies created during sync.
+    fn clone_forked_conflict_images(&mut self, forked: &[(String, String)]) {
+        if forked.is_empty() {
+            return;
+        }
+        let blobs = self.store.blobs();
+        let now = self.ids.now_millis();
+        for (original_id, copy_id) in forked {
+            if !self.state.notes.contains_key(copy_id) {
+                continue;
+            }
+            let Some(orig_images) = self.state.attachments.get(original_id).cloned() else {
+                continue;
+            };
+            let existing = self.state.attachments.get(copy_id).map_or(0, Vec::len);
+            if existing >= MAX_ATTACHMENTS_PER_NOTE {
+                continue;
+            }
+            let mut added_any = false;
+            for image in orig_images.into_iter().take(MAX_ATTACHMENTS_PER_NOTE - existing) {
+                let Ok(Some(bytes)) = blobs.get(&image.id) else {
+                    continue;
+                };
+                let Ok(new_id) = attachments::new_attachment_id() else {
+                    continue;
+                };
+                if blobs.put_pending(&new_id, &bytes).is_err() {
+                    continue;
+                }
+                self.state.attachments.entry(copy_id.clone()).or_default().push(Attachment {
+                    id: new_id,
+                    mime_type: image.mime_type,
+                    size_bytes: bytes.len() as u64,
+                    location: Location::Pending,
+                });
+                added_any = true;
+            }
+            if added_any {
+                let _ = sync::edit_note(&mut self.state, copy_id, now, |_| {});
+            }
+        }
     }
 
     /// Rebuilds each note's images from the account's committed uploads, keeping what only this device has.
@@ -517,29 +680,51 @@ impl NotesService {
         }
     }
 
+    fn compare_notes(a: &Note, b: &Note, pin_first: bool, sort: SortOrder) -> std::cmp::Ordering {
+        let pin = if pin_first { b.is_pinned.cmp(&a.is_pinned) } else { std::cmp::Ordering::Equal };
+        pin.then_with(|| match sort {
+            SortOrder::Manual => a.position.cmp(&b.position).then(b.timestamp.cmp(&a.timestamp)).then(b.id.cmp(&a.id)),
+            SortOrder::Newest => b.timestamp.cmp(&a.timestamp).then(b.id.cmp(&a.id)),
+            SortOrder::Oldest => a.timestamp.cmp(&b.timestamp).then(a.id.cmp(&b.id)),
+        })
+    }
+
     /// The notes one view shows: in Notes, pinned first; then most recently edited.
     pub fn list_in(&self, scope: Scope) -> Vec<NoteView> {
+        self.list_in_sorted(scope, SortOrder::Newest)
+    }
+
+    /// The notes one view shows ordered according to `sort` (with pinned first in `Scope::Notes`).
+    pub fn list_in_sorted(&self, scope: Scope, sort: SortOrder) -> Vec<NoteView> {
         let mut notes: Vec<&Note> = self.state.notes.values().filter(|n| Self::in_scope(n, scope)).collect();
-        notes.sort_by(|a, b| {
-            let pin = if scope == Scope::Notes { b.is_pinned.cmp(&a.is_pinned) } else { std::cmp::Ordering::Equal };
-            pin.then(b.timestamp.cmp(&a.timestamp)).then(b.id.cmp(&a.id))
-        });
+        notes.sort_by(|a, b| Self::compare_notes(a, b, scope == Scope::Notes, sort));
         notes.into_iter().map(|n| self.view(n)).collect()
     }
 
-    /// Every note in the order a list shows them before any search ranks them: active pinned notes
-    /// first, then most recently edited.
-    fn in_list_order(&self) -> Vec<&Note> {
+    fn in_sorted_order(&self, sort: SortOrder) -> Vec<&Note> {
         let mut notes: Vec<&Note> = self.state.notes.values().collect();
-        let leads = |n: &Note| n.is_pinned && !n.is_archived && !n.is_trashed;
-        notes.sort_by(|a, b| leads(b).cmp(&leads(a)).then(b.timestamp.cmp(&a.timestamp)).then(b.id.cmp(&a.id)));
+        notes.sort_by(|a, b| {
+            let leads = |n: &Note| n.is_pinned && !n.is_archived && !n.is_trashed;
+            leads(b).cmp(&leads(a)).then_with(|| match sort {
+                SortOrder::Manual => {
+                    a.position.cmp(&b.position).then(b.timestamp.cmp(&a.timestamp)).then(b.id.cmp(&a.id))
+                }
+                SortOrder::Newest => b.timestamp.cmp(&a.timestamp).then(b.id.cmp(&a.id)),
+                SortOrder::Oldest => a.timestamp.cmp(&b.timestamp).then(a.id.cmp(&b.id)),
+            })
+        });
         notes
     }
 
     /// The notes `filters` picks out, search box operators included, as of `now` (epoch millis).
     pub fn search(&self, filters: &Filters, now: i64) -> SearchView {
+        self.search_sorted(filters, SortOrder::Newest, now)
+    }
+
+    /// The notes `filters` picks out, ordered by `sort` when the text box is empty and by relevance otherwise.
+    pub fn search_sorted(&self, filters: &Filters, sort: SortOrder, now: i64) -> SearchView {
         let labels = self.label_names();
-        let outcome = query::search(self.in_list_order(), filters, &labels, now, &LocalDays::at(now));
+        let outcome = query::search(self.in_sorted_order(sort), filters, &labels, now, &LocalDays::at(now));
         SearchView {
             notes: outcome.notes.iter().map(|n| self.view(n)).collect(),
             is_fuzzy: outcome.is_fuzzy,
@@ -572,12 +757,12 @@ impl NotesService {
 
     /// The copy's title without the suffix: what it becomes when it is kept as an ordinary note.
     fn retitle_copy(&mut self, copy_id: &str, now: i64) -> Result<(), String> {
-        let title = self
-            .state
-            .notes
-            .get(copy_id)
-            .map(|n| conflict::original_title_of(&n.title).unwrap_or_default().to_string())
-            .ok_or("That note no longer exists.")?;
+        let Some(note) = self.state.notes.get(copy_id) else {
+            return Err("That note no longer exists.".into());
+        };
+        let Some(title) = conflict::original_title_of(&note.title).map(str::to_string) else {
+            return Err("That note is not a conflicted copy.".into());
+        };
         sync::edit_note(&mut self.state, copy_id, now, |n| n.title = title).map_err(|e| e.to_string())
     }
 
@@ -591,6 +776,15 @@ impl NotesService {
 
     /// Keeps the copy's version: the original goes to the trash and the copy takes its title.
     pub fn keep_copy(&mut self, copy_id: &str, original_id: &str) -> Result<(), String> {
+        if copy_id == original_id {
+            return Err("Choose two different notes.".into());
+        }
+        if !self.is_conflicted_copy(copy_id) {
+            return Err("That note is not a conflicted copy.".into());
+        }
+        if !self.state.notes.contains_key(original_id) {
+            return Err("The original note no longer exists.".into());
+        }
         let before = self.state.clone();
         let now = self.ids.now_millis();
         let result = sync::edit_note(&mut self.state, original_id, now, |n| n.is_trashed = true)
@@ -674,8 +868,8 @@ impl NotesService {
 
     /// Schedules a reminder for an active note. Delivery is handled by the running desktop app.
     pub fn set_reminder_timestamp(&mut self, id: &str, timestamp: i64) -> Result<NoteView, String> {
-        if timestamp <= self.ids.now_millis() {
-            return Err("Choose a time in the future.".into());
+        if timestamp <= self.ids.now_millis() || timestamp > MAX_TIMESTAMP_MS {
+            return Err("Choose a valid time in the future.".into());
         }
         match self.state.notes.get(id) {
             Some(note) if note.is_archived || note.is_trashed => Err("Only notes in Notes can have reminders.".into()),
@@ -839,14 +1033,39 @@ impl NotesService {
         if items.len() > MAX_CHECKLIST_ITEMS {
             return Err(format!("A checklist can have at most {MAX_CHECKLIST_ITEMS} items."));
         }
-        if let Some(item) = items.iter().find(|i| i.text.chars().count() > MAX_CONTENT_CHARS) {
+        if let Some(item) = items.iter().find(|i| i.text.chars().count() > MAX_CHECKLIST_ITEM_CHARS) {
             let start: String = item.text.chars().take(20).collect();
-            return Err(format!("A checklist item is longer than {MAX_CONTENT_CHARS} characters ({start}…)."));
+            return Err(format!("A checklist item is longer than {MAX_CHECKLIST_ITEM_CHARS} characters ({start}…)."));
         }
         match self.state.notes.get(id) {
             Some(note) if note.checklist == items => Ok(self.view(note)),
             _ => self.modify(id, |n| n.checklist = items),
         }
+    }
+
+    /// Saves a checklist note's title and items together while preserving its `content` field.
+    pub fn update_checklist_note(
+        &mut self,
+        id: &str,
+        title: &str,
+        items: Vec<ChecklistItem>,
+    ) -> Result<NoteView, String> {
+        check_lengths(title, "")?;
+        if items.len() > MAX_CHECKLIST_ITEMS {
+            return Err(format!("A checklist can have at most {MAX_CHECKLIST_ITEMS} items."));
+        }
+        if let Some(item) = items.iter().find(|i| i.text.chars().count() > MAX_CHECKLIST_ITEM_CHARS) {
+            let start: String = item.text.chars().take(20).collect();
+            return Err(format!("A checklist item is longer than {MAX_CHECKLIST_ITEM_CHARS} characters ({start}…)."));
+        }
+        let current = self.state.notes.get(id).ok_or("That note no longer exists.")?;
+        if current.title == title && current.checklist == items {
+            return Ok(self.view(current));
+        }
+        self.modify(id, |n| {
+            n.title = title.to_string();
+            n.checklist = items;
+        })
     }
 
     /// Text to checklist, as the web editor converts: each non-empty line, trimmed, becomes an unticked
@@ -861,7 +1080,13 @@ impl NotesService {
         if lines.is_empty() {
             lines.push(String::new());
         }
-        lines.truncate(MAX_CHECKLIST_ITEMS);
+        if lines.len() > MAX_CHECKLIST_ITEMS {
+            return Err(format!("A checklist can have at most {MAX_CHECKLIST_ITEMS} items."));
+        }
+        if let Some(line) = lines.iter().find(|l| l.chars().count() > MAX_CHECKLIST_ITEM_CHARS) {
+            let start: String = line.chars().take(20).collect();
+            return Err(format!("A checklist item is longer than {MAX_CHECKLIST_ITEM_CHARS} characters ({start}…)."));
+        }
         self.modify(id, move |n| {
             n.content.clear();
             n.checklist = lines
@@ -981,6 +1206,7 @@ impl NotesService {
             waiting: if self.session.is_some() { self.state.pending.len() + unconfirmed_deletes } else { 0 },
             last_synced_at: self.last_synced_at,
             last_error: self.last_error.clone(),
+            uploads_blocked_after_wipe: self.state.uploads_blocked_after_wipe,
         }
     }
 
@@ -989,7 +1215,6 @@ impl NotesService {
         AuthClient::new(&config.url, &config.publishable_key).map_err(auth_message)
     }
 
-    /// Emails a sign-in code. The hosted project's verification check is not supported yet (see auth.rs).
     /// The challenge page to open before asking for a code, when this build's project needs one.
     pub fn captcha_page_url(&self) -> Option<String> {
         self.config.as_ref().and_then(|c| c.captcha_page_url.clone())
@@ -1018,20 +1243,30 @@ impl NotesService {
     }
 
     fn signed_in(&mut self, session: Session) -> Result<AccountView, String> {
-        self.vault.save(&session).map_err(|e| format!("Could not save the sign-in: {e}"))?;
         let owner = session.user_id.clone();
+        let store = Store::open(&self.root, &owner, self.protector.as_ref()).map_err(|e| e.to_string())?;
+        let state = store.load().map_err(|e| e.to_string())?;
+        self.vault.save(&session).map_err(|e| format!("Could not save the sign-in: {e}"))?;
+        self.store = store;
+        self.state = state;
         self.session = Some(session);
+        self.last_synced_at = None;
         self.last_error = None;
-        self.switch_to(&owner)?;
+        self.account_generation = self.account_generation.saturating_add(1);
         Ok(self.account())
     }
 
     /// Forgets the session and shows the guest notes. The account's notes stay sealed on disk.
     pub fn sign_out(&mut self) -> Result<AccountView, String> {
+        let guest_store = Store::open(&self.root, GUEST, self.protector.as_ref()).map_err(|e| e.to_string())?;
+        let guest_state = guest_store.load().map_err(|e| e.to_string())?;
         self.vault.clear().map_err(|e| e.to_string())?;
+        self.store = guest_store;
+        self.state = guest_state;
         self.session = None;
+        self.last_synced_at = None;
         self.last_error = None;
-        self.switch_to(GUEST)?;
+        self.account_generation = self.account_generation.saturating_add(1);
         Ok(self.account())
     }
 
@@ -1040,17 +1275,34 @@ impl NotesService {
         let token = current.refresh_token.as_deref().ok_or("The sign-in has ended; sign in again.")?;
         match auth.refresh(token) {
             Ok(session) => {
+                if session.user_id != current.user_id {
+                    let _ = self.store.save(&self.state);
+                    let _ = self.sign_out();
+                    return Err("The signed-in account changed unexpectedly; sign in again.".into());
+                }
                 self.vault.save(&session).map_err(|e| e.to_string())?;
                 self.session = Some(session.clone());
                 Ok(session)
             }
             Err(AuthError::SessionExpired | AuthError::Refused { .. }) => {
-                // The account's notes stay on disk; only the sign-in goes.
+                // Save already-completed progress on the account before switching back to guest.
+                let _ = self.store.save(&self.state);
                 let _ = self.sign_out();
                 Err("The sign-in has ended; sign in again. Your notes are still on this device.".into())
             }
             Err(other) => Err(auth_message(other)),
         }
+    }
+
+    fn handle_account_deleted_from_sync(&mut self) -> String {
+        let _ = self.vault.clear();
+        let _ = self.store.remove_account_data();
+        self.session = None;
+        self.last_synced_at = None;
+        let _ = self.switch_to(GUEST);
+        let message = "This account was deleted. Signed out and returned to guest notes.".to_string();
+        self.last_error = Some(message.clone());
+        message
     }
 
     /// One full sync of the signed-in account. Progress made before a failure is kept on disk, so
@@ -1059,36 +1311,68 @@ impl NotesService {
         let config = self.config.clone().ok_or("Sync isn't set up in this build.")?;
         let auth = self.auth()?;
         let mut session = self.session.clone().ok_or("Sign in to sync.")?;
+        if self.state.owner_id != session.user_id {
+            return Err("Signed-in account mismatch; sign in again.".into());
+        }
         if session.needs_refresh(self.ids.now_millis()) {
             session = self.refreshed(&auth)?;
         }
         let mut transport = SupabaseTransport::new(&config.url, &config.publishable_key, &session.access_token)
             .map_err(|e| e.to_string())?;
-        // Images first, so the note pushes that follow can name the uploads.
-        let images_waiting = if let Some(url) = &config.attachments_url {
+        // Step A: upload pending images ONLY for notes already known on the server (new notes wait
+        // until Step D after `sync::sync` creates their note row).
+        if let Some(url) = &config.attachments_url
+            && !self.state.uploads_blocked_after_wipe
+        {
             let mut client = AttachmentsClient::new(url, &session.access_token).map_err(|e| e.to_string())?;
-            match self.sync_images(&client) {
-                Err(AttachmentError::Unauthorized) => {
-                    session = self.refreshed(&auth)?;
-                    transport.set_access_token(&session.access_token);
-                    client.set_access_token(&session.access_token);
-                    self.sync_images(&client).unwrap_or(0)
-                }
-                other => other.unwrap_or(0),
+            if matches!(self.upload_pending_images(&client, true), Err(AttachmentError::Unauthorized)) {
+                session = self.refreshed(&auth)?;
+                transport.set_access_token(&session.access_token);
+                client.set_access_token(&session.access_token);
+                let _ = self.upload_pending_images(&client, true);
             }
-        } else {
-            self.state.attachments.values().flatten().filter(|a| a.is_pending()).count()
-        };
+        }
+
+        // Step B: pull, conflict-resolve, push pending edits, and push deletes.
         let mut result = sync::sync(&mut self.state, &mut transport, self.ids.as_mut());
         if matches!(result, Err(SyncError::Transport(TransportError::Unauthorized))) {
             session = self.refreshed(&auth)?;
             transport.set_access_token(&session.access_token);
             result = sync::sync(&mut self.state, &mut transport, self.ids.as_mut());
         }
-        // Images added on other devices, and uploads now committed. A listing that fails changes nothing.
-        if result.is_ok() {
-            let _ = self.hydrate_images(&transport);
+        if matches!(result, Err(SyncError::Transport(TransportError::AccountDeleted))) {
+            return Err(self.handle_account_deleted_from_sync());
         }
+
+        // Step C & D: only when sync succeeded, clone conflict images, upload remaining pending images
+        // (for newly created notes or forks), flush confirmed attachment removals, and hydrate.
+        if let Ok(report) = &result {
+            self.clone_forked_conflict_images(&report.forked_sources);
+            if let Some(url) = &config.attachments_url {
+                let mut client = AttachmentsClient::new(url, &session.access_token).map_err(|e| e.to_string())?;
+                if !self.state.uploads_blocked_after_wipe
+                    && matches!(self.upload_pending_images(&client, false), Err(AttachmentError::Unauthorized))
+                {
+                    session = self.refreshed(&auth)?;
+                    transport.set_access_token(&session.access_token);
+                    client.set_access_token(&session.access_token);
+                    let _ = self.upload_pending_images(&client, false);
+                }
+                if matches!(self.flush_attachment_removals(&client, &transport), Err(AttachmentError::Unauthorized)) {
+                    session = self.refreshed(&auth)?;
+                    transport.set_access_token(&session.access_token);
+                    client.set_access_token(&session.access_token);
+                    let _ = self.flush_attachment_removals(&client, &transport);
+                }
+            }
+            if self.hydrate_images(&transport).is_ok() {
+                let keep_ids: BTreeSet<String> =
+                    self.state.attachments.values().flatten().map(|a| a.id.clone()).collect();
+                let _ = self.store.blobs().prune_orphans(&keep_ids);
+            }
+        }
+
+        let images_waiting = self.state.attachments.values().flatten().filter(|a| a.is_pending()).count();
         // Saved whatever happened: a half-finished run's confirmed pushes must not be forgotten.
         let saved = self.store.save(&self.state).map_err(|e| format!("Could not save: {e}"));
         match result {
@@ -1113,12 +1397,142 @@ impl NotesService {
                     SyncError::Transport(TransportError::WipeGenerationStale) => {
                         "This account's cloud notes were deleted on another device. Nothing was uploaded.".to_string()
                     }
+                    SyncError::Transport(TransportError::ReauthenticationRequired) => {
+                        "Your sign-in is too old for this action. Sign out and sign in again.".to_string()
+                    }
+                    SyncError::Transport(TransportError::AccountNoteLimit) => {
+                        "This account has reached its cloud storage limit. Delete notes you no longer need to sync new ones."
+                            .to_string()
+                    }
                     other => format!("Sync failed: {other}"),
                 };
                 self.last_error = Some(message.clone());
                 Err(message)
             }
         }
+    }
+
+    /// Wipes all cloud notes, tombstones, and remote attachments for the signed-in account, leaving
+    /// local notes intact on this device and recording the new `wipe_generation`.
+    pub fn delete_cloud_data(&mut self) -> Result<(), String> {
+        let config = self.config.clone().ok_or("Sync isn't set up in this build.")?;
+        let auth = self.auth()?;
+        let mut session = self.session.clone().ok_or("Sign in to manage cloud data.")?;
+        if self.state.owner_id != session.user_id {
+            return Err("Signed-in account mismatch; sign in again.".into());
+        }
+        if session.needs_refresh(self.ids.now_millis()) {
+            session = self.refreshed(&auth)?;
+        }
+        let mut transport = SupabaseTransport::new(&config.url, &config.publishable_key, &session.access_token)
+            .map_err(|e| e.to_string())?;
+        let wipe_res = match transport.delete_all_user_cloud_data() {
+            Err(TransportError::Unauthorized) => {
+                session = self.refreshed(&auth)?;
+                transport.set_access_token(&session.access_token);
+                transport.delete_all_user_cloud_data()
+            }
+            other => other,
+        };
+        let new_gen = match wipe_res {
+            Ok(gen_val) => gen_val,
+            Err(TransportError::AccountDeleted) => return Err(self.handle_account_deleted_from_sync()),
+            Err(TransportError::ReauthenticationRequired) => {
+                return Err("Your sign-in is too old to wipe cloud data. Sign out and sign in again.".into());
+            }
+            Err(TransportError::Network(_)) => return Err("Offline. Check your connection and try again.".into()),
+            Err(other) => return Err(format!("Could not delete cloud data: {other}")),
+        };
+
+        if let Some(url) = &config.attachments_url
+            && let Ok(client) = AttachmentsClient::new(url, &session.access_token)
+        {
+            if let Ok(pending_deleted) = transport.list_pending_deleted_attachments() {
+                for row in pending_deleted {
+                    let _ = client.delete(&row.note_id, &row.attachment_id);
+                }
+            }
+            let _ = transport.finalize_cloud_wipe();
+        }
+
+        let blobs = self.store.blobs();
+        let old_attachments = std::mem::take(&mut self.state.attachments);
+        for (note_id, images) in old_attachments {
+            let mut kept = Vec::new();
+            for mut image in images {
+                if image.is_pending() {
+                    kept.push(image);
+                } else if let Ok(Some(bytes)) = blobs.get(&image.id)
+                    && blobs.put_pending(&image.id, &bytes).is_ok()
+                {
+                    image.location = Location::Pending;
+                    kept.push(image);
+                }
+            }
+            if !kept.is_empty() {
+                self.state.attachments.insert(note_id, kept);
+            }
+        }
+
+        self.state.wipe_generation = new_gen;
+        self.state.last_remote_revision = 0;
+        self.state.revisions.clear();
+        self.state.synced_timestamps.clear();
+        self.state.known_cloud_ids.clear();
+        self.state.pending.clear();
+        self.state.tombstones.clear();
+        self.state.attachment_removals.clear();
+        self.state.uploads_blocked_after_wipe = false;
+        self.store.save(&self.state).map_err(|e| format!("Could not save: {e}"))?;
+        self.last_error = None;
+        Ok(())
+    }
+
+    /// Adopts the current server `wipe_generation`, clears the wipe block, queues all local notes for
+    /// upload, and syncs.
+    pub fn reupload_after_wipe(&mut self) -> Result<SyncSummary, String> {
+        let config = self.config.clone().ok_or("Sync isn't set up in this build.")?;
+        let auth = self.auth()?;
+        let mut session = self.session.clone().ok_or("Sign in to sync.")?;
+        if self.state.owner_id != session.user_id {
+            return Err("Signed-in account mismatch; sign in again.".into());
+        }
+        if session.needs_refresh(self.ids.now_millis()) {
+            session = self.refreshed(&auth)?;
+        }
+        let mut transport = SupabaseTransport::new(&config.url, &config.publishable_key, &session.access_token)
+            .map_err(|e| e.to_string())?;
+        let gen_res = match transport.get_sync_generation() {
+            Err(TransportError::Unauthorized) => {
+                session = self.refreshed(&auth)?;
+                transport.set_access_token(&session.access_token);
+                transport.get_sync_generation()
+            }
+            other => other,
+        };
+        let remote_gen = match gen_res {
+            Ok(gen_val) => gen_val,
+            Err(TransportError::AccountDeleted) => return Err(self.handle_account_deleted_from_sync()),
+            Err(TransportError::Network(_)) => return Err("Offline. Check your connection and try again.".into()),
+            Err(other) => return Err(format!("Could not reach the server: {other}")),
+        };
+
+        self.state.wipe_generation = remote_gen;
+        self.state.last_remote_revision = 0;
+        self.state.uploads_blocked_after_wipe = false;
+        self.state.revisions.clear();
+        self.state.synced_timestamps.clear();
+        self.state.known_cloud_ids.clear();
+        self.state.tombstones.clear();
+        self.state.pending.clear();
+        let note_ids: Vec<String> = self.state.notes.keys().cloned().collect();
+        for id in note_ids {
+            self.state.push_seq = self.state.push_seq.saturating_add(1);
+            let seq = self.state.push_seq;
+            self.state.pending.insert(id, notelikeus_core::store::PendingPush { base_revision: None, seq });
+        }
+        self.store.save(&self.state).map_err(|e| format!("Could not save: {e}"))?;
+        self.sync_now()
     }
 }
 
@@ -1331,9 +1745,9 @@ mod tests {
         let dir = root("failed-save");
         let mut service = open(&dir);
         service.create("kept", "").unwrap();
-        // Make the account folder unwritable for the temp file by putting a directory in its way.
-        let temp = service.store.state_path().with_extension("nlkr.tmp");
-        std::fs::create_dir_all(&temp).unwrap();
+        // Block rotation of `state.nlkr` to `state.nlkr.prev` by putting a directory in its way.
+        let prev = service.store.state_path().with_extension("nlkr.prev");
+        std::fs::create_dir_all(&prev).unwrap();
         assert!(service.create("lost", "").is_err());
         let titles: Vec<String> = service.list().into_iter().map(|n| n.title).collect();
         assert_eq!(titles, ["kept"]);
@@ -1631,6 +2045,170 @@ mod tests {
                 )
                 .is_err()
         );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn contracts_dir() -> PathBuf {
+        let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        loop {
+            let candidate = dir.join("contracts");
+            if candidate.join("README.md").exists() {
+                return candidate;
+            }
+            assert!(dir.pop(), "contracts/ not found");
+        }
+    }
+
+    #[test]
+    fn backup_limits_match_contracts_fixture() {
+        let text = std::fs::read_to_string(contracts_dir().join("backup/import-limits.json")).unwrap();
+        let limits: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(MAX_TITLE_CHARS as u64, limits["maxNoteTitleChars"].as_u64().unwrap());
+        assert_eq!(MAX_CONTENT_CHARS as u64, limits["maxNoteContentChars"].as_u64().unwrap());
+        assert_eq!(MAX_CHECKLIST_ITEMS as u64, limits["maxNoteChecklistItems"].as_u64().unwrap());
+        assert_eq!(MAX_LABELS_PER_NOTE as u64, limits["maxNoteLabels"].as_u64().unwrap());
+        assert_eq!(
+            backup::contract_limits(),
+            (
+                limits["maxJsonDepth"].as_u64().unwrap() as usize,
+                limits["maxBackupNotes"].as_u64().unwrap() as usize,
+                limits["maxBackupLabels"].as_u64().unwrap() as usize,
+            )
+        );
+    }
+
+    #[test]
+    fn v3_kotlin_and_web_fixtures_match_expected_normal_form() {
+        let contracts = contracts_dir();
+        let expected: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(contracts.join("backup/v3-expected-notes.json")).unwrap()).unwrap();
+
+        for fixture_path in ["backup/v3-kotlin-export.json", "backup/v3-web-export.json"] {
+            let dir = root("v3-contract");
+            let mut service =
+                NotesService::open(&dir, Box::new(PlaintextKeyProtectorForTests), Box::new(SystemIds), None).unwrap();
+            let report = service.import_backup_v3(&std::fs::read(contracts.join(fixture_path)).unwrap()).unwrap();
+            assert_eq!(report.labels_created, expected["labelsCreated"].as_u64().unwrap() as usize, "{fixture_path}");
+            let mut actual: Vec<serde_json::Value> = [Scope::Notes, Scope::Archive, Scope::Trash]
+                .into_iter()
+                .flat_map(|scope| service.list_in_sorted(scope, SortOrder::Oldest))
+                .map(|note| {
+                    let mut labels = note.labels;
+                    labels.sort();
+                    serde_json::json!({
+                        "title": note.title,
+                        "content": note.content,
+                        "timestamp": note.timestamp,
+                        "color": note.color,
+                        "isPinned": note.is_pinned,
+                        "isArchived": note.is_archived,
+                        "isTrashed": note.is_trashed,
+                        "reminderTimestamp": note.reminder_timestamp,
+                        "labels": labels,
+                        "checklist": note.checklist,
+                    })
+                })
+                .collect();
+            actual.sort_by_key(|v| v["timestamp"].as_i64().unwrap_or_default());
+            assert_eq!(serde_json::Value::Array(actual), expected["notes"], "{fixture_path}");
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+
+        let dir = root("v3-rich");
+        let mut service = open(&dir);
+        let rich = service
+            .import_backup_v3(&std::fs::read(contracts.join("backup/v3-cross-platform-rich.json")).unwrap())
+            .unwrap();
+        assert!(rich.notes_imported >= 3);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn update_checklist_note_preserves_dual_content() {
+        let dir = root("dual-update");
+        let mut service = open(&dir);
+        let backup = serde_json::json!({
+            "version": 3,
+            "exportedAt": 1_767_225_600_000_i64,
+            "labels": [],
+            "notes": [{
+                "id": 1,
+                "title": "Dual",
+                "content": "keep this prose intact",
+                "timestamp": 1_767_225_000_000_i64,
+                "color": 0,
+                "isPinned": false,
+                "isArchived": false,
+                "isTrashed": false,
+                "position": 0,
+                "labels": [],
+                "checklist": [{ "text": "step 1", "isChecked": false, "position": 0 }]
+            }]
+        });
+        service.import_backup_v3(backup.to_string().as_bytes()).unwrap();
+        let id = service.list()[0].id.clone();
+        let updated = service
+            .update_checklist_note(
+                &id,
+                "Dual Edited",
+                vec![ChecklistItem { text: "step 1".into(), is_checked: true, position: 0 }],
+            )
+            .unwrap();
+        assert_eq!(updated.content, "keep this prose intact");
+        assert_eq!(updated.title, "Dual Edited");
+        assert!(updated.checklist[0].is_checked);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn diagnostics_allows_sensitive_words_inside_note_text() {
+        let dir = root("diag-false-positive");
+        let mut service = open(&dir);
+        service.create("schemaVersion", "token password secret @ example.com").unwrap();
+        let json = service.diagnostics_json().unwrap();
+        let report: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(report["notes"]["total"], 1);
+        assert!(!json.contains("password"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn convert_to_checklist_errors_instead_of_truncating_overflow() {
+        let dir = root("checklist-overflow");
+        let mut service = open(&dir);
+        let many_lines = (0..=MAX_CHECKLIST_ITEMS).map(|i| format!("item {i}")).collect::<Vec<_>>().join("\n");
+        let n1 = service.create("Too many lines", &many_lines).unwrap();
+        assert!(service.convert_to_checklist(&n1.id).is_err());
+        assert!(service.note(&n1.id).unwrap().checklist.is_empty());
+
+        let long_line = "x".repeat(MAX_CHECKLIST_ITEM_CHARS + 1);
+        let n2 = service.create("Long line", &long_line).unwrap();
+        assert!(service.convert_to_checklist(&n2.id).is_err());
+        assert_eq!(service.note(&n2.id).unwrap().content, long_line);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn failed_signed_in_store_load_preserves_guest_notes() {
+        let dir = root("signin-corrupt-account");
+        let mut service = open(&dir);
+        service.create("Guest Keep", "stay safe").unwrap();
+
+        let corrupt_store = Store::open(&dir, "corrupt-user-1", &PlaintextKeyProtectorForTests).unwrap();
+        std::fs::write(corrupt_store.state_path(), b"damaged-account-bytes").unwrap();
+
+        let bad_session = Session {
+            access_token: "a".into(),
+            refresh_token: Some("r".into()),
+            user_id: "corrupt-user-1".into(),
+            email: Some("u@example.test".into()),
+            expires_at_ms: 9_999_999_999_999,
+        };
+        assert!(service.signed_in(bad_session).is_err());
+        assert!(!service.account().signed_in);
+        let guest_notes = service.list();
+        assert_eq!(guest_notes.len(), 1);
+        assert_eq!(guest_notes[0].title, "Guest Keep");
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

@@ -20,14 +20,27 @@ impl NotesService {
     pub fn delete_account(&mut self) -> Result<DeleteAccountReport, String> {
         let config = self.config.clone().ok_or("Sync isn't set up in this build.")?;
         let worker_url = config.attachments_url.as_deref().ok_or("Account deletion isn't available in this build.")?;
-        let session = self.session.clone().ok_or("Sign in to delete your account.")?;
+        let mut session = self.session.clone().ok_or("Sign in to delete your account.")?;
+        let auth = self.auth()?;
+        if session.needs_refresh(self.ids.now_millis()) {
+            session = self.refreshed(&auth)?;
+        }
 
         // Prepare the guest store before asking the Worker, so a successful server deletion can always
         // switch the running app away from the account's data.
         let guest_store = Store::open(&self.root, GUEST, self.protector.as_ref()).map_err(|error| error.to_string())?;
         let guest_state = guest_store.load().map_err(|error| error.to_string())?;
-        let worker = AttachmentsClient::new(worker_url, &session.access_token).map_err(|error| error.to_string())?;
-        match worker.delete_account() {
+        let mut worker =
+            AttachmentsClient::new(worker_url, &session.access_token).map_err(|error| error.to_string())?;
+        let outcome = match worker.delete_account() {
+            Err(AccountDeletionError::Unauthorized) => {
+                session = self.refreshed(&auth)?;
+                worker.set_access_token(&session.access_token);
+                worker.delete_account()
+            }
+            other => other,
+        };
+        match outcome {
             Ok(()) => {}
             Err(AccountDeletionError::Unauthorized) => return Err("Sign in again to delete your account.".into()),
             Err(AccountDeletionError::ReauthenticationRequired) => {
@@ -62,6 +75,7 @@ impl NotesService {
         self.last_error = None;
         self.store = guest_store;
         self.state = guest_state;
+        self.account_generation = self.account_generation.saturating_add(1);
 
         let warning = match (session_cleared, local_data_removed) {
             (false, false) => Some(

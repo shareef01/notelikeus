@@ -70,12 +70,19 @@ fn pull_replies() {
 
 #[test]
 fn errors_are_classified_by_code_never_by_message() {
+    assert_eq!(classify_error(400, &json!({"code": "NL001", "message": "x"})), TransportError::WipeGenerationStale);
     assert_eq!(classify_error(400, &json!({"code": "NL002", "message": "x"})), TransportError::WipeGenerationStale);
     assert_eq!(classify_error(400, &json!({"code": "NL003"})), TransportError::AccountDeleted);
+    assert_eq!(classify_error(400, &json!({"code": "NL004"})), TransportError::ReauthenticationRequired);
+    assert_eq!(classify_error(400, &json!({"code": "NL005"})), TransportError::AccountNoteLimit);
     assert_eq!(classify_error(401, &json!({})), TransportError::Unauthorized);
     // A note title can say anything; it must not be read as a code.
     assert!(matches!(
         classify_error(400, &json!({"code": "22023", "message": "NL003 account_deleted"})),
+        TransportError::PayloadInvalid(_)
+    ));
+    assert!(matches!(
+        classify_error(400, &json!({"code": "23502", "message": "NL003 account_deleted"})),
         TransportError::Server(_)
     ));
 }
@@ -166,4 +173,30 @@ fn only_the_page_this_app_opened_can_hand_back_a_token() {
         assert_eq!(token_from_return_url(&bad, state), None, "{bad}");
     }
     assert_eq!(token_from_return_url(&ok, ""), None, "an empty expected state accepts nothing");
+}
+
+#[test]
+fn publishable_key_rejects_secret_and_service_role_keys() {
+    use notelikeus_core::http::checked_publishable_key;
+    assert!(checked_publishable_key("sb_publishable_demo_123").is_ok());
+    assert!(checked_publishable_key("sb_secret_nope").is_err());
+    assert!(checked_publishable_key("").is_err());
+
+    // eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.sig
+    assert!(checked_publishable_key("eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.sig").is_err());
+    // eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.sig
+    assert!(checked_publishable_key("eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.sig").is_ok());
+}
+
+#[test]
+fn checked_base_url_refuses_userinfo_and_bad_ports() {
+    use notelikeus_core::http::checked_base_url;
+    for bad in [
+        "https://user@example.supabase.co",
+        "http://127.0.0.1@evil.com:54321",
+        "https://127.0.0.1:0",
+        "https://[::1:54321",
+    ] {
+        assert!(checked_base_url(bad).is_err(), "{bad}");
+    }
 }

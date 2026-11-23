@@ -181,3 +181,39 @@ fn state_written_before_the_label_registry_still_opens() {
     assert!(old.label_registry.is_empty());
     assert_eq!(old.notes["1"].content, "old words");
 }
+
+#[test]
+fn corrupt_current_file_is_quarantined_before_fallback() {
+    let root = temp_root("quarantine");
+    let p = PlaintextKeyProtectorForTests;
+    let store = Store::open(&root, "owner", &p).unwrap();
+    store.save(&state_with("owner", "good backup")).unwrap();
+    store.save(&state_with("owner", "latest")).unwrap();
+    fs::write(store.state_path(), b"corrupt-current-bytes").unwrap();
+
+    let recovered = store.load().unwrap();
+    assert_eq!(recovered.notes["1"].content, "good backup");
+    let account_dir = store.state_path().parent().unwrap().to_path_buf();
+    let quarantined = fs::read_dir(&account_dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("state.nlkr.corrupt-")))
+        .expect("damaged state file must be quarantined");
+    assert_eq!(fs::read(quarantined).unwrap(), b"corrupt-current-bytes");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn attachment_blobs_reject_traversal_segments() {
+    let root = temp_root("blob-traversal");
+    let p = PlaintextKeyProtectorForTests;
+    let store = Store::open(&root, "owner", &p).unwrap();
+    let blobs = store.blobs();
+    for bad in ["", "..", "../other", "a/b", "a\\b", "foo.bar"] {
+        assert!(blobs.put_pending(bad, b"bytes").is_err(), "{bad:?}");
+        assert!(blobs.get(bad).is_err(), "{bad:?}");
+        assert!(blobs.remove(bad).is_err(), "{bad:?}");
+    }
+    fs::remove_dir_all(root).unwrap();
+}

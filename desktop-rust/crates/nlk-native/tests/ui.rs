@@ -59,15 +59,17 @@ fn type_note(ui: &AppWindow, title: &str, body: &str) {
     ui.invoke_editor_edited();
 }
 
-fn card_titles(ui: &AppWindow) -> Vec<String> {
+fn all_cards(ui: &AppWindow) -> Vec<nlk_native::NoteCard> {
     use slint::Model;
-    let mut titles = Vec::new();
-    for column in ui.get_columns().iter() {
-        for card in column.cards.iter() {
-            titles.push(card.title.to_string());
-        }
-    }
-    titles
+    ui.get_pinned_columns()
+        .iter()
+        .chain(ui.get_columns().iter())
+        .flat_map(|column| column.cards.iter().collect::<Vec<_>>())
+        .collect()
+}
+
+fn card_titles(ui: &AppWindow) -> Vec<String> {
+    all_cards(ui).into_iter().map(|card| card.title.to_string()).collect()
 }
 
 fn stored_titles(dir: &Path) -> Vec<String> {
@@ -88,6 +90,229 @@ fn the_native_window_end_to_end() {
     search_views_and_saved_filters();
     reviewing_a_conflicted_copy();
     pictures_on_notes();
+    appearance_density_sort_and_sidebar_persistence();
+    pinned_others_sections_and_sort_orders();
+    markdown_formatting_and_safe_href_validation();
+    dual_content_and_checklist_preserved_across_ui_edits();
+    diagnostics_dialog_and_non_leak_check();
+    cloud_wipe_banner_and_modal_shortcut_gating();
+}
+
+fn appearance_density_sort_and_sidebar_persistence() {
+    let dir = temp_dir("settings-persist");
+    let (ui, _c) = open(&dir);
+    press(&ui, "Settings");
+    assert!(ui.get_settings_open());
+    press(&ui, "Dark");
+    press(&ui, "Blue");
+    tick(&ui, "AMOLED black");
+    press(&ui, "Done");
+    assert!(!ui.get_settings_open());
+    assert_eq!((ui.get_theme_mode(), ui.get_theme_accent(), ui.get_theme_amoled()), (2, 1, true));
+
+    press(&ui, "Collapse sidebar");
+    assert!(ui.get_sidebar_collapsed());
+    press(&ui, "List view");
+    assert_eq!(ui.get_view_density(), 1);
+    press(&ui, "Compact view");
+    assert_eq!(ui.get_view_density(), 2);
+    press(&ui, "Oldest");
+    assert_eq!(ui.get_sort_order(), 2);
+
+    drop(ui);
+    let (ui, _c) = open(&dir);
+    assert_eq!(ui.get_theme_mode(), 2);
+    assert_eq!(ui.get_theme_accent(), 1);
+    assert!(ui.get_theme_amoled());
+    assert!(ui.get_sidebar_collapsed());
+    assert_eq!(ui.get_view_density(), 2);
+    assert_eq!(ui.get_sort_order(), 2);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn pinned_others_sections_and_sort_orders() {
+    use slint::Model;
+    let dir = temp_dir("pinned-sections");
+    let (ui, _c) = open(&dir);
+    for title in ["First", "Second", "Third"] {
+        press(&ui, "New note");
+        type_note(&ui, title, "body");
+        press(&ui, "Back to notes");
+    }
+    press(&ui, "First");
+    press(&ui, "Pin");
+    press(&ui, "Back to notes");
+
+    assert!(ui.get_has_pinned_section());
+    assert!(ui.get_has_other_section());
+    let pinned: Vec<String> = ui
+        .get_pinned_columns()
+        .iter()
+        .flat_map(|c| c.cards.iter().map(|card| card.title.to_string()).collect::<Vec<_>>())
+        .collect();
+    assert_eq!(pinned, ["First"]);
+
+    press(&ui, "Newest");
+    let others_newest: Vec<String> = ui
+        .get_columns()
+        .iter()
+        .flat_map(|c| c.cards.iter().map(|card| card.title.to_string()).collect::<Vec<_>>())
+        .collect();
+    assert_eq!(others_newest, ["Third", "Second"]);
+
+    press(&ui, "Oldest");
+    let others_oldest: Vec<String> = ui
+        .get_columns()
+        .iter()
+        .flat_map(|c| c.cards.iter().map(|card| card.title.to_string()).collect::<Vec<_>>())
+        .collect();
+    assert_eq!(others_oldest, ["Second", "Third"]);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn markdown_formatting_and_safe_href_validation() {
+    let dir = temp_dir("markdown-format");
+    let (ui, _c) = open(&dir);
+    press(&ui, "New note");
+    type_note(&ui, "Formatted", "hello world");
+
+    let hello_len = "hello ".len() as i32;
+    let world_end = "hello world".len() as i32;
+    ui.invoke_format_bold(hello_len, world_end);
+    assert_eq!(ui.get_editor_body(), "hello **world**");
+    ui.invoke_format_italic(0, "hello".len() as i32);
+    assert_eq!(ui.get_editor_body(), "_hello_ **world**");
+
+    ui.invoke_open_link_dialog(0, 0);
+    assert!(ui.get_link_dialog_open());
+    ui.set_link_label_text("Bad".into());
+    ui.set_link_url_text("javascript:alert(1)".into());
+    ui.invoke_insert_link_submitted();
+    assert!(ui.get_link_dialog_open(), "unsafe scheme keeps the dialog open");
+    assert!(!ui.get_link_error().is_empty());
+
+    ui.set_link_label_text("Docs".into());
+    ui.set_link_url_text("example.com".into());
+    ui.invoke_insert_link_submitted();
+    assert!(!ui.get_link_dialog_open());
+    assert!(ui.get_editor_body().contains("[Docs](https://example.com)"));
+
+    ui.invoke_format_bullet(0, 0);
+    assert!(ui.get_editor_body().starts_with("• "));
+    press(&ui, "Back to notes");
+
+    let card = first_card(&ui);
+    assert!(!card.preview.contains("**"));
+    assert!(!card.preview.contains("https://example.com"));
+    assert!(card.preview.contains("Docs"));
+    assert!(card.preview.contains("hello"));
+    assert!(card.preview.contains("world"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn dual_content_and_checklist_preserved_across_ui_edits() {
+    let dir = temp_dir("dual-content");
+    {
+        let mut service =
+            NotesService::open(&dir, Box::new(PlaintextKeyProtectorForTests), Box::new(SystemIds), None).unwrap();
+        let backup = serde_json::json!({
+            "version": 3,
+            "exportedAt": 1_767_225_600_000_i64,
+            "app": "Notelikeus",
+            "appVersion": "1.0.0",
+            "labels": [],
+            "notes": [{
+                "id": 1,
+                "title": "Dual Note",
+                "content": "preserved underlying prose",
+                "timestamp": 1_767_225_000_000_i64,
+                "color": 0,
+                "isPinned": false,
+                "isArchived": false,
+                "isTrashed": false,
+                "position": 0,
+                "labels": [],
+                "checklist": [{ "text": "item one", "isChecked": false, "position": 0 }]
+            }]
+        });
+        service.import_backup_v3(backup.to_string().as_bytes()).unwrap();
+    }
+    let (ui, _c) = open(&dir);
+    press(&ui, "Dual Note");
+    assert!(ui.get_editor_is_checklist());
+    ui.set_editor_title("Updated dual title".into());
+    ui.invoke_editor_edited();
+    use slint::Model;
+    let first_pos = ui.get_editor_rows().row_data(0).unwrap().position;
+    ui.invoke_item_toggled(first_pos);
+    press(&ui, "Back to notes");
+    drop(ui);
+
+    let service = NotesService::open(&dir, Box::new(PlaintextKeyProtectorForTests), Box::new(SystemIds), None).unwrap();
+    let note = service.list().into_iter().find(|n| n.title == "Updated dual title").unwrap();
+    assert_eq!(note.content, "preserved underlying prose");
+    assert!(note.checklist[0].is_checked);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn diagnostics_dialog_and_non_leak_check() {
+    let dir = temp_dir("diagnostics-ui");
+    let (ui, _c) = open(&dir);
+    press(&ui, "New note");
+    type_note(&ui, "schemaVersion", "my private secret note");
+    press(&ui, "Back to notes");
+
+    press(&ui, "Settings");
+    press(&ui, "View diagnostics");
+    assert!(ui.get_diagnostics_open());
+    let report = ui.get_diagnostics_report().to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&report).expect("valid diagnostics json");
+    assert_eq!(parsed["schemaVersion"], 1);
+    assert!(parsed["sync"]["wipeGeneration"].is_number());
+    assert!(!report.contains("my private secret note"));
+    ui.invoke_diagnostics_copied();
+    assert_eq!(ui.get_toast_text(), "Diagnostics copied to clipboard");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn send_escape(ui: &AppWindow) {
+    let window = slint::ComponentHandle::window(ui);
+    window.dispatch_event(slint::platform::WindowEvent::KeyPressed { text: slint::platform::Key::Escape.into() });
+    window.dispatch_event(slint::platform::WindowEvent::KeyReleased { text: slint::platform::Key::Escape.into() });
+}
+
+fn send_ctrl_n(ui: &AppWindow) {
+    let window = slint::ComponentHandle::window(ui);
+    window.dispatch_event(slint::platform::WindowEvent::KeyPressed { text: slint::platform::Key::Control.into() });
+    window.dispatch_event(slint::platform::WindowEvent::KeyPressed { text: "n".into() });
+    window.dispatch_event(slint::platform::WindowEvent::KeyReleased { text: "n".into() });
+    window.dispatch_event(slint::platform::WindowEvent::KeyReleased { text: slint::platform::Key::Control.into() });
+}
+
+fn cloud_wipe_banner_and_modal_shortcut_gating() {
+    let dir = temp_dir("wipe-banner-modals");
+    let (ui, _c) = open(&dir);
+    ui.set_account_mode(2);
+    ui.set_uploads_blocked_after_wipe(true);
+    assert!(has(&ui, "Re-upload local notes"));
+
+    press(&ui, "Settings");
+    assert!(ui.get_settings_open());
+    send_ctrl_n(&ui);
+    assert!(!ui.get_editor_open(), "Ctrl+N must be gated while a modal is open");
+
+    press(&ui, "View diagnostics");
+    assert!(ui.get_diagnostics_open());
+    send_escape(&ui);
+    assert!(!ui.get_diagnostics_open(), "Escape dismisses topmost diagnostics dialog first");
+    assert!(ui.get_settings_open(), "underlying settings dialog remains open");
+    send_escape(&ui);
+    assert!(!ui.get_settings_open());
+
+    ui.invoke_focus_main();
+    send_ctrl_n(&ui);
+    assert!(ui.get_editor_open(), "Ctrl+N works when no modal is open");
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 fn reviewing_a_conflicted_copy() {
@@ -382,8 +607,7 @@ fn archive_trash_restore_and_empty() {
 }
 
 fn first_card(ui: &AppWindow) -> nlk_native::NoteCard {
-    use slint::Model;
-    ui.get_columns().iter().flat_map(|c| c.cards.iter().collect::<Vec<_>>()).next().expect("a card")
+    all_cards(ui).into_iter().next().expect("a card")
 }
 
 fn colours_and_labels() {
@@ -513,7 +737,7 @@ fn pictures_on_notes() {
     assert_eq!(ui.get_editor_pictures().row_count(), 2);
     type_note(&ui, "Garden plan", "raised beds");
     press(&ui, "Back to notes");
-    let card = ui.get_columns().iter().flat_map(|c| c.cards.iter().collect::<Vec<_>>()).next().unwrap();
+    let card = first_card(&ui);
     assert!(card.has_cover && card.cover.ready, "the first picture leads the card");
     assert_eq!(card.more_images, 1);
 

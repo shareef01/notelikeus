@@ -26,7 +26,7 @@ pub fn score(note: &Note, needles: &[String]) -> u32 {
     let body = fold(&note.content);
     let mut total = if title == needles.join(" ") { TITLE_EXACT } else { 0 };
     for needle in needles {
-        total += if contains_word_prefix(&title, needle) {
+        let delta = if contains_word_prefix(&title, needle) {
             TITLE_PREFIX
         } else if contains_word_prefix(&labels, needle) {
             LABEL
@@ -37,6 +37,7 @@ pub fn score(note: &Note, needles: &[String]) -> u32 {
         } else {
             0
         };
+        total = total.saturating_add(delta);
     }
     total
 }

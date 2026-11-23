@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use notelikeus_core::attachments::{self, Attachment, Location, MAX_ATTACHMENT_BYTES};
 use notelikeus_core::model::{ChecklistItem, Note};
@@ -7,14 +7,20 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use super::{
-    MAX_CHECKLIST_ITEMS, MAX_CONTENT_CHARS, MAX_LABEL_CHARS, MAX_LABELS_PER_NOTE, MAX_TITLE_CHARS, NotesService,
-    label_key, tidy_label,
+    MAX_ATTACHMENTS_PER_NOTE, MAX_CHECKLIST_ITEM_CHARS, MAX_CHECKLIST_ITEMS, MAX_CHECKLIST_POSITION, MAX_CONTENT_CHARS,
+    MAX_LABEL_CHARS, MAX_LABELS_PER_NOTE, MAX_TIMESTAMP_MS, MAX_TITLE_CHARS, NotesService, label_key, tidy_label,
 };
 
 const MAX_JSON_BYTES: usize = 25 * 1024 * 1024;
 const MAX_JSON_DEPTH: usize = 64;
 const MAX_BACKUP_NOTES: usize = 25_000;
 const MAX_BACKUP_LABELS: usize = 2_000;
+const MIN_CHECKLIST_POSITION: i64 = -1_000_000_000;
+
+#[cfg(test)]
+pub(crate) fn contract_limits() -> (usize, usize, usize) {
+    (MAX_JSON_DEPTH, MAX_BACKUP_NOTES, MAX_BACKUP_LABELS)
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BackupImportReport {
@@ -65,8 +71,6 @@ struct BackupNote {
     is_trashed: bool,
     position: i64,
     reminder_timestamp: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    server_updated_at: Option<i64>,
     labels: Vec<String>,
     checklist: Vec<ChecklistItem>,
 }
@@ -146,7 +150,6 @@ impl NotesService {
                     is_trashed: note.is_trashed,
                     position: note.position,
                     reminder_timestamp: note.reminder_timestamp,
-                    server_updated_at: note.server_updated_at,
                     labels: note.labels.clone(),
                     checklist,
                 }
@@ -209,38 +212,84 @@ impl NotesService {
 
     /// Stores a verified backup image under a newly generated id, preserving the imported note time.
     pub fn add_backup_image(&mut self, note_id: &str, bytes: &[u8]) -> Result<(), String> {
-        if !self.state.notes.contains_key(note_id) {
-            return Err("That note no longer exists.".into());
-        }
-        if bytes.len() > MAX_ATTACHMENT_BYTES {
-            return Err("That image is larger than 10 MB.".into());
-        }
-        let mime_type = attachments::sniff_mime(bytes).ok_or("That file isn't a supported picture.")?;
-        let image_id = attachments::new_attachment_id().map_err(|error| error.to_string())?;
-        let blobs = self.store.blobs();
-        blobs.put_pending(&image_id, bytes).map_err(|error| format!("Could not keep the image: {error}"))?;
-
-        let before = self.state.clone();
-        let note_timestamp = self.state.notes[note_id].timestamp;
-        self.state.attachments.entry(note_id.to_string()).or_default().push(Attachment {
-            id: image_id.clone(),
-            mime_type: mime_type.to_string(),
-            size_bytes: bytes.len() as u64,
-            location: Location::Pending,
-        });
-        let now = self.ids.now_millis();
-        let edited = sync::edit_note(&mut self.state, note_id, now, |_| {}).map_err(|error| error.to_string());
-        if let Err(error) = edited {
-            self.state = before;
-            let _ = blobs.remove(&image_id);
-            return Err(error);
-        }
-        self.state.notes.get_mut(note_id).expect("note checked above").timestamp = note_timestamp;
-        if let Err(error) = self.commit(before) {
-            let _ = blobs.remove(&image_id);
-            return Err(error);
+        let (imported, _) = self.add_backup_images(&[(note_id.to_string(), bytes.to_vec())])?;
+        if imported == 0 {
+            return Err("That file isn't a supported picture.".into());
         }
         Ok(())
+    }
+
+    /// Stores a batch of verified backup images in one save, preserving each imported note time.
+    pub fn add_backup_images(&mut self, items: &[(String, Vec<u8>)]) -> Result<(usize, usize), String> {
+        if items.is_empty() {
+            return Ok((0, 0));
+        }
+        let blobs = self.store.blobs();
+        let before = self.state.clone();
+        let mut created_blobs = Vec::new();
+        let mut imported = 0usize;
+        let mut skipped = 0usize;
+        let mut touched_timestamps: HashMap<String, i64> = HashMap::new();
+
+        for (note_id, bytes) in items {
+            let Some(note) = self.state.notes.get(note_id) else {
+                skipped += 1;
+                continue;
+            };
+            if bytes.len() > MAX_ATTACHMENT_BYTES
+                || self.state.attachments.get(note_id).map_or(0, Vec::len) >= MAX_ATTACHMENTS_PER_NOTE
+            {
+                skipped += 1;
+                continue;
+            }
+            let Some(mime_type) = attachments::sniff_mime(bytes) else {
+                skipped += 1;
+                continue;
+            };
+            let Ok(image_id) = attachments::new_attachment_id() else {
+                skipped += 1;
+                continue;
+            };
+            if blobs.put_pending(&image_id, bytes).is_err() {
+                skipped += 1;
+                continue;
+            }
+            touched_timestamps.entry(note_id.clone()).or_insert(note.timestamp);
+            self.state.attachments.entry(note_id.clone()).or_default().push(Attachment {
+                id: image_id.clone(),
+                mime_type: mime_type.to_string(),
+                size_bytes: bytes.len() as u64,
+                location: Location::Pending,
+            });
+            created_blobs.push(image_id);
+            imported += 1;
+        }
+
+        if imported == 0 {
+            return Ok((0, skipped));
+        }
+
+        let now = self.ids.now_millis();
+        for (note_id, original_timestamp) in touched_timestamps {
+            if let Err(error) = sync::edit_note(&mut self.state, &note_id, now, |_| {}) {
+                self.state = before;
+                for id in created_blobs {
+                    let _ = blobs.remove(&id);
+                }
+                return Err(error.to_string());
+            }
+            if let Some(note) = self.state.notes.get_mut(&note_id) {
+                note.timestamp = original_timestamp;
+            }
+        }
+
+        if let Err(error) = self.commit(before) {
+            for id in created_blobs {
+                let _ = blobs.remove(&id);
+            }
+            return Err(error);
+        }
+        Ok((imported, skipped))
     }
 
     /// Adds notes from a v3/legacy JSON backup. It validates the document before touching the store.
@@ -259,7 +308,11 @@ impl NotesService {
         if root_labels.is_some_and(|value| !value.is_array()) {
             return Err("Backup labels must be an array".into());
         }
-        let note_entries: &[Value] = root.get("notes").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
+        let root_notes = root.get("notes").filter(|value| !value.is_null());
+        if root_notes.is_some_and(|value| !value.is_array()) {
+            return Err("Backup notes must be an array".into());
+        }
+        let note_entries: &[Value] = root_notes.and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
         if note_entries.len() > MAX_BACKUP_NOTES {
             return Err(format!("Backup has too many notes (maximum {MAX_BACKUP_NOTES})."));
         }
@@ -328,6 +381,7 @@ impl NotesService {
         let before = self.state.clone();
         for entry in note_entries {
             let Some(object) = entry.as_object() else { continue };
+            let mut seen_note_labels = HashSet::new();
             let labels = object
                 .get("labels")
                 .and_then(Value::as_array)
@@ -335,6 +389,7 @@ impl NotesService {
                 .flatten()
                 .map(parse_label_name)
                 .filter(|name| !name.is_empty())
+                .filter(|name| seen_note_labels.insert(label_key(name)))
                 .take(MAX_LABELS_PER_NOTE)
                 .map(|name| resolved_labels.get(&label_key(&name)).cloned().unwrap_or(name))
                 .collect::<Vec<_>>();
@@ -439,6 +494,10 @@ fn backup_id_string(value: &Value) -> Option<String> {
     }
 }
 
+fn clamp_position(pos: i64) -> i64 {
+    pos.clamp(MIN_CHECKLIST_POSITION, MAX_CHECKLIST_POSITION)
+}
+
 fn parse_checklist(value: Option<&Value>, limit: usize) -> Vec<ChecklistItem> {
     let Some(items) = value.and_then(Value::as_array) else { return Vec::new() };
     let mut parsed: Vec<(i64, ChecklistItem)> = items
@@ -449,12 +508,13 @@ fn parse_checklist(value: Option<&Value>, limit: usize) -> Vec<ChecklistItem> {
             let text = object
                 .and_then(|object| object.get("text"))
                 .and_then(Value::as_str)
-                .map(|text| take_chars(text, MAX_TITLE_CHARS))
+                .map(|text| take_chars(text, MAX_CHECKLIST_ITEM_CHARS))
                 .unwrap_or_default();
             let is_checked =
                 object.and_then(|object| object.get("isChecked")).and_then(Value::as_bool).unwrap_or(false);
-            let position =
-                object.and_then(|object| object.get("position")).and_then(Value::as_i64).unwrap_or(index as i64);
+            let position = clamp_position(
+                object.and_then(|object| object.get("position")).and_then(Value::as_i64).unwrap_or(index as i64),
+            );
             (position, ChecklistItem { text, is_checked, position })
         })
         .collect();
@@ -477,14 +537,16 @@ fn fill_note_from_backup(
         .and_then(Value::as_str)
         .map(|text| take_chars(text, MAX_CONTENT_CHARS))
         .unwrap_or_default();
-    note.timestamp = object.get("timestamp").and_then(Value::as_i64).unwrap_or(now);
+    note.timestamp = object.get("timestamp").and_then(Value::as_i64).unwrap_or(now).clamp(0, MAX_TIMESTAMP_MS);
     note.color = object.get("color").and_then(Value::as_i64).and_then(|color| i32::try_from(color).ok()).unwrap_or(0);
     note.is_pinned = object.get("isPinned").and_then(Value::as_bool).unwrap_or(false);
     note.is_archived = object.get("isArchived").and_then(Value::as_bool).unwrap_or(false);
     note.is_trashed = object.get("isTrashed").and_then(Value::as_bool).unwrap_or(false);
-    note.position = position;
-    note.reminder_timestamp =
-        object.get("reminderTimestamp").and_then(Value::as_i64).filter(|timestamp| *timestamp > now);
+    note.position = clamp_position(position);
+    note.reminder_timestamp = object
+        .get("reminderTimestamp")
+        .and_then(Value::as_i64)
+        .filter(|timestamp| *timestamp > now && *timestamp <= MAX_TIMESTAMP_MS);
     note.server_updated_at = None;
     note.labels = labels;
     note.checklist = checklist;

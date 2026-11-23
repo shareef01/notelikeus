@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use notelikeus_app::{ImageView, NoteView};
 use notelikeus_core::attachments::{MAX_ATTACHMENT_BYTES, can_preview};
-use slint::{Image, Rgba8Pixel, SharedPixelBuffer, SharedString};
+use slint::{ComponentHandle, Image, Rgba8Pixel, SharedPixelBuffer, SharedString};
 
 use super::{Confirm, Controller, model};
 use crate::Picture;
@@ -18,7 +18,8 @@ use crate::images::{self, THUMBNAIL_SIDE, VIEWER_SIDE};
 enum Pic {
     Loading,
     Ready(Image),
-    Failed(String),
+    FailedPermanent(String),
+    FailedTransient(String),
 }
 
 #[derive(Default)]
@@ -36,12 +37,18 @@ impl PicturesState {
         self.viewer.borrow_mut().take();
         self.dirty.set(false);
     }
+
+    pub(super) fn clear_transient_failures(&self) {
+        self.thumbnails.borrow_mut().retain(|_, pic| !matches!(pic, Pic::FailedTransient(_)));
+    }
 }
 
 fn picture(id: &str, pic: Option<&Pic>) -> Picture {
     let (image, ready, problem) = match pic {
         Some(Pic::Ready(image)) => (image.clone(), true, SharedString::new()),
-        Some(Pic::Failed(problem)) => (Image::default(), false, problem.as_str().into()),
+        Some(Pic::FailedPermanent(problem) | Pic::FailedTransient(problem)) => {
+            (Image::default(), false, problem.as_str().into())
+        }
         Some(Pic::Loading) | None => (Image::default(), false, SharedString::new()),
     };
     Picture { id: id.into(), image, ready, problem }
@@ -59,21 +66,27 @@ impl Controller {
             return picture(&image.id, Some(pic));
         }
         if !can_preview(&image.mime_type) {
-            let failed = Pic::Failed(unshowable(&image.mime_type));
+            let failed = Pic::FailedPermanent(unshowable(&image.mime_type));
             let shown = picture(&image.id, Some(&failed));
             self.pictures.thumbnails.borrow_mut().insert(image.id.clone(), failed);
             return shown;
         }
         self.pictures.thumbnails.borrow_mut().insert(image.id.clone(), Pic::Loading);
-        let source = self.svc().image_source();
+        let (source, expected_generation) = {
+            let svc = self.svc();
+            (svc.image_source(), svc.account_generation())
+        };
         let (note, id) = (note_id.to_string(), image.id.clone());
         let key = id.clone();
         self.in_background(
             move || source.bytes(&note, &id).and_then(|bytes| images::decode(&bytes, THUMBNAIL_SIDE)),
             move |c, decoded: Result<SharedPixelBuffer<Rgba8Pixel>, String>| {
+                if c.svc().account_generation() != expected_generation {
+                    return;
+                }
                 let pic = match decoded {
                     Ok(pixels) => Pic::Ready(Image::from_rgba8(pixels)),
-                    Err(problem) => Pic::Failed(problem),
+                    Err(problem) => Pic::FailedTransient(problem),
                 };
                 c.pictures.thumbnails.borrow_mut().insert(key, pic);
                 c.pictures_arrived();
@@ -116,10 +129,12 @@ impl Controller {
         if ui.get_editor_mode() == crate::View::Trash {
             return;
         }
-        let picked = rfd::FileDialog::new()
+        let dialog = rfd::FileDialog::new()
             .set_title("Add a picture")
-            .add_filter("Pictures", &["png", "jpg", "jpeg", "gif", "webp"])
-            .pick_file();
+            .add_filter("Pictures", &["png", "jpg", "jpeg", "gif", "webp"]);
+        let handle = ui.window().window_handle();
+        let dialog = dialog.set_parent(&handle);
+        let picked = dialog.pick_file();
         let Some(path) = picked else { return };
         let too_big = std::fs::metadata(&path).map(|m| m.len() > MAX_ATTACHMENT_BYTES as u64).unwrap_or(false);
         if too_big {
@@ -177,15 +192,21 @@ impl Controller {
         ui.set_viewer_read_only(ui.get_editor_mode() == crate::View::Trash);
         ui.set_viewer_open(true);
         if !can_preview(&image.mime_type) {
-            ui.set_viewer_picture(picture(&image.id, Some(&Pic::Failed(unshowable(&image.mime_type)))));
+            ui.set_viewer_picture(picture(&image.id, Some(&Pic::FailedPermanent(unshowable(&image.mime_type)))));
             return;
         }
         ui.set_viewer_picture(picture(&image.id, None));
-        let source = self.svc().image_source();
+        let (source, expected_generation) = {
+            let svc = self.svc();
+            (svc.image_source(), svc.account_generation())
+        };
         let shown = image.id.clone();
         self.in_background(
             move || source.bytes(&note_id, &image.id).and_then(|bytes| images::decode(&bytes, VIEWER_SIDE)),
             move |c, decoded: Result<SharedPixelBuffer<Rgba8Pixel>, String>| {
+                if c.svc().account_generation() != expected_generation {
+                    return;
+                }
                 let Some(ui) = c.ui() else { return };
                 // Only if the viewer still shows this picture.
                 let current =
@@ -195,7 +216,7 @@ impl Controller {
                 }
                 let pic = match decoded {
                     Ok(pixels) => Pic::Ready(Image::from_rgba8(pixels)),
-                    Err(problem) => Pic::Failed(problem),
+                    Err(problem) => Pic::FailedTransient(problem),
                 };
                 ui.set_viewer_picture(picture(&shown, Some(&pic)));
             },
