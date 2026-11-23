@@ -178,7 +178,7 @@ function NoteCardImpl({
           >
             <ImageIcon size={size} />
             {attachments.length > 1 ? (
-              <span className="text-[11px] font-semibold tabular-nums">{attachments.length}</span>
+              <span className="text-[12px] font-semibold tabular-nums">{attachments.length}</span>
             ) : null}
           </span>
         ) : null}

@@ -6,7 +6,7 @@
 // headless UI tests (tests/ui.rs).
 
 import { AboutSlint, ScrollView, TextEdit } from "std-widgets.slint";
-import { Theme, Icons, Icon, IconButton, BrandMark } from "theme.slint";
+import { Theme, Type, Icons, Icon, IconButton, BrandMark } from "theme.slint";
 import "fonts/inter_regular.ttf";
 import "fonts/inter_medium.ttf";
 import "fonts/inter_semibold.ttf";
@@ -99,7 +99,7 @@ export struct SidebarRow {
 export enum View { notes, archive, trash }
 
 component SectionLabel inherits Text {
-    font-size: 11px;
+    font-size: Type.overline;
     font-weight: 600;
     letter-spacing: 0.9px;
     color: Theme.muted;
@@ -145,7 +145,7 @@ component FilterChip inherits FocusScope {
             chip-label := Text {
                 text: root.text;
                 vertical-alignment: center;
-                font-size: 13px;
+                font-size: Type.body-small;
                 font-weight: 500;
                 color: root.on ? Theme.background : Theme.on-surface-secondary;
             }
@@ -188,20 +188,20 @@ component ReviewVersion inherits Rectangle {
         alignment: start;
         Text {
             text: root.heading;
-            font-size: 11px;
+            font-size: Type.overline;
             font-weight: 600;
             letter-spacing: 0.9px;
             color: Theme.on-surface-secondary;
         }
-        Text { text: root.edited; font-size: 12px; color: Theme.muted; }
+        Text { text: root.edited; font-size: Type.meta; color: Theme.muted; }
         if root.note-title != "": Text {
             text: root.note-title;
-            font-size: 15px;
+            font-size: Type.body-large;
             font-weight: 600;
             color: Theme.on-surface;
             wrap: word-wrap;
         }
-        if root.lines.length == 0: Text { text: "(empty)"; font-size: 14px; color: Theme.muted; }
+        if root.lines.length == 0: Text { text: "(empty)"; font-size: Type.body; color: Theme.muted; }
         for line in root.lines: Rectangle {
             border-radius: 4px;
             background: line.changed ? #f59e0b.transparentize(0.8) : transparent;
@@ -212,7 +212,7 @@ component ReviewVersion inherits Rectangle {
                 padding-right: 4px;
                 Text {
                     text: line.text == "" ? " " : line.text;
-                    font-size: 14px;
+                    font-size: Type.body;
                     font-weight: line.changed ? 500 : 400;
                     color: Theme.on-surface;
                     wrap: word-wrap;
@@ -268,7 +268,7 @@ component PillButton inherits FocusScope {
             label-text := Text {
                 text: root.text;
                 vertical-alignment: center;
-                font-size: 13px;
+                font-size: Type.body-small;
                 font-weight: 600;
                 color: root.strong ? Theme.background : (root.danger ? Theme.danger : Theme.on-surface);
             }
@@ -321,7 +321,7 @@ component ThemeOption inherits FocusScope {
         border-color: root.has-focus ? Theme.accent : Theme.outline;
         option-label := Text {
             text: root.text;
-            font-size: 13px;
+            font-size: Type.body-small;
             font-weight: 600;
             color: root.selected ? Theme.background : Theme.on-surface;
         }
@@ -429,7 +429,7 @@ component NavItem inherits FocusScope {
             if !root.compact: Text {
                 text: root.label;
                 vertical-alignment: center;
-                font-size: 14px;
+                font-size: Type.body;
                 font-weight: root.selected ? 600 : 500;
                 color: root.selected ? Theme.on-surface : Theme.on-surface-secondary;
                 horizontal-stretch: 1;
@@ -446,7 +446,7 @@ component NavItem inherits FocusScope {
                     horizontal-alignment: center;
                     vertical-alignment: center;
                     text: root.count;
-                    font-size: 12px;
+                    font-size: Type.meta;
                     font-weight: 600;
                     color: root.selected ? Theme.accent : Theme.accent.transparentize(0.15);
                 }
@@ -474,7 +474,7 @@ component Chip inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
         text: root.text;
-        font-size: 12px;
+        font-size: Type.meta;
         font-weight: 500;
         color: root.fg;
     }
@@ -494,7 +494,14 @@ component Card inherits FocusScope {
     preferred-height: card-layout.preferred-height;
     accessible-role: button;
     accessible-label: card.title != "" ? card.title : "Untitled note";
-    accessible-description: card.preview;
+    // The status the card shows as icons and chips, in words, ahead of the preview: Narrator otherwise
+    // heard only the title and preview, while TalkBack and the web card name pin, reminder and picture.
+    // In the description, not the label, so the accessible name stays the note's title.
+    property <string> status-words: (card.pinned ? "Pinned. " : "")
+        + (card.reminder != "" ? ((card.reminder-overdue ? "Overdue reminder " : "Reminder ") + card.reminder + ". ") : "")
+        + (card.has-cover ? "Has a picture. " : "")
+        + (card.checklist.length > 0 ? "Checklist. " : "");
+    accessible-description: root.status-words + card.preview;
     accessible-action-default => { root.clicked(); }
     key-pressed(event) => {
         if (event.text == Key.Space || event.text == Key.Return) {
@@ -509,10 +516,14 @@ component Card inherits FocusScope {
         height: 100%;
         border-radius: Theme.radius-note;
         border-width: root.has-focus ? 2px : 1px;
-        border-color: root.has-focus ? Theme.accent : (card.has-color ? (touch.has-hover ? #ffffff33 : transparent) : (touch.has-hover ? Theme.muted : Theme.outline));
+        // A coloured card's hover edge was white at 20% in both themes, which vanishes on a light
+        // pastel; a dark edge in light, a light edge in dark, so hover reads on every note colour.
+        border-color: root.has-focus ? Theme.accent : (card.has-color ? (touch.has-hover ? (Theme.dark ? #ffffff40 : #00000033) : transparent) : (touch.has-hover ? Theme.muted : Theme.outline));
         background: card.has-color ? (Theme.dark ? card.color-dark : card.color-light) : Theme.surface;
-        drop-shadow-blur: touch.has-hover ? 18px : 0px;
-        drop-shadow-color: touch.has-hover ? #00000033 : transparent;
+        // The restrained 3dp hover lift of the design system, not an 18px glow.
+        drop-shadow-blur: touch.has-hover ? 8px : 0px;
+        drop-shadow-offset-y: touch.has-hover ? 2px : 0px;
+        drop-shadow-color: touch.has-hover ? #00000024 : transparent;
         clip: true;
 
         card-layout := VerticalLayout {
@@ -539,7 +550,7 @@ component Card inherits FocusScope {
                 if card.cover.problem != "": Text {
                     width: parent.width - 20px;
                     text: card.cover.problem;
-                    font-size: 12px;
+                    font-size: Type.meta;
                     color: Theme.on-surface-secondary;
                     wrap: word-wrap;
                     horizontal-alignment: center;
@@ -553,7 +564,7 @@ component Card inherits FocusScope {
                     background: #000000cc;
                     more-text := Text {
                         text: "+" + card.more-images;
-                        font-size: 12px;
+                        font-size: Type.meta;
                         font-weight: 600;
                         color: #ffffff;
                     }
@@ -566,7 +577,7 @@ component Card inherits FocusScope {
                 spacing: 8px;
                 if card.title != "": Text {
                     text: card.title;
-                    font-size: root.compact ? 15px : 18px;
+                    font-size: root.compact ? Type.card-title-compact : Type.card-title;
                     font-weight: 600;
                     letter-spacing: -0.3px;
                     color: root.fg;
@@ -600,7 +611,7 @@ component Card inherits FocusScope {
                     Text {
                         text: card.time;
                         horizontal-alignment: right;
-                        font-size: 11px;
+                        font-size: Type.meta;
                         font-weight: 500;
                         color: root.fg-muted;
                     }
@@ -612,7 +623,7 @@ component Card inherits FocusScope {
                 spacing: root.compact ? 6px : 10px;
                 if card.preview != "": Text {
                     text: card.preview;
-                    font-size: root.compact ? 14px : 15px;
+                    font-size: root.compact ? Type.card-body-compact : Type.card-body;
                     color: card.title != "" ? root.fg-secondary : root.fg;
                     wrap: word-wrap;
                 }
@@ -630,7 +641,7 @@ component Card inherits FocusScope {
                     }
                     Text {
                         text: line.text;
-                        font-size: root.compact ? 14px : 15px;
+                        font-size: root.compact ? Type.card-body-compact : Type.card-body;
                         color: line.checked ? root.fg-muted : root.fg-secondary;
                         wrap: word-wrap;
                         horizontal-stretch: 1;
@@ -638,7 +649,7 @@ component Card inherits FocusScope {
                 }
                 if card.more-items > 0: Text {
                     text: "+" + card.more-items;
-                    font-size: 12px;
+                    font-size: Type.meta;
                     font-weight: 600;
                     color: root.fg-muted;
                 }
@@ -718,14 +729,14 @@ component Sidebar inherits Rectangle {
                 spacing: 1px;
                 Text {
                     text: "Notelikeus";
-                    font-size: 15px;
+                    font-size: Type.body-large;
                     font-weight: 700;
                     letter-spacing: -0.3px;
                     color: Theme.on-surface;
                 }
                 Text {
                     text: "Capture what matters";
-                    font-size: 11px;
+                    font-size: Type.meta;
                     color: Theme.on-surface-secondary;
                 }
             }
@@ -853,7 +864,7 @@ component Sidebar inherits Rectangle {
                     if !root.collapsed: Text {
                         text: "Collapse";
                         vertical-alignment: center;
-                        font-size: 14px;
+                        font-size: Type.body;
                         font-weight: 500;
                         color: Theme.on-surface.transparentize(0.15);
                     }
@@ -886,7 +897,7 @@ component Sidebar inherits Rectangle {
                 padding-top: 2px;
                 Text {
                     text: "Offline · Notes encrypted on this device";
-                    font-size: 12px;
+                    font-size: Type.meta;
                     color: Theme.muted;
                     wrap: word-wrap;
                 }
@@ -911,7 +922,7 @@ component Sidebar inherits Rectangle {
                     Text {
                         text: "Sign in";
                         vertical-alignment: center;
-                        font-size: 14px;
+                        font-size: Type.body;
                         font-weight: 600;
                         color: Theme.surface;
                     }
@@ -935,7 +946,7 @@ component Sidebar inherits Rectangle {
                         background: Theme.surface-variant;
                         Text {
                             text: root.account-initial;
-                            font-size: 14px;
+                            font-size: Type.body;
                             font-weight: 700;
                             color: Theme.on-surface;
                         }
@@ -946,14 +957,14 @@ component Sidebar inherits Rectangle {
                         spacing: 2px;
                         Text {
                             text: root.account-email;
-                            font-size: 13px;
+                            font-size: Type.body-small;
                             font-weight: 600;
                             color: Theme.on-surface;
                             overflow: elide;
                         }
                         Text {
                             text: root.account-status;
-                            font-size: 12px;
+                            font-size: Type.meta;
                             color: root.account-problem ? Theme.danger : Theme.muted;
                             wrap: word-wrap;
                             accessible-role: text;
@@ -1020,13 +1031,13 @@ component SearchField inherits Rectangle {
                 width: parent.width;
                 height: parent.height;
                 text: root.placeholder;
-                font-size: 15px;
+                font-size: Type.body-large;
                 color: Theme.on-surface-secondary;
                 vertical-alignment: center;
             }
             input := TextInput {
                 text <=> root.text;
-                font-size: 15px;
+                font-size: Type.body-large;
                 color: Theme.on-surface;
                 vertical-alignment: center;
                 single-line: true;
@@ -1061,7 +1072,7 @@ component SearchField inherits Rectangle {
                 horizontal-alignment: center;
                 vertical-alignment: center;
                 text: "Ctrl K";
-                font-size: 10px;
+                font-size: Type.meta;
                 font-weight: 600;
                 color: Theme.on-surface-secondary;
             }
@@ -1092,13 +1103,13 @@ component Field inherits Rectangle {
                 width: parent.width;
                 height: parent.height;
                 text: root.placeholder;
-                font-size: 14px;
+                font-size: Type.body;
                 color: Theme.muted;
                 vertical-alignment: center;
             }
             input := TextInput {
                 text <=> root.text;
-                font-size: 14px;
+                font-size: Type.body;
                 color: Theme.on-surface;
                 vertical-alignment: center;
                 single-line: true;
@@ -1135,7 +1146,7 @@ component Dialog inherits Rectangle {
             spacing: 16px;
             Text {
                 text: root.title;
-                font-size: 18px;
+                font-size: Type.title;
                 font-weight: 700;
                 color: Theme.on-surface;
             }
@@ -1285,7 +1296,7 @@ component EditorSheet inherits Rectangle {
             background: Theme.danger.transparentize(0.88);
             Text {
                 text: "This note is in the trash. Restore it to edit.";
-                font-size: 13px;
+                font-size: Type.body-small;
                 color: root.fg;
             }
         }
@@ -1301,7 +1312,7 @@ component EditorSheet inherits Rectangle {
                 Text {
                     text: "This note was kept from a sync conflict so neither version was lost.";
                     vertical-alignment: center;
-                    font-size: 13px;
+                    font-size: Type.body-small;
                     color: root.fg;
                     wrap: word-wrap;
                     horizontal-stretch: 1;
@@ -1355,7 +1366,7 @@ component EditorSheet inherits Rectangle {
                         if picture.problem != "": Text {
                             width: parent.width - 16px;
                             text: picture.problem;
-                            font-size: 11px;
+                            font-size: Type.meta;
                             color: Theme.muted;
                             wrap: word-wrap;
                             horizontal-alignment: center;
@@ -1374,16 +1385,16 @@ component EditorSheet inherits Rectangle {
                     x: 0;
                     y: 0;
                     text: "Title";
-                    font-size: 32px;
-                    font-weight: 700;
+                    font-size: Type.editor-title;
+                    font-weight: 600;
                     color: root.fg-muted;
                 }
                 title-input := TextInput {
                     y: 0;
                     text <=> root.title;
                     read-only: root.read-only;
-                    font-size: 32px;
-                    font-weight: 700;
+                    font-size: Type.editor-title;
+                    font-weight: 600;
                     letter-spacing: -0.6px;
                     color: root.fg;
                     single-line: false;
@@ -1500,14 +1511,14 @@ component EditorSheet inherits Rectangle {
                     x: 0;
                     y: 0;
                     text: root.read-only ? "" : "Start writing…";
-                    font-size: 17px;
+                    font-size: Type.editor-body;
                     color: root.fg-muted;
                 }
                 body-input := TextInput {
                     width: body-scroll.width;
                     text <=> root.body;
                     read-only: root.read-only;
-                    font-size: 17px;
+                    font-size: Type.editor-body;
                     color: root.fg;
                     single-line: false;
                     wrap: word-wrap;
@@ -1566,14 +1577,14 @@ component EditorSheet inherits Rectangle {
                                 x: 0;
                                 y: 3px;
                                 text: "List item";
-                                font-size: 17px;
+                                font-size: Type.editor-body;
                                 color: root.fg-muted;
                             }
                             item-input := TextInput {
                                 y: 3px;
                                 text: row.text;
                                 read-only: root.read-only;
-                                font-size: 17px;
+                                font-size: Type.editor-body;
                                 color: row.checked ? root.fg-muted : root.fg;
                                 single-line: false;
                                 wrap: word-wrap;
@@ -1625,7 +1636,7 @@ component EditorSheet inherits Rectangle {
             padding-left: 40px;
             Text {
                 text: root.footer;
-                font-size: 13px;
+                font-size: Type.body-small;
                 font-weight: 600;
                 color: root.fg-secondary;
                 accessible-role: text;
@@ -2039,7 +2050,7 @@ export component AppWindow inherits Window {
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                                 text: root.account-initial;
-                                font-size: 13px;
+                                font-size: Type.body-small;
                                 font-weight: 700;
                                 color: Theme.on-surface;
                             }
@@ -2148,7 +2159,7 @@ export component AppWindow inherits Window {
                     padding-bottom: 8px;
                     Text {
                         text: root.notice-ignored;
-                        font-size: 13px;
+                        font-size: Type.body-small;
                         color: Theme.muted;
                         wrap: word-wrap;
                         accessible-role: text;
@@ -2161,7 +2172,7 @@ export component AppWindow inherits Window {
                     padding-bottom: 8px;
                     Text {
                         text: root.notice-fuzzy;
-                        font-size: 13px;
+                        font-size: Type.body-small;
                         color: Theme.muted;
                         wrap: word-wrap;
                         accessible-role: text;
@@ -2185,7 +2196,7 @@ export component AppWindow inherits Window {
                         Text {
                             text: "Cloud notes were wiped from another device. Local notes remain safe on this device while cloud uploads are paused.";
                             vertical-alignment: center;
-                            font-size: 13px;
+                            font-size: Type.body-small;
                             color: Theme.on-surface;
                             wrap: word-wrap;
                             horizontal-stretch: 1;
@@ -2212,7 +2223,7 @@ export component AppWindow inherits Window {
                         Text {
                             text: "Notes in trash are removed permanently when you empty trash.";
                             vertical-alignment: center;
-                            font-size: 13px;
+                            font-size: Type.body-small;
                             color: Theme.on-surface;
                             horizontal-stretch: 1;
                         }
@@ -2333,7 +2344,7 @@ export component AppWindow inherits Window {
                                 : root.view == View.trash ? "Trash is empty"
                                 : "Notes you add appear here";
                             horizontal-alignment: center;
-                            font-size: 18px;
+                            font-size: Type.title;
                             font-weight: 600;
                             color: Theme.on-surface;
                         }
@@ -2343,7 +2354,7 @@ export component AppWindow inherits Window {
                                 : root.view == View.trash ? "Notes you move to the trash appear here."
                                 : "Press Ctrl+N, or the + button, to write one.";
                             horizontal-alignment: center;
-                            font-size: 14px;
+                            font-size: Type.body;
                             color: Theme.on-surface-secondary;
                         }
                         if root.searching: HorizontalLayout {
@@ -2511,7 +2522,7 @@ export component AppWindow inherits Window {
             SectionLabel { text: "LABELS"; }
             if root.label-choices.length == 0: Text {
                 text: "No labels yet. Add one below.";
-                font-size: 13px;
+                font-size: Type.body-small;
                 color: Theme.muted;
             }
             options-labels := ScrollView {
@@ -2534,7 +2545,7 @@ export component AppWindow inherits Window {
                         Text {
                             text: choice.name;
                             vertical-alignment: center;
-                            font-size: 15px;
+                            font-size: Type.body-large;
                             color: Theme.on-surface;
                             horizontal-stretch: 1;
                         }
@@ -2573,7 +2584,7 @@ export component AppWindow inherits Window {
             card-width: 460px;
             Text {
                 text: root.reminder-set ? "Choose a new time or remove this reminder." : "Choose when to be reminded. Times use your local time zone.";
-                font-size: 13px;
+                font-size: Type.body-small;
                 color: Theme.on-surface-secondary;
                 wrap: word-wrap;
             }
@@ -2592,7 +2603,7 @@ export component AppWindow inherits Window {
             }
             Text {
                 text: root.reminder-error != "" ? root.reminder-error : "Enter a local date and time, for example 2026-11-23 09:00.";
-                font-size: 12px;
+                font-size: Type.meta;
                 color: root.reminder-error != "" ? Theme.danger : Theme.muted;
                 wrap: word-wrap;
             }
@@ -2632,7 +2643,7 @@ export component AppWindow inherits Window {
             }
             if root.link-error != "": Text {
                 text: root.link-error;
-                font-size: 13px;
+                font-size: Type.body-small;
                 color: Theme.danger;
                 wrap: word-wrap;
             }
@@ -2681,7 +2692,7 @@ export component AppWindow inherits Window {
                         Text {
                             text: "Filters";
                             vertical-alignment: center;
-                            font-size: 18px;
+                            font-size: Type.title;
                             font-weight: 700;
                             color: Theme.on-surface;
                             horizontal-stretch: 1;
@@ -2832,7 +2843,7 @@ export component AppWindow inherits Window {
                                         Text {
                                             text: row.label;
                                             vertical-alignment: center;
-                                            font-size: 14px;
+                                            font-size: Type.body;
                                             font-weight: row.current ? 600 : 400;
                                             color: Theme.on-surface;
                                             horizontal-stretch: 1;
@@ -2862,7 +2873,7 @@ export component AppWindow inherits Window {
                         spacing: 8px;
                         Text {
                             text: "Name this filter";
-                            font-size: 14px;
+                            font-size: Type.body;
                             font-weight: 600;
                             color: Theme.on-surface;
                         }
@@ -2876,7 +2887,7 @@ export component AppWindow inherits Window {
                         }
                         if root.filter-name-hint != "": Text {
                             text: root.filter-name-hint;
-                            font-size: 12px;
+                            font-size: Type.meta;
                             color: Theme.muted;
                             wrap: word-wrap;
                         }
@@ -2947,7 +2958,7 @@ export component AppWindow inherits Window {
             }
             if root.all-labels.length == 0: Text {
                 text: "No labels yet.";
-                font-size: 13px;
+                font-size: Type.body-small;
                 color: Theme.muted;
             }
             edit-scroll := ScrollView {
@@ -2988,7 +2999,7 @@ export component AppWindow inherits Window {
             }
             Text {
                 text: "Press Enter to rename. Deleting a label keeps its notes.";
-                font-size: 12px;
+                font-size: Type.meta;
                 color: Theme.muted;
             }
             HorizontalLayout {
@@ -3018,7 +3029,7 @@ export component AppWindow inherits Window {
                     SectionLabel { text: "APPEARANCE"; }
                     Text {
                         text: "Theme";
-                        font-size: 14px;
+                        font-size: Type.body;
                         color: Theme.on-surface;
                     }
                     HorizontalLayout {
@@ -3060,7 +3071,7 @@ export component AppWindow inherits Window {
 
                     Text {
                         text: "Accent";
-                        font-size: 14px;
+                        font-size: Type.body;
                         color: Theme.on-surface;
                     }
                     HorizontalLayout {
@@ -3113,12 +3124,12 @@ export component AppWindow inherits Window {
                             spacing: 2px;
                             Text {
                                 text: "AMOLED black";
-                                font-size: 14px;
+                                font-size: Type.body;
                                 color: Theme.on-surface;
                             }
                             Text {
                                 text: "Pure black surfaces in dark mode.";
-                                font-size: 12px;
+                                font-size: Type.meta;
                                 color: Theme.muted;
                             }
                         }
@@ -3138,7 +3149,7 @@ export component AppWindow inherits Window {
                     SectionLabel { text: "CLOUD & ACCOUNT"; }
                     if root.account-mode == 0: Text {
                         text: "Sync is not configured in this build. Notes stay on this device.";
-                        font-size: 13px;
+                        font-size: Type.body-small;
                         color: Theme.on-surface-secondary;
                         wrap: word-wrap;
                     }
@@ -3146,7 +3157,7 @@ export component AppWindow inherits Window {
                         spacing: 8px;
                         Text {
                             text: "Guest mode. Notes stay on this device.";
-                            font-size: 13px;
+                            font-size: Type.body-small;
                             color: Theme.on-surface-secondary;
                         }
                         HorizontalLayout {
@@ -3158,13 +3169,13 @@ export component AppWindow inherits Window {
                         spacing: 8px;
                         Text {
                             text: root.account-email;
-                            font-size: 14px;
+                            font-size: Type.body;
                             font-weight: 600;
                             color: Theme.on-surface;
                         }
                         Text {
                             text: root.account-status;
-                            font-size: 13px;
+                            font-size: Type.body-small;
                             color: root.account-problem ? Theme.danger : Theme.on-surface-secondary;
                             wrap: word-wrap;
                         }
@@ -3193,7 +3204,7 @@ export component AppWindow inherits Window {
                     }
                     Text {
                         text: "Account deletion permanently removes the online account, its notes, and pictures.";
-                        font-size: 12px;
+                        font-size: Type.meta;
                         color: Theme.muted;
                         wrap: word-wrap;
                     }
@@ -3220,7 +3231,7 @@ export component AppWindow inherits Window {
             card-width: 440px;
             if root.signin-step == 0: Text {
                 text: "Notes are saved on this device. Sign in with your email to sync them across Android, Windows and the web.";
-                font-size: 14px;
+                font-size: Type.body;
                 color: Theme.on-surface-secondary;
                 wrap: word-wrap;
             }
@@ -3233,13 +3244,13 @@ export component AppWindow inherits Window {
             }
             if root.signin-step == 0: Text {
                 text: "We'll email you a 6-digit code. No password needed.";
-                font-size: 12px;
+                font-size: Type.meta;
                 color: Theme.muted;
                 wrap: word-wrap;
             }
             if root.signin-step == 1: Text {
                 text: "Finish the quick security check in your browser. Notelikeus carries on by itself when it's done.";
-                font-size: 14px;
+                font-size: Type.body;
                 color: Theme.on-surface-secondary;
                 wrap: word-wrap;
                 accessible-role: text;
@@ -3247,7 +3258,7 @@ export component AppWindow inherits Window {
             }
             if root.signin-step == 2: Text {
                 text: "Sent to " + root.signin-email + ". Check spam if it hasn't arrived.";
-                font-size: 14px;
+                font-size: Type.body;
                 color: Theme.on-surface-secondary;
                 wrap: word-wrap;
             }
@@ -3260,13 +3271,13 @@ export component AppWindow inherits Window {
             }
             if root.signin-notice != "": Text {
                 text: root.signin-notice;
-                font-size: 13px;
+                font-size: Type.body-small;
                 color: Theme.on-surface-secondary;
                 wrap: word-wrap;
             }
             if root.signin-error != "": Text {
                 text: root.signin-error;
-                font-size: 13px;
+                font-size: Type.body-small;
                 color: Theme.danger;
                 wrap: word-wrap;
                 accessible-role: text;
@@ -3332,13 +3343,13 @@ export component AppWindow inherits Window {
                     spacing: 12px;
                     Text {
                         text: "This note changed on two devices";
-                        font-size: 18px;
+                        font-size: Type.title;
                         font-weight: 700;
                         color: Theme.on-surface;
                     }
                     Text {
                         text: "Nothing was lost. Pick what to keep. A version you don't keep goes to the trash, where you can still restore it.";
-                        font-size: 14px;
+                        font-size: Type.body;
                         color: Theme.on-surface-secondary;
                         wrap: word-wrap;
                     }
@@ -3349,7 +3360,7 @@ export component AppWindow inherits Window {
                             padding: 12px;
                             Text {
                                 text: "The note this copy came from couldn't be identified. It may have been renamed or deleted. You can keep the copy as an ordinary note or move it to the trash.";
-                                font-size: 13px;
+                                font-size: Type.body-small;
                                 color: Theme.on-surface;
                                 wrap: word-wrap;
                             }
@@ -3391,7 +3402,7 @@ export component AppWindow inherits Window {
                         }
                         Text {
                             text: "Highlighted lines appear in only one version.";
-                            font-size: 12px;
+                            font-size: Type.meta;
                             color: Theme.muted;
                         }
                     }
@@ -3430,7 +3441,7 @@ export component AppWindow inherits Window {
             init => { diagnostics-export.focus-button(); }
             Text {
                 text: "This report contains app and sync counts only. It does not include note text, your email, or raw account identifiers.";
-                font-size: 13px;
+                font-size: Type.body-small;
                 color: Theme.on-surface-secondary;
                 wrap: word-wrap;
             }
@@ -3439,7 +3450,7 @@ export component AppWindow inherits Window {
                 text: root.diagnostics-report;
                 read-only: true;
                 wrap: word-wrap;
-                font-size: 12px;
+                font-size: Type.meta;
             }
             HorizontalLayout {
                 alignment: end;
@@ -3479,13 +3490,13 @@ export component AppWindow inherits Window {
                     spacing: 2px;
                     Text {
                         text: "Notelikeus Rust · " + root.app-version;
-                        font-size: 14px;
+                        font-size: Type.body;
                         font-weight: 600;
                         color: Theme.on-surface;
                     }
                     Text {
                         text: "Capture what matters";
-                        font-size: 12px;
+                        font-size: Type.meta;
                         color: Theme.on-surface-secondary;
                     }
                 }
@@ -3502,13 +3513,13 @@ export component AppWindow inherits Window {
             card-width: 480px;
             Text {
                 text: "This permanently deletes your online account, synced notes, and pictures. It cannot be undone. Your separate guest notes stay on this device.";
-                font-size: 14px;
+                font-size: Type.body;
                 color: Theme.on-surface-secondary;
                 wrap: word-wrap;
             }
             Text {
                 text: "Type DELETE to confirm. A recent sign-in is required.";
-                font-size: 13px;
+                font-size: Type.body-small;
                 font-weight: 600;
                 color: Theme.on-surface;
             }
@@ -3562,7 +3573,7 @@ export component AppWindow inherits Window {
                 viewer-msg := Text {
                     width: parent.width - 32px;
                     text: root.viewer-picture.problem != "" ? root.viewer-picture.problem : "Loading…";
-                    font-size: 15px;
+                    font-size: Type.body-large;
                     color: #f5f5f5;
                     wrap: word-wrap;
                     horizontal-alignment: center;
@@ -3577,7 +3588,7 @@ export component AppWindow inherits Window {
                 Text {
                     text: root.viewer-count > 1 ? (root.viewer-index + 1) + " of " + root.viewer-count : "";
                     vertical-alignment: center;
-                    font-size: 14px;
+                    font-size: Type.body;
                     font-weight: 600;
                     color: #f5f5f5;
                     horizontal-stretch: 1;
@@ -3641,7 +3652,7 @@ export component AppWindow inherits Window {
             init => { confirm-cancel.focus-button(); }
             Text {
                 text: root.confirm-body;
-                font-size: 14px;
+                font-size: Type.body;
                 color: Theme.on-surface-secondary;
                 wrap: word-wrap;
             }
@@ -3678,7 +3689,7 @@ export component AppWindow inherits Window {
                 Text {
                     text: root.toast-text;
                     vertical-alignment: center;
-                    font-size: 14px;
+                    font-size: Type.body;
                     color: Theme.background;
                 }
                 if root.toast-action != "": Rectangle {
@@ -3692,7 +3703,7 @@ export component AppWindow inherits Window {
                     accessible-action-default => { root.toast-acted(); }
                     action-text := Text {
                         text: root.toast-action;
-                        font-size: 14px;
+                        font-size: Type.body;
                         font-weight: 700;
                         color: Theme.background;
                     }

@@ -7,6 +7,9 @@ use notelikeus_app::NoteView;
 /// A card shows at most this much of a note, like the web app's clamped card body.
 const PREVIEW_MAX_LINES: usize = 8;
 const PREVIEW_MAX_CHARS: usize = 360;
+/// A card shows about three lines of title at the card width; more is cut with an ellipsis, as the
+/// web card's `line-clamp` and Compose's `maxLines` do. The editor always shows the whole title.
+const CARD_TITLE_MAX_CHARS: usize = 120;
 const MAX_MARKDOWN_NESTING: usize = 8;
 
 /// Strips the supported Markdown subset (`**bold**`, `__bold__`, `_italic_`, `[label](url)`) so card
@@ -229,6 +232,19 @@ pub fn is_overdue(reminder_timestamp: Option<i64>, now_ms: i64) -> bool {
     reminder_timestamp.is_some_and(|ts| ts <= now_ms)
 }
 
+/// A note's title as its card shows it: trimmed, and cut with an ellipsis past
+/// [`CARD_TITLE_MAX_CHARS`] so one pasted paragraph cannot fill the card. Slint's `Text` has no line clamp.
+pub fn card_title(title: &str) -> String {
+    let title = title.trim();
+    if title.chars().count() <= CARD_TITLE_MAX_CHARS {
+        return title.to_string();
+    }
+    let mut cut: String = title.chars().take(CARD_TITLE_MAX_CHARS).collect();
+    cut.truncate(cut.trim_end().len());
+    cut.push('…');
+    cut
+}
+
 /// The part of a note's body a card shows: Markdown markers stripped, leading blank lines dropped, at
 /// most a few lines and a few hundred characters, with an ellipsis when something was cut.
 pub fn preview(content: &str) -> String {
@@ -374,6 +390,18 @@ mod tests {
         assert_eq!(card_height(&list), card_height(&plain) + 7);
         let labelled = NoteView { labels: vec!["Travel".into()], ..plain.clone() };
         assert!(card_height(&labelled) > card_height(&plain));
+    }
+
+    #[test]
+    fn card_titles_are_trimmed_and_capped() {
+        assert_eq!(card_title("  Groceries "), "Groceries");
+        let long = "word ".repeat(60);
+        let cut = card_title(&long);
+        assert!(cut.ends_with('…'));
+        assert!(cut.chars().count() <= CARD_TITLE_MAX_CHARS + 1);
+        assert!(!cut.trim_end_matches('…').ends_with(' '));
+        let exact = "é".repeat(CARD_TITLE_MAX_CHARS);
+        assert_eq!(card_title(&exact), exact);
     }
 
     #[test]

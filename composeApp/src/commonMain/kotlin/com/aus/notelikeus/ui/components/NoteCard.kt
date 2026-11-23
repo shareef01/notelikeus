@@ -721,10 +721,7 @@ fun NoteCard(
                                         searchQuery = searchQuery,
                                         linksClickable = false
                                     ),
-                                    style = AppType.noteCardBody.copy(
-                                        fontSize = MaterialTheme.typography.labelSmall.fontSize,
-                                        lineHeight = MaterialTheme.typography.labelSmall.lineHeight
-                                    ),
+                                    style = AppType.noteCardChecklistItem,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     color = contentColor.copy(alpha = NoteEmphasis.Secondary)
@@ -737,7 +734,7 @@ fun NoteCard(
                         Spacer(modifier = Modifier.height(Spacing.xs))
                         Text(
                             text = stringResource(Res.string.labels_more, remainingChecklistCount),
-                            style = MaterialTheme.typography.labelSmall,
+                            style = AppType.noteCardMeta,
                             color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                         )
                     }

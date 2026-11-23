@@ -72,9 +72,12 @@ Inter everywhere (bundled on both clients), system UI fallback.
 | Overline / section label | 11 / 16 | 600 | 0.08em, uppercase | `text-overline` | `AppType.chromeLabel` |
 | Card title | 18 / 28 | 600 | −0.02em | `text-note-title` | `AppType.noteCardTitle` |
 | Card body | 15 / 24 | 400 | 0.005em | `text-note-body` | `AppType.noteCardBody` |
-| Editor title | 22 / 28 | 600 | −0.03em | — | `AppType.editorTitle` |
-| Editor body | 16 / 25 | 400 | 0.01em | — | `AppType.editorBody` |
+| Card checklist row | 15 / 22 | 400 | 0.005em | `text-note-body` | `AppType.noteCardChecklistItem` |
+| Editor title | 22 / 28 (Compose); 26 → 28 from 640 px (web); 28 (Windows) | 600 | −0.03em Compose, −0.025em web, −0.6px Windows | `text-editor-title`, `sm:text-editor-title-lg` | `AppType.editorTitle` |
+| Editor body | 16 / 25 (Compose); 17 → 18 from 640 px (web); 17 (Windows) | 400 | 0.01em | `--text-editor-body(-lg)` on `.rich-note-body` | `AppType.editorBody` |
 | Metadata (time, label chips, checklist progress, "+N") | 12 / 16 (11 in compact) | 500 | tabular numerals; user text keeps its own case | `text-[12px]` in `NoteCard` | `NoteCardLabelChipStyle`, `timestampFontSize` |
+
+The Windows native client maps every role to `Type.*` in `desktop-rust/crates/nlk-native/ui/theme.slint`; no `font-size` literal remains in `app.slint`. The full role matrix and the reasons for each platform difference are in [`docs/UI_UX_AUDIT_2026.md`](../UI_UX_AUDIT_2026.md) §C. Nothing renders below 11 px, and 11 px is only for uppercase overlines and compact-density metadata.
 
 Readability rules: editor measure ≤ 48 rem (~70 characters); body never below 15 px; titles clamp at
 2–3 lines on cards, never in the editor; untitled notes show no title line (D15).

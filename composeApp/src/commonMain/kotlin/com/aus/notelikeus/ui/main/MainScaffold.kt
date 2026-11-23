@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.NoteViewMode
@@ -381,8 +382,21 @@ internal fun MainScaffold(
                         } else {
                             null
                         }
-                    val resolvedColumns = adaptiveColumns
+                    val requestedColumns = adaptiveColumns
                         ?: if (isExpanded && state.viewMode.columns > 2) 2 else state.viewMode.columns
+                    // Phones: the chosen count, reduced until cards stay readable at this width and
+                    // font scale (NoteGridColumns.kt). Desktop already sizes columns by width above.
+                    val fontScale = LocalDensity.current.fontScale
+                    val resolvedColumns = if (AppConfig.isDesktop) {
+                        requestedColumns
+                    } else {
+                        adaptivePhoneGridColumns(
+                            requested = requestedColumns,
+                            availableWidth = maxWidth - Spacing.md * 2,
+                            gap = Spacing.lg,
+                            fontScale = fontScale
+                        )
+                    }
 
                     NoteStaggeredGrid(
                         notes = filteredNotes,

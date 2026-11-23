@@ -235,7 +235,7 @@ export function SideDrawer({
                 <p className="truncate text-[15px] font-bold tracking-[-0.02em] text-brand-primary">
                   Notelikeus
                 </p>
-                <p className="mt-1 truncate text-[11px] font-medium tracking-tight text-brand-secondary">
+                <p className="mt-1 truncate text-[12px] font-medium tracking-tight text-brand-secondary">
                   Capture what matters
                 </p>
               </div>

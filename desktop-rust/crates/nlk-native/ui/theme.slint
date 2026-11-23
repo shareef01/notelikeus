@@ -65,6 +65,35 @@ export global Theme {
     out property <length> card-min-width: 300px;
 }
 
+/// Semantic type roles (docs/design/DESIGN_SYSTEM.md §3). Every `font-size` in app.slint names one of
+/// these instead of a literal, so a role changes in one place and the scale cannot drift per screen.
+/// Nothing renders below `meta` (12px) except the uppercase, tracked `overline`, matching the web and
+/// Compose clients; the 10–11px literals this replaced were the smallest text on any platform.
+export global Type {
+    /// Editor title: 28px semibold, as the web editor at desktop widths.
+    out property <length> editor-title: 28px;
+    /// Editor body and checklist rows: the long-form reading size, as the web editor.
+    out property <length> editor-body: 17px;
+    /// Dialog titles and empty-state headlines.
+    out property <length> title: 18px;
+    /// Note card title, regular and compact density.
+    out property <length> card-title: 18px;
+    out property <length> card-title-compact: 15px;
+    /// Note card body preview and checklist rows, regular and compact density.
+    out property <length> card-body: 15px;
+    out property <length> card-body-compact: 14px;
+    /// Emphasised single-line text: the brand name, the search field, a note title in a list.
+    out property <length> body-large: 15px;
+    /// Default UI text: navigation, buttons, menu items, dialog body.
+    out property <length> body: 14px;
+    /// Secondary descriptions under a control or row.
+    out property <length> body-small: 13px;
+    /// Metadata: timestamps, chips, counts, captions, keyboard hints. The floor for readable text.
+    out property <length> meta: 12px;
+    /// Uppercase section labels with 0.9px tracking. Only for short all-caps headings.
+    out property <length> overline: 11px;
+}
+
 /// The web app's icons (web/src/components/icons/Icons.tsx), 24x24 Material paths.
 export global Icons {
     out property <string> notes: "M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7zm2.85 11.1-.85.6V16h-4v-2.3l-.85-.6A4.997 4.997 0 0 1 7 9c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.63-.8 3.16-2.15 4.1z";

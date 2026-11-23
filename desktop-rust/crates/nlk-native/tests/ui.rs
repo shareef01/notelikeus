@@ -512,6 +512,15 @@ fn pin_search_delete_and_undo() {
     assert!(has(&ui, "Unpin"), "the button now offers the opposite");
     press(&ui, "Back to notes");
     assert_eq!(card_titles(&ui).first().map(String::as_str), Some("Trip"));
+    // Narrator hears the pin as words, not only as an icon, and the accessible name stays the title.
+    let card_description = |title: &str| {
+        ElementHandle::find_by_accessible_label(&ui, title)
+            .find(|e| e.accessible_description().is_some_and(|d| !d.is_empty()))
+            .and_then(|e| e.accessible_description())
+            .map(|d| d.to_string())
+    };
+    assert_eq!(card_description("Trip").as_deref(), Some("Pinned. pack"));
+    assert_eq!(card_description("Groceries").as_deref(), Some("milk"));
 
     // Search narrows the grid, and says so when nothing matches.
     ui.set_query("milk".into());

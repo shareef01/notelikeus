@@ -636,7 +636,7 @@ impl Controller {
             has_cover: cover.is_some(),
             cover: cover.unwrap_or_default(),
             more_images: note.images.len().saturating_sub(1) as i32,
-            title: note.title.trim().into(),
+            title: view::card_title(&note.title).into(),
             preview: if note.checklist.is_empty() { view::preview(&note.content).into() } else { SharedString::new() },
             time: view::card_time(note.timestamp, now).into(),
             reminder: note.reminder_timestamp.map_or_else(String::new, reminder_card_time).into(),
