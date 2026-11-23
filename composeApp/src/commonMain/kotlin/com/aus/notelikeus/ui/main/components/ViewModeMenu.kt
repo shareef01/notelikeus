@@ -36,7 +36,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.hideFromAccessibility
@@ -48,6 +50,8 @@ import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Column
+import com.aus.notelikeus.ui.main.adaptivePhoneGridColumns
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.util.AppConfig
@@ -163,6 +167,18 @@ fun ViewModeMenu(
         )
     }
 
+    // At the largest text sizes the phone grid shows one column (NoteGridColumns.kt), which looks just
+    // like List. Say so under Grid, so the choice does not seem to have done nothing. Same inputs as
+    // MainScaffold: the window width inside the grid's padding, and the font scale.
+    val density = LocalDensity.current
+    val windowWidth = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val gridShowsOneColumn = adaptivePhoneGridColumns(
+        requested = NoteViewMode.GRID_2.columns,
+        availableWidth = windowWidth - Spacing.md * 2,
+        gap = Spacing.lg,
+        fontScale = density.fontScale
+    ) == 1
+
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = { expanded = false },
@@ -176,15 +192,24 @@ fun ViewModeMenu(
             val isSelected = isSegmentSelected(viewMode, segment.mode)
             DropdownMenuItem(
                 text = {
-                    Text(
-                        text = stringResource(segment.label),
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
+                    Column {
+                        Text(
+                            text = stringResource(segment.label),
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+                        if (segment.mode == NoteViewMode.GRID_2 && gridShowsOneColumn) {
+                            Text(
+                                text = stringResource(Res.string.view_mode_grid_one_column),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                    )
+                    }
                 },
                 leadingIcon = {
                     Icon(

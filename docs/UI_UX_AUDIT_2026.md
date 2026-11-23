@@ -36,6 +36,10 @@ and "Not a defect" means a suspected issue that turned out to be fine on inspect
 | UX26-12 | P2 | Windows | No Windows **high-contrast** theme handling: `Theme` follows only light/dark, so contrast themes get the app's own palette | `theme.slint` | **Fixed**: `src/contrast.rs` reads `SPI_GETHIGHCONTRAST` and `GetSysColor`. While a contrast theme is on, every `Theme` role maps to a system colour (window, window text, button face, highlight, hot-track), muted text and borders use the text colour, note colours stop tinting cards and the editor, and amber caution washes are dropped. The theme is re-read every 2 s, so switching takes effect without a restart. UI test with negative control |
 | UX26-13 | P3 | Windows | No `prefers-reduced-motion` equivalent, but the Slint app has **no animations**, so nothing needs reducing | grep `animate` → none | Not a defect |
 | UX26-14 | P2 | All | Editor body roles differ: Android 16sp, web and Windows 17px (web 18px at ≥640px) | type tables | **Intentional, documented**: platform reading conventions (§C.2) |
+| UX26-15 | P1 | Windows | At the window's **640×480 minimum**, the filter/sort/view row forced its natural width onto the notes area, so the account button, card timestamps, the view toggle and the **New note** button were clipped past the right edge. Found by the new rendered-window test (follow-up pass) | `tests/screens.rs`: "New note" at (624, 396) in a 640px window; frame `windows-light-640x480.png` | **Fixed**: the row sits in a horizontal `Flickable` and scrolls sideways when the area is narrower, as Android's row does. A first attempt (auto-collapsing the sidebar below 760px) was dropped because Slint flagged it as a binding loop that "may cause panic at runtime". Negative control: moving the button 28px out fails the test |
+| UX26-16 | P2 | Windows | Card previews showed Markdown task syntax raw (`- [ ] Passport`), where the web and Compose cards draw a box or a tick | `view::preview` stripped emphasis and links only | **Fixed**: `- [ ]` → □ and `- [x]` → ✓ (`view::task_line`, tested). Not ☐/☑: the bundled Inter lacks them (cmap read), and the software renderer does not fall back |
+| UX26-17 | P3 | Android | At the largest font size the filter row's view-mode button is off screen; the row scrolls sideways (`horizontalScroll`), but nothing hints that it does | emulator, font scale 2.0: the button is found only after a swipe | **Open**: a fade at the row's edge would make it discoverable |
+| UX26-18 | P3 | Android | At the largest text sizes the phone grid shows one column, which looks exactly like List, so choosing Grid seems to do nothing | follows from UX26-02 | **Fixed**: the Grid entry in the view picker says "One column at this text size" when that applies (same `adaptivePhoneGridColumns` inputs) |
 
 Checked again and still fine: the web audit suite (reflow at 320–1440px, dialog focus traps, palette
 contrast, touch targets) passed 136/136 **before** any change, theme-colour contracts are unchanged,
@@ -150,21 +154,22 @@ Commands run in this session on Windows 11 (results as observed):
 | Shared note-card UI tests | `gradlew :composeApp:desktopTest --tests "com.aus.notelikeus.ui.components.*"` | **Pass**: 62 tests incl. `NoteCardAccessibilityTest`, `NoteCardKeyboardSelectionTest`, `NoteCardTitleWrapTest`, `NoteCardTimestampContrastTest` |
 | Android on device | Debug build with a temporary `.uxcheck` package suffix (reverted, never committed), installed beside the release app on a Pixel 7 (Android, density 460 ≈ 376dp wide), guest mode only | Checklist preview rows at body size; Grid 2 keeps 2 columns at font scale 1.0; label chip touch target 48dp with chip-vs-card routing as intended. Screenshots `docs/audits/2026-11-23/android-pixel7-*.png`. The release app (v2.7.0) and its data were not touched |
 
-### Not verified here (manual checklist)
+### Follow-up verification (same day)
 
-- **Windows runtime rendering** at 800×600 / 1024×768 / 1280×720 / 1920×1080 and 100–200% scaling.
-  No screen-capture tool was available in this session. The Slint changes are compile- and
-  testing-backend-verified (layout, accessibility tree), but not inspected visually. Check: card
-  timestamps (now 12px) don't crowd the pin/bell icons; editor title (28px) wraps cleanly; Ctrl K hint
-  fits its 22px pill at 200%.
-- **Narrator** reading of the new card description on a real Windows session.
-- **Android at enlarged system font size**: Settings → Display → Font size at maximum on the Pixel 7;
-  Grid 2 should show 1 column (cards stay readable) and return to 2 at the default size. Also TalkBack
-  on the checklist rows. Both need a system setting changed, which this session did not do.
-- **Windows contrast themes on screen**: the UI test sets the system palette directly; the live
-  `SPI_GETHIGHCONTRAST` path ran (returning "off") on every window opened by the tests, but no
-  contrast theme was switched on in this session.
-- **Web at real browser zoom 200%** and OS text scaling. Playwright covers widths, not zoom.
+| Check | How | Result |
+|---|---|---|
+| Windows rendering | New `tests/screens.rs`: the real window drawn by Slint's software renderer (testing backend, `renderer-software`), light and dark, at 800×600, 1024×768, 1280×720, 1920×1080, 960×540 (1920×1080 at 200%), 853×480 (1280×720 at 150%) and 640×480 (minimum); plus a dark contrast theme. Asserts frame size, "New note" and the search field inside the window, and the contrast canvas colour. Runs in CI (`cargo test --workspace`) | **Pass** after UX26-15's fix. Frames in `docs/audits/2026-11-23/windows/`, inspected: 12px timestamps sit clear of the pin icon; contrast theme draws outlined cards in system colours |
+| Windows scaling | Covered as the logical size scaling produces, which is what decides layout | 2× pixel density itself (text crispness) not drawn: the testing backend does not apply a changed scale factor to its snapshot buffer consistently |
+| Android font scale | Emulator (API 36, 1080×2400 @420dpi ≈ 411dp), guest mode, font scale 1.0 / 1.3 / 2.0, columns counted from card positions | 2 / 2 / **1** columns, as `adaptivePhoneGridColumns` predicts; reset to 1.0 afterwards. Screens `android-emu-fontscale-*.png` |
+| Android checklist semantics | Accessibility tree on the emulator | Each checklist row exposes "Unchecked"/"Checked" then its text, merged under the card. Spoken TalkBack output not recorded |
+| Web 200% zoom | Playwright at 640×450 CSS px, 2× DPR (a 1280×900 window at 200%); 640 added to `reflow.spec.ts` | No horizontal overflow on the notes screen or in the editor; 16/16 reflow tests pass. Screens `web-zoom200-*.png` |
+
+### Not verified (needs a person)
+
+- **Narrator** reading of the card description on a real Windows session, and spoken TalkBack output.
+- **Windows contrast themes switched on in Windows**: the rendered test sets the system palette directly;
+  the live `SPI_GETHIGHCONTRAST` path ran (returning "off") but no contrast theme was turned on.
+- **Text crispness at 150–200% display scaling** on a real monitor.
 
 ---
 
@@ -176,8 +181,7 @@ Commands run in this session on Windows 11 (results as observed):
    identifiable by its label and not by its tint.
 2. **Android editor title vs web/Windows**: keep it under review with real-device screenshots; the
    difference is justified (§C.2), but should be confirmed with users.
-3. **Rust visual regression**: Slint's testing backend can render to a buffer (`i-slint-backend-testing`
-   with the software renderer). A screenshot test at 800×600 and 1920×1080 would make UX26-03/04/07
-   checkable in CI.
-4. **Phone grid setting copy**: when Grid 3–5 is reduced to 2 columns on a phone, the view picker
-   still shows the chosen mode. A hint ("shows 2 columns at this width") would make it explainable.
+3. ~~Rust visual regression~~: done, `tests/screens.rs` (layout assertions, no reference images, so a
+   font or anti-aliasing change cannot fail it).
+4. ~~Phone grid setting copy~~: done for the reachable case (UX26-18).
+5. **UX26-17**: a scroll affordance on Android's filter row at large font sizes.

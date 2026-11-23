@@ -11,7 +11,8 @@ import { expect, test } from '@playwright/test';
  *
  * Entry screen and guest-mode notes screen both, at every width the design reviews against.
  */
-const WIDTHS = [320, 360, 390, 768, 1024, 1440];
+// 640 is a 1280px window at 200% browser zoom (WCAG 1.4.4 / 1.4.10); 320 is the same window at 400%.
+const WIDTHS = [320, 360, 390, 640, 768, 1024, 1440];
 
 async function horizontalOverflow(page: import('@playwright/test').Page): Promise<number> {
   return page.evaluate(() => {
