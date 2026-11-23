@@ -181,6 +181,7 @@
     <string name="view_mode_grid_2">Grid</string>
     <string name="view_mode_list">List</string>
     <string name="view_mode_compact">Compact</string>
+    <string name="view_mode_grid_one_column">One column at this text size</string>
     <string name="app_lock_title">App lock</string>
     <string name="app_lock_subtitle">Require biometrics when opening the app</string>
     <string name="app_lock_message">Authenticate to access your notes</string>

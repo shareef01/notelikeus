@@ -249,6 +249,10 @@ pub fn card_title(title: &str) -> String {
 /// most a few lines and a few hundred characters, with an ellipsis when something was cut.
 pub fn preview(content: &str) -> String {
     let stripped = strip_markdown(content);
+    let stripped = stripped.lines().map(task_line).collect::<Vec<_>>().join(
+        "
+",
+    );
     let lines: Vec<&str> = stripped.trim_start().lines().collect();
     let mut kept = Vec::new();
     let mut chars = 0;
@@ -273,6 +277,25 @@ pub fn preview(content: &str) -> String {
         text.push('…');
     }
     text
+}
+
+/// A Markdown task line as the card shows it: `- [ ] milk` becomes `□ milk` and `- [x] milk` becomes
+/// `✓ milk`, as the web and Compose cards draw a box or a tick instead of the syntax. These two rather
+/// than the ballot-box pair: the bundled Inter has them, and the software renderer does not fall back.
+fn task_line(line: &str) -> String {
+    let indent = &line[..line.len() - line.trim_start().len()];
+    let rest = line.trim_start();
+    for bullet in ["- ", "* ", "+ "] {
+        if let Some(item) = rest.strip_prefix(bullet) {
+            if let Some(text) = item.strip_prefix("[ ] ") {
+                return format!("{indent}□ {text}");
+            }
+            if let Some(text) = item.strip_prefix("[x] ").or_else(|| item.strip_prefix("[X] ")) {
+                return format!("{indent}✓ {text}");
+            }
+        }
+    }
+    line.to_string()
 }
 
 /// When a note was last edited, as the web app's cards say it: the time today, the day this year,
@@ -390,6 +413,37 @@ mod tests {
         assert_eq!(card_height(&list), card_height(&plain) + 7);
         let labelled = NoteView { labels: vec!["Travel".into()], ..plain.clone() };
         assert!(card_height(&labelled) > card_height(&plain));
+    }
+
+    #[test]
+    fn task_syntax_shows_as_a_box_or_a_tick() {
+        assert_eq!(
+            preview(
+                "- [ ] Passport
+- [x] Phone charger
+* [X] Rain jacket"
+            ),
+            "□ Passport
+✓ Phone charger
+✓ Rain jacket"
+        );
+        assert_eq!(preview("  - [ ] indented"), "□ indented", "the leading blank is trimmed as before");
+        assert_eq!(
+            preview(
+                "a
+  - [ ] nested"
+            ),
+            "a
+  □ nested"
+        );
+        assert_eq!(
+            preview(
+                "- plain bullet
+[ ] not a task"
+            ),
+            "- plain bullet
+[ ] not a task"
+        );
     }
 
     #[test]

@@ -2080,79 +2080,87 @@ export component AppWindow inherits Window {
                 }
 
                 // Filter, sort and view-density sub-bar matching Kotlin FilterSummaryRow.kt.
-                HorizontalLayout {
-                    padding-left: 24px;
-                    padding-right: 24px;
-                    padding-bottom: 14px;
-                    spacing: 8px;
-                    alignment: start;
-                    PillButton {
-                        y: (parent.height - self.height) / 2;
-                        text: root.filter-count > 0 ? "Filters · " + root.filter-count : "Filters";
-                        label: "Filters";
-                        icon: Icons.filter;
-                        clicked => { root.filters-open = true; }
-                    }
-                    if root.filters-active: PillButton {
-                        y: (parent.height - self.height) / 2;
-                        text: "Clear filters";
-                        clicked => { root.filters-cleared(); }
-                    }
-                    HorizontalLayout {
-                        spacing: 6px;
-                        FilterChip {
+                // In a Flickable so the row scrolls sideways when the notes area is narrower than it, as on
+                // Android, instead of forcing its width onto the window: at the 640px minimum the row used to
+                // push the account button, card timestamps and the New note button past the edge (tests/screens.rs).
+                Flickable {
+                    height: filter-row.preferred-height;
+                    content-width: max(self.width, filter-row.preferred-width);
+                    content-height: self.height;
+                    filter-row := HorizontalLayout {
+                        padding-left: 24px;
+                        padding-right: 24px;
+                        padding-bottom: 14px;
+                        spacing: 8px;
+                        alignment: start;
+                        PillButton {
                             y: (parent.height - self.height) / 2;
-                            text: "Manual";
-                            on: root.sort-order == 0;
-                            clicked => { root.sort-picked(0); }
+                            text: root.filter-count > 0 ? "Filters · " + root.filter-count : "Filters";
+                            label: "Filters";
+                            icon: Icons.filter;
+                            clicked => { root.filters-open = true; }
                         }
-                        FilterChip {
+                        if root.filters-active: PillButton {
                             y: (parent.height - self.height) / 2;
-                            text: "Newest";
-                            on: root.sort-order == 1;
-                            clicked => { root.sort-picked(1); }
+                            text: "Clear filters";
+                            clicked => { root.filters-cleared(); }
                         }
-                        FilterChip {
-                            y: (parent.height - self.height) / 2;
-                            text: "Oldest";
-                            on: root.sort-order == 2;
-                            clicked => { root.sort-picked(2); }
-                        }
-                    }
-                    Rectangle {
-                        y: (parent.height - self.height) / 2;
-                        height: 36px;
-                        width: density-seg.preferred-width;
-                        border-radius: 18px;
-                        background: Theme.surface-variant.transparentize(0.3);
-                        border-width: 1px;
-                        border-color: Theme.outline;
-                        density-seg := HorizontalLayout {
-                            padding: 3px;
-                            spacing: 2px;
-                            IconButton {
-                                size: 30px;
-                                icon: Icons.list-view;
-                                label: "List view";
-                                filled: root.view-density == 1;
-                                fg-color: root.view-density == 1 ? Theme.background : Theme.on-surface-secondary;
-                                clicked => { root.density-picked(1); }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            FilterChip {
+                                y: (parent.height - self.height) / 2;
+                                text: "Manual";
+                                on: root.sort-order == 0;
+                                clicked => { root.sort-picked(0); }
                             }
-                            IconButton {
-                                size: 30px;
-                                icon: Icons.grid-view;
-                                label: "Grid view";
-                                filled: root.view-density == 0;
-                                fg-color: root.view-density == 0 ? Theme.background : Theme.on-surface-secondary;
-                                clicked => { root.density-picked(0); }
+                            FilterChip {
+                                y: (parent.height - self.height) / 2;
+                                text: "Newest";
+                                on: root.sort-order == 1;
+                                clicked => { root.sort-picked(1); }
                             }
-                            IconButton {
-                                size: 30px;
-                                icon: Icons.compact-view;
-                                label: "Compact view";
-                                filled: root.view-density == 2;
-                                fg-color: root.view-density == 2 ? Theme.background : Theme.on-surface-secondary;
-                                clicked => { root.density-picked(2); }
+                            FilterChip {
+                                y: (parent.height - self.height) / 2;
+                                text: "Oldest";
+                                on: root.sort-order == 2;
+                                clicked => { root.sort-picked(2); }
+                            }
+                        }
+                        Rectangle {
+                            y: (parent.height - self.height) / 2;
+                            height: 36px;
+                            width: density-seg.preferred-width;
+                            border-radius: 18px;
+                            background: Theme.surface-variant.transparentize(0.3);
+                            border-width: 1px;
+                            border-color: Theme.outline;
+                            density-seg := HorizontalLayout {
+                                padding: 3px;
+                                spacing: 2px;
+                                IconButton {
+                                    size: 30px;
+                                    icon: Icons.list-view;
+                                    label: "List view";
+                                    filled: root.view-density == 1;
+                                    fg-color: root.view-density == 1 ? Theme.background : Theme.on-surface-secondary;
+                                    clicked => { root.density-picked(1); }
+                                }
+                                IconButton {
+                                    size: 30px;
+                                    icon: Icons.grid-view;
+                                    label: "Grid view";
+                                    filled: root.view-density == 0;
+                                    fg-color: root.view-density == 0 ? Theme.background : Theme.on-surface-secondary;
+                                    clicked => { root.density-picked(0); }
+                                }
+                                IconButton {
+                                    size: 30px;
+                                    icon: Icons.compact-view;
+                                    label: "Compact view";
+                                    filled: root.view-density == 2;
+                                    fg-color: root.view-density == 2 ? Theme.background : Theme.on-surface-secondary;
+                                    clicked => { root.density-picked(2); }
+                                }
                             }
                         }
                     }
