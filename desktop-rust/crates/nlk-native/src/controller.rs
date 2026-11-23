@@ -88,6 +88,8 @@ pub struct Controller {
     reminder_timer: Timer,
     reminder_heartbeat: Timer,
     notification_timer: Timer,
+    /// Re-reads the Windows contrast theme every couple of seconds (src/contrast.rs).
+    contrast_timer: Timer,
     fired_reminders: RefCell<HashSet<(String, i64)>>,
     reminders_initialized: Cell<bool>,
     scheduled_reminder: Cell<Option<i64>>,
@@ -192,6 +194,39 @@ fn view_of(note: &NoteView) -> View {
     }
 }
 
+/// Applies a Windows contrast theme's colours to the window, or returns it to the app palette with `None`.
+/// Writes only on a change, so the poll does not re-render an unchanged window.
+pub fn apply_contrast(ui: &AppWindow, colors: Option<crate::contrast::SystemColors>) {
+    let theme = ui.global::<crate::Theme>();
+    let Some(c) = colors else {
+        if theme.get_high_contrast() {
+            theme.set_high_contrast(false);
+        }
+        return;
+    };
+    let rgb = |colorref: u32| {
+        let (r, g, b) = crate::contrast::rgb(colorref);
+        Color::from_rgb_u8(r, g, b)
+    };
+    let palette = crate::ContrastPalette {
+        window: rgb(c.window),
+        window_text: rgb(c.window_text),
+        button_face: rgb(c.button_face),
+        button_text: rgb(c.button_text),
+        highlight: rgb(c.highlight),
+        highlight_text: rgb(c.highlight_text),
+        gray_text: rgb(c.gray_text),
+        hotlight: rgb(c.hotlight),
+        dark: crate::contrast::is_dark(c.window),
+    };
+    if theme.get_contrast() != palette {
+        theme.set_contrast(palette);
+    }
+    if !theme.get_high_contrast() {
+        theme.set_high_contrast(true);
+    }
+}
+
 fn argb(value: i32) -> Color {
     Color::from_argb_encoded(value as u32)
 }
@@ -240,6 +275,7 @@ impl Controller {
             reminder_timer: Timer::default(),
             reminder_heartbeat: Timer::default(),
             notification_timer: Timer::default(),
+            contrast_timer: Timer::default(),
             fired_reminders: RefCell::default(),
             reminders_initialized: Cell::new(false),
             scheduled_reminder: Cell::new(None),
@@ -259,6 +295,7 @@ impl Controller {
         ui.set_theme_mode(initial_settings.theme_mode);
         ui.set_theme_accent(initial_settings.accent);
         ui.set_theme_amoled(initial_settings.amoled);
+        apply_contrast(ui, crate::contrast::current());
         ui.set_sort_order(initial_settings.sort_order);
         ui.set_view_density(initial_settings.view_density);
         ui.set_sidebar_collapsed(initial_settings.sidebar_collapsed);
@@ -408,6 +445,16 @@ impl Controller {
                     return c.on_window_close_requested();
                 }
                 slint::CloseRequestResponse::HideWindow
+            });
+        }
+        if mode == Mode::Threads {
+            // Turning a contrast theme on or off, or switching between them, takes effect within two
+            // seconds without a restart.
+            let weak = controller.ui.clone();
+            controller.contrast_timer.start(TimerMode::Repeated, Duration::from_secs(2), move || {
+                if let Some(ui) = weak.upgrade() {
+                    apply_contrast(&ui, crate::contrast::current());
+                }
             });
         }
         if mode == Mode::Threads {

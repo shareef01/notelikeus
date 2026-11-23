@@ -26,7 +26,7 @@ rfd = "0.15"
 
 [target.'cfg(windows)'.dependencies]
 raw-window-handle = "0.6"
-windows-sys = { workspace = true, features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Shell"] }
+windows-sys = { workspace = true, features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_UI_Accessibility", "Win32_Graphics_Gdi"] }
 
 [build-dependencies]
 slint-build = "=1.19.0"

@@ -96,6 +96,7 @@ fn the_native_window_end_to_end() {
     dual_content_and_checklist_preserved_across_ui_edits();
     diagnostics_dialog_and_non_leak_check();
     cloud_wipe_banner_and_modal_shortcut_gating();
+    a_windows_contrast_theme_replaces_the_palette();
 }
 
 fn appearance_density_sort_and_sidebar_persistence() {
@@ -780,5 +781,48 @@ fn pictures_on_notes() {
     press(&ui, "Picture 1 of 1");
     assert!(ui.get_viewer_open() && ui.get_viewer_read_only());
     assert!(!has(&ui, "Remove image"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Under a Windows contrast theme every role takes the user's system colour and note colours stop
+/// tinting cards; turning the theme off restores the app palette.
+fn a_windows_contrast_theme_replaces_the_palette() {
+    use nlk_native::contrast::SystemColors;
+    use slint::{Color, ComponentHandle};
+    let dir = temp_dir("contrast");
+    let (ui, _controller) = open(&dir);
+    ui.set_theme_mode(1);
+    let theme = ui.global::<nlk_native::Theme>();
+    let light_background = theme.get_background();
+    assert!(theme.get_note_tint());
+
+    // A dark contrast theme: black window, white text, cyan selection, yellow links (COLORREFs are BGR).
+    let colors = SystemColors {
+        window: 0x0000_0000,
+        window_text: 0x00FF_FFFF,
+        button_face: 0x0000_0000,
+        button_text: 0x00FF_FFFF,
+        highlight: 0x00FF_FF00,
+        highlight_text: 0x0000_0000,
+        gray_text: 0x0080_8080,
+        hotlight: 0x0000_FFFF,
+    };
+    nlk_native::controller::apply_contrast(&ui, Some(colors));
+    assert!(theme.get_high_contrast());
+    assert!(theme.get_dark(), "a black window reads as dark whatever the app's own theme setting is");
+    assert_eq!(theme.get_background(), Color::from_rgb_u8(0, 0, 0));
+    assert_eq!(theme.get_surface(), Color::from_rgb_u8(0, 0, 0));
+    assert_eq!(theme.get_on_surface(), Color::from_rgb_u8(255, 255, 255));
+    assert_eq!(theme.get_muted(), Color::from_rgb_u8(255, 255, 255), "no grey secondary text under a contrast theme");
+    assert_eq!(theme.get_outline(), Color::from_rgb_u8(255, 255, 255), "borders are drawn in the text colour");
+    assert_eq!(theme.get_accent(), Color::from_rgb_u8(0, 255, 255));
+    assert_eq!(theme.get_danger(), Color::from_rgb_u8(255, 255, 0));
+    assert!(!theme.get_note_tint(), "note colours do not tint cards under a contrast theme");
+    assert_eq!(theme.get_caution_fill().alpha(), 0);
+
+    nlk_native::controller::apply_contrast(&ui, None);
+    assert!(!theme.get_high_contrast());
+    assert_eq!(theme.get_background(), light_background);
+    assert!(theme.get_note_tint());
     std::fs::remove_dir_all(dir).unwrap();
 }

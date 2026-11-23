@@ -7,6 +7,8 @@
 
 import { AboutSlint, ScrollView, TextEdit } from "std-widgets.slint";
 import { Theme, Type, Icons, Icon, IconButton, BrandMark } from "theme.slint";
+// Re-exported so Rust can set the contrast theme (src/contrast.rs) and tests can read the roles.
+export { Theme, ContrastPalette } from "theme.slint";
 import "fonts/inter_regular.ttf";
 import "fonts/inter_medium.ttf";
 import "fonts/inter_semibold.ttf";
@@ -204,7 +206,7 @@ component ReviewVersion inherits Rectangle {
         if root.lines.length == 0: Text { text: "(empty)"; font-size: Type.body; color: Theme.muted; }
         for line in root.lines: Rectangle {
             border-radius: 4px;
-            background: line.changed ? #f59e0b.transparentize(0.8) : transparent;
+            background: line.changed ? Theme.caution-fill.transparentize(0.8) : transparent;
             accessible-role: text;
             accessible-label: line.text + (line.changed ? " (only in this version)" : "");
             HorizontalLayout {
@@ -484,12 +486,14 @@ component Card inherits FocusScope {
     in property <NoteCard> card;
     in property <bool> compact: false;
     callback clicked();
-    property <color> fg: card.has-color ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
-    property <color> fg-secondary: card.has-color ? (Theme.dark ? #f0f0f0 : #292927) : Theme.on-surface-secondary;
-    property <color> fg-muted: card.has-color ? (Theme.dark ? #e5e5e5 : #3b3b38) : Theme.muted;
-    property <color> chip-bg: card.has-color ? (Theme.dark ? #ffffff24 : #00000018) : Theme.on-surface.transparentize(0.9);
-    property <color> cb-bg: card.has-color ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
-    property <color> cb-tick: card.has-color ? (Theme.dark ? #151515 : #ffffff) : Theme.background;
+    // A note colour tints the card, except under a Windows contrast theme (Theme.note-tint).
+    property <bool> tinted: card.has-color && Theme.note-tint;
+    property <color> fg: root.tinted ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
+    property <color> fg-secondary: root.tinted ? (Theme.dark ? #f0f0f0 : #292927) : Theme.on-surface-secondary;
+    property <color> fg-muted: root.tinted ? (Theme.dark ? #e5e5e5 : #3b3b38) : Theme.muted;
+    property <color> chip-bg: root.tinted ? (Theme.dark ? #ffffff24 : #00000018) : Theme.on-surface.transparentize(0.9);
+    property <color> cb-bg: root.tinted ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
+    property <color> cb-tick: root.tinted ? (Theme.dark ? #151515 : #ffffff) : Theme.background;
     preferred-width: card-layout.preferred-width;
     preferred-height: card-layout.preferred-height;
     accessible-role: button;
@@ -518,8 +522,8 @@ component Card inherits FocusScope {
         border-width: root.has-focus ? 2px : 1px;
         // A coloured card's hover edge was white at 20% in both themes, which vanishes on a light
         // pastel; a dark edge in light, a light edge in dark, so hover reads on every note colour.
-        border-color: root.has-focus ? Theme.accent : (card.has-color ? (touch.has-hover ? (Theme.dark ? #ffffff40 : #00000033) : transparent) : (touch.has-hover ? Theme.muted : Theme.outline));
-        background: card.has-color ? (Theme.dark ? card.color-dark : card.color-light) : Theme.surface;
+        border-color: root.has-focus ? Theme.accent : (root.tinted ? (touch.has-hover ? (Theme.dark ? #ffffff40 : #00000033) : transparent) : (touch.has-hover ? Theme.muted : Theme.outline));
+        background: root.tinted ? (Theme.dark ? card.color-dark : card.color-light) : Theme.surface;
         // The restrained 3dp hover lift of the design system, not an 18px glow.
         drop-shadow-blur: touch.has-hover ? 8px : 0px;
         drop-shadow-offset-y: touch.has-hover ? 2px : 0px;
@@ -1166,6 +1170,8 @@ component EditorSheet inherits Rectangle {
     in property <bool> has-color;
     in property <color> color-light;
     in property <color> color-dark;
+    // The note colour, except under a Windows contrast theme (Theme.note-tint).
+    property <bool> tinted: root.has-color && Theme.note-tint;
     in property <[string]> labels;
     in property <bool> is-checklist;
     in property <[EditRow]> rows;
@@ -1199,18 +1205,18 @@ component EditorSheet inherits Rectangle {
     callback format-bullet(int, int);
     callback format-link(int, int);
     property <bool> read-only: root.mode == View.trash;
-    property <color> fg: root.has-color ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
-    property <color> fg-secondary: root.has-color ? (Theme.dark ? #f0f0f0 : #292927) : Theme.on-surface-secondary;
-    property <color> fg-muted: root.has-color ? (Theme.dark ? #e5e5e5 : #3b3b38) : Theme.muted;
-    property <color> chip-bg: root.has-color ? (Theme.dark ? #ffffff24 : #00000018) : Theme.on-surface.transparentize(0.9);
-    property <color> cb-bg: root.has-color ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
-    property <color> cb-tick: root.has-color ? (Theme.dark ? #151515 : #ffffff) : Theme.background;
-    property <color> divider: root.has-color ? (Theme.dark ? #ffffff28 : #00000022) : Theme.outline;
+    property <color> fg: root.tinted ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
+    property <color> fg-secondary: root.tinted ? (Theme.dark ? #f0f0f0 : #292927) : Theme.on-surface-secondary;
+    property <color> fg-muted: root.tinted ? (Theme.dark ? #e5e5e5 : #3b3b38) : Theme.muted;
+    property <color> chip-bg: root.tinted ? (Theme.dark ? #ffffff24 : #00000018) : Theme.on-surface.transparentize(0.9);
+    property <color> cb-bg: root.tinted ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
+    property <color> cb-tick: root.tinted ? (Theme.dark ? #151515 : #ffffff) : Theme.background;
+    property <color> divider: root.tinted ? (Theme.dark ? #ffffff28 : #00000022) : Theme.outline;
     forward-focus: body-input;
     border-radius: Theme.radius-sheet;
     border-width: 1px;
     border-color: Theme.outline;
-    background: has-color ? (Theme.dark ? color-dark : color-light) : Theme.surface;
+    background: root.tinted ? (Theme.dark ? color-dark : color-light) : Theme.surface;
     drop-shadow-blur: 32px;
     drop-shadow-color: #00000066;
 
@@ -1303,7 +1309,7 @@ component EditorSheet inherits Rectangle {
 
         // As the web app's: a copy kept from a sync conflict says so, and offers the comparison.
         if root.conflict && !root.read-only: Rectangle {
-            background: #f59e0b.transparentize(0.84);
+            background: Theme.caution-fill.transparentize(0.84);
             HorizontalLayout {
                 padding: 10px;
                 padding-left: 40px;
@@ -1425,7 +1431,7 @@ component EditorSheet inherits Rectangle {
                     height: 40px;
                     width: tools.preferred-width;
                     border-radius: Theme.radius-md;
-                    background: root.has-color ? root.chip-bg : Theme.on-surface.transparentize(0.94);
+                    background: root.tinted ? root.chip-bg : Theme.on-surface.transparentize(0.94);
                     border-width: 1px;
                     border-color: root.divider;
                     tools := HorizontalLayout {
@@ -2182,7 +2188,7 @@ export component AppWindow inherits Window {
 
                 // Cloud-wipe caution banner when another device erased cloud data.
                 if root.uploads-blocked-after-wipe && root.account-mode == 2: Rectangle {
-                    background: #f59e0b.transparentize(0.84);
+                    background: Theme.caution-fill.transparentize(0.84);
                     HorizontalLayout {
                         padding: 12px;
                         padding-left: 24px;
@@ -3398,7 +3404,7 @@ export component AppWindow inherits Window {
                             width: 20px;
                             height: 12px;
                             border-radius: 3px;
-                            background: #f59e0b.transparentize(0.8);
+                            background: Theme.caution-fill.transparentize(0.8);
                         }
                         Text {
                             text: "Highlighted lines appear in only one version.";

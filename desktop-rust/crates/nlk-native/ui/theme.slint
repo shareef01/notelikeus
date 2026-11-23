@@ -3,54 +3,84 @@
 
 import { Palette } from "std-widgets.slint";
 
+/// The system colours of an active Windows contrast theme, set from Rust (src/contrast.rs).
+export struct ContrastPalette {
+    window: color,
+    window-text: color,
+    button-face: color,
+    button-text: color,
+    highlight: color,
+    highlight-text: color,
+    gray-text: color,
+    hotlight: color,
+    /// Whether `window` is dark, by luminance: a contrast theme can be light or dark.
+    dark: bool,
+}
+
 export global Theme {
     in-out property <int> mode: 0; // 0 follows Windows, 1 light, 2 dark.
     in-out property <int> accent-mode: 0; // 0 neutral/amber default, 1 blue, 2 green.
     in-out property <bool> amoled: false;
+    /// On while a Windows contrast theme is active. Every role below then takes the user's system
+    /// colour instead of the app palette, and note cards drop their tint (`note-tint`).
+    in-out property <bool> high-contrast: false;
+    in-out property <ContrastPalette> contrast;
 
-    out property <bool> dark: mode == 2 ? true : mode == 1 ? false : Palette.color-scheme == ColorScheme.dark;
+    out property <bool> dark: high-contrast ? contrast.dark : mode == 2 ? true : mode == 1 ? false : Palette.color-scheme == ColorScheme.dark;
 
     // 7 canonical themes from contracts/design/theme-colors.json.
-    out property <color> background: !dark ? #f4f4f2
+    out property <color> background: high-contrast ? contrast.window
+        : !dark ? #f4f4f2
         : amoled ? #000000
         : accent-mode == 1 ? #070a12
         : accent-mode == 2 ? #090e0a
         : #101010;
-    out property <color> surface: !dark ? #ffffff
+    out property <color> surface: high-contrast ? contrast.window
+        : !dark ? #ffffff
         : amoled ? #000000
         : accent-mode == 1 ? #0c111c
         : accent-mode == 2 ? #0f1610
         : #1b1b1b;
-    out property <color> surface-variant: !dark ? #ececea
+    out property <color> surface-variant: high-contrast ? contrast.button-face
+        : !dark ? #ececea
         : accent-mode == 1 ? #141b2a
         : accent-mode == 2 ? #182119
         : amoled ? #121212
         : #272727;
-    out property <color> on-surface: !dark ? #151515
+    out property <color> on-surface: high-contrast ? contrast.window-text
+        : !dark ? #151515
         : accent-mode == 1 ? #dce8ff
         : accent-mode == 2 ? #d6f0d6
         : amoled ? #ffffff
         : #ededed;
-    out property <color> on-surface-secondary: !dark ? #4d4d4b
+    out property <color> on-surface-secondary: high-contrast ? contrast.window-text
+        : !dark ? #4d4d4b
         : accent-mode == 1 ? #9aaccc
         : accent-mode == 2 ? #9ab89e
         : amoled ? #a8a8a8
         : #b0b0b0;
-    out property <color> muted: !dark ? #666663
+    out property <color> muted: high-contrast ? contrast.window-text
+        : !dark ? #666663
         : accent-mode == 1 ? #8a9cb8
         : accent-mode == 2 ? #8aa48e
         : amoled ? #999999
         : #949494;
-    out property <color> outline: !dark ? #d6d6d3
+    out property <color> outline: high-contrast ? contrast.window-text
+        : !dark ? #d6d6d3
         : accent-mode == 1 ? #283448
         : accent-mode == 2 ? #2a382c
         : amoled ? #262626
         : #323232;
-    out property <color> accent: !dark
+    out property <color> accent: high-contrast ? contrast.highlight : !dark
         ? (accent-mode == 2 ? #1b6b2e : #0b57d0)
         : (accent-mode == 2 ? #81c995 : #a8c7fa);
-    out property <color> danger: dark ? #f2b8b5 : #b3261e;
-    out property <color> hover: dark ? #ffffff0d : #0000000a;
+    out property <color> danger: high-contrast ? contrast.hotlight : dark ? #f2b8b5 : #b3261e;
+    out property <color> hover: high-contrast ? contrast.highlight.transparentize(0.6) : dark ? #ffffff0d : #0000000a;
+    /// Note colours tint cards and the editor only outside a contrast theme.
+    out property <bool> note-tint: !high-contrast;
+    /// The amber wash behind caution text (changed lines, conflict banners); none in a contrast theme,
+    /// where the words carry the meaning on the user's own background.
+    out property <color> caution-fill: high-contrast ? transparent : #f59e0b;
     out property <color> scrim: #00000099;
 
     // Shape.

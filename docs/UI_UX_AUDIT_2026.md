@@ -33,7 +33,7 @@ and "Not a defect" means a suspected issue that turned out to be fine on inspect
 | UX26-09 | P3 | Web | Text below the 12px metadata size outside overlines: drawer subtitle 11px, attachment count 11px, `Ctrl K` hint 10px | grep `text-[1[01]px]` | **Fixed**: 12 / 12 / 11px. `typography.spec.ts` sets an 11px floor for all visible text on the notes screen and in the editor |
 | UX26-10 | — | Android | "Label chips are too small to tap" (earlier finding). The chips draw 22–24dp tall. | `NoteCard.kt` chips use `clickable` | **Not a defect, by inspection**: Compose extends a pointer target smaller than `minimumTouchTargetSize` (48dp) for touch input in hit testing (`hitNear`) without enlarging layout. Taps up to ~12dp outside the pill reach the chip, not the card. Not checked on a device (§E) |
 | UX26-11 | P3 | Android | Compact (single-column dense) cards use 15sp titles and an 11sp timestamp. Documented in `DESIGN_SYSTEM.md` §3 ("11 in compact") | `NoteCard.kt` | **Kept**: a deliberate, documented density choice |
-| UX26-12 | P2 | Windows | No Windows **high-contrast** theme handling: `Theme` follows only light/dark, so contrast themes get the app's own palette | `theme.slint` | **Open**: needs a platform query from Rust (not exposed by Slint 1.19); see §F |
+| UX26-12 | P2 | Windows | No Windows **high-contrast** theme handling: `Theme` follows only light/dark, so contrast themes get the app's own palette | `theme.slint` | **Fixed**: `src/contrast.rs` reads `SPI_GETHIGHCONTRAST` and `GetSysColor`. While a contrast theme is on, every `Theme` role maps to a system colour (window, window text, button face, highlight, hot-track), muted text and borders use the text colour, note colours stop tinting cards and the editor, and amber caution washes are dropped. The theme is re-read every 2 s, so switching takes effect without a restart. UI test with negative control |
 | UX26-13 | P3 | Windows | No `prefers-reduced-motion` equivalent, but the Slint app has **no animations**, so nothing needs reducing | grep `animate` → none | Not a defect |
 | UX26-14 | P2 | All | Editor body roles differ: Android 16sp, web and Windows 17px (web 18px at ≥640px) | type tables | **Intentional, documented**: platform reading conventions (§C.2) |
 
@@ -56,7 +56,8 @@ and every client loads Inter (Compose resources, Slint `import "fonts/…"` + `d
 | Windows | `desktop-rust/crates/nlk-native/ui/theme.slint` | `export global Type` with 11 semantic roles |
 | Windows | `desktop-rust/crates/nlk-native/ui/app.slint` | All 91 `font-size`s → `Type.*`; editor title 28px/600; card status description; hover edge and shadow |
 | Windows | `desktop-rust/crates/nlk-native/src/view.rs`, `controller.rs` | `card_title` cap + unit test |
-| Windows | `desktop-rust/crates/nlk-native/tests/ui.rs` | Asserts the card description ("Pinned. pack") and an unpinned one ("milk") |
+| Windows | `desktop-rust/crates/nlk-native/tests/ui.rs` | Asserts the card description ("Pinned. pack") and an unpinned one ("milk"); a contrast theme on/off scenario checks every mapped role |
+| Windows | `desktop-rust/crates/nlk-native/src/contrast.rs` (new), `controller.rs`, `ui/theme.slint`, `ui/app.slint`, `Cargo.toml` | High-contrast support (UX26-12): system-colour palette, `Theme.high-contrast` / `note-tint` / `caution-fill`, a 2 s poll, `windows-sys` features `Win32_UI_Accessibility` and `Win32_Graphics_Gdi` |
 | Web | `web/src/styles/globals.css` | `--text-editor-title(-lg)`, `--text-editor-body(-lg)` tokens; `.rich-note-body` uses them |
 | Web | `web/src/screens/EditorScreen.tsx` | Title uses `text-editor-title sm:text-editor-title-lg` |
 | Web | `SideDrawer.tsx`, `NoteCard.tsx`, `TopBar.tsx` | 11→12px, 11→12px, 10→11px |
@@ -161,14 +162,19 @@ Commands run in this session on Windows 11 (results as observed):
   keeps the chosen count; at font scale 1.5 / 2.0 a 360dp phone shows 1 column; checklist rows at 15sp
   don't push cards taller than looks right; TalkBack still reads the checklist state per row.
 - **Label-chip hit area** (UX26-10) by tapping just outside a chip on a device.
+- **Windows contrast themes on screen**: the UI test sets the system palette directly; the live
+  `SPI_GETHIGHCONTRAST` path ran (returning "off") on every window opened by the tests, but no
+  contrast theme was switched on in this session.
 - **Web at real browser zoom 200%** and OS text scaling. Playwright covers widths, not zoom.
 
 ---
 
 ## E. Remaining issues and follow-ups
 
-1. **Windows high-contrast themes** (UX26-12): read `SystemParametersInfo(SPI_GETHIGHCONTRAST)` in Rust,
-   expose a `Theme.high-contrast` flag, and map roles to system colours.
+1. **Windows high-contrast themes on a real desktop** (UX26-12 is implemented): turn on each built-in
+   contrast theme (Aquatic, Desert, Dusk, Night sky) and check focus rings, selected nav rows, the
+   picture viewer (it keeps its own dark overlay on purpose) and that a coloured note is still
+   identifiable by its label and not by its tint.
 2. **Android editor title vs web/Windows**: keep it under review with real-device screenshots; the
    difference is justified (§C.2), but should be confirmed with users.
 3. **Rust visual regression**: Slint's testing backend can render to a buffer (`i-slint-backend-testing`
