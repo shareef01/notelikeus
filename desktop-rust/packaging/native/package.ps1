@@ -30,7 +30,34 @@ $buildConfigNames = @('NLK_SUPABASE_URL', 'NLK_SUPABASE_KEY', 'NLK_ATTACHMENTS_U
 $savedBuildConfig = @{}
 foreach ($name in $buildConfigNames) {
     $savedBuildConfig[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
-    Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+}
+
+# Like composeApp/build.gradle.kts (`generateDesktopBackendConfig`), populate unset build variables
+# from gitignored `local.properties` at the repository root so local Windows packages include Sign-in & cloud sync.
+$localPropsPath = Join-Path $repoRoot 'local.properties'
+if (Test-Path -LiteralPath $localPropsPath -PathType Leaf) {
+    $propMap = @{
+        'notelikeus.supabaseUrl'          = 'NLK_SUPABASE_URL'
+        'notelikeus.supabaseAnonKey'      = 'NLK_SUPABASE_KEY'
+        'notelikeus.attachmentsWorkerUrl' = 'NLK_ATTACHMENTS_URL'
+        'notelikeus.captchaPageUrl'       = 'NLK_CAPTCHA_PAGE_URL'
+    }
+    foreach ($rawLine in (Get-Content -LiteralPath $localPropsPath)) {
+        $line = $rawLine.Trim()
+        if (-not $line -or $line.StartsWith('#') -or $line.StartsWith('!')) { continue }
+        $eqIdx = $line.IndexOf('=')
+        if ($eqIdx -le 0) { continue }
+        $k = $line.Substring(0, $eqIdx).Trim()
+        if ($propMap.ContainsKey($k)) {
+            $envName = $propMap[$k]
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($envName, 'Process'))) {
+                $v = $line.Substring($eqIdx + 1).Trim().Replace('\:', ':').Replace('\=', '=').Replace('\\', '\')
+                if (-not [string]::IsNullOrWhiteSpace($v)) {
+                    [Environment]::SetEnvironmentVariable($envName, $v, 'Process')
+                }
+            }
+        }
+    }
 }
 
 try {

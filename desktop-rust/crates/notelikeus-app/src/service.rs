@@ -52,26 +52,58 @@ pub struct SyncConfig {
 
 impl SyncConfig {
     /// `NLK_SUPABASE_URL` and `NLK_SUPABASE_KEY`, read at run time, falling back to the values a
-    /// build was compiled with. Unset in both places, or invalid URLs/secret keys, mean no sync.
+    /// build was compiled with, or a `local.properties` file when running locally during development.
+    /// Unset in all places, or invalid URLs/secret keys, mean no sync.
     pub fn from_env() -> Option<SyncConfig> {
-        let raw_url = std::env::var("NLK_SUPABASE_URL").ok().or(option_env!("NLK_SUPABASE_URL").map(str::to_string))?;
-        let raw_key = std::env::var("NLK_SUPABASE_KEY").ok().or(option_env!("NLK_SUPABASE_KEY").map(str::to_string))?;
+        let local_props = read_local_properties();
+        let get_cfg = |env_name: &str, compiled: Option<&str>, prop_key: &str| -> Option<String> {
+            std::env::var(env_name)
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+                .or_else(|| compiled.map(str::to_string).filter(|s| !s.trim().is_empty()))
+                .or_else(|| local_props.get(prop_key).cloned().filter(|s| !s.trim().is_empty()))
+        };
+        let raw_url = get_cfg("NLK_SUPABASE_URL", option_env!("NLK_SUPABASE_URL"), "notelikeus.supabaseUrl")?;
+        let raw_key = get_cfg("NLK_SUPABASE_KEY", option_env!("NLK_SUPABASE_KEY"), "notelikeus.supabaseAnonKey")?;
         let url = checked_base_url(&raw_url).ok()?;
         let publishable_key = checked_publishable_key(&raw_key).ok()?;
-        let captcha_page_url = std::env::var("NLK_CAPTCHA_PAGE_URL")
-            .ok()
-            .or(option_env!("NLK_CAPTCHA_PAGE_URL").map(str::to_string))
-            .map(|p| p.trim().to_string())
-            .filter(|page| !page.is_empty())
-            .and_then(|page| checked_page_url(&page).ok());
-        let attachments_url = std::env::var("NLK_ATTACHMENTS_URL")
-            .ok()
-            .or(option_env!("NLK_ATTACHMENTS_URL").map(str::to_string))
-            .map(|u| u.trim().to_string())
-            .filter(|url| !url.is_empty())
-            .and_then(|url| checked_base_url(&url).ok());
+        let captcha_page_url =
+            get_cfg("NLK_CAPTCHA_PAGE_URL", option_env!("NLK_CAPTCHA_PAGE_URL"), "notelikeus.captchaPageUrl")
+                .and_then(|page| checked_page_url(page.trim()).ok());
+        let attachments_url =
+            get_cfg("NLK_ATTACHMENTS_URL", option_env!("NLK_ATTACHMENTS_URL"), "notelikeus.attachmentsWorkerUrl")
+                .and_then(|u| checked_base_url(u.trim()).ok());
         Some(SyncConfig { url, publishable_key, captcha_page_url, attachments_url })
     }
+}
+
+fn read_local_properties() -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    let Ok(mut dir) = std::env::current_dir() else { return map };
+    for _ in 0..6 {
+        let candidate = dir.join("local.properties");
+        if candidate.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&candidate) {
+                for raw_line in content.lines() {
+                    let line = raw_line.trim();
+                    if line.is_empty() || line.starts_with('#') || line.starts_with('!') {
+                        continue;
+                    }
+                    if let Some((k, v)) = line.split_once('=') {
+                        let unescaped = v.trim().replace("\\:", ":").replace("\\=", "=").replace("\\\\", "\\");
+                        if !unescaped.is_empty() {
+                            map.insert(k.trim().to_string(), unescaped);
+                        }
+                    }
+                }
+            }
+            break;
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    map
 }
 
 /// What the UI is shown of a note. Ids are strings: they exceed JavaScript's safe-integer range

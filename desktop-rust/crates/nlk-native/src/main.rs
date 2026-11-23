@@ -18,44 +18,51 @@ fn main() {
 
     match nlk_native::open() {
         Ok((ui, controller)) => {
+            if let Err(error) = ui.show() {
+                nlk_native::show_fatal_error(&format!("Notelikeus could not show its window: {error}"));
+                return;
+            }
+            let weak_ui = ui.as_weak();
             let tray = match nlk_native::TrayIcon::new() {
-                Ok(tray) => tray,
+                Ok(tray) => {
+                    tray.on_open_requested({
+                        let weak_ui = weak_ui.clone();
+                        move || {
+                            if let Some(ui) = weak_ui.upgrade() {
+                                ui.window().set_minimized(false);
+                                let _ = ui.window().show();
+                                ui.invoke_focus_main();
+                            }
+                        }
+                    });
+                    tray.on_new_note_requested({
+                        let weak_ui = weak_ui.clone();
+                        let controller = controller.clone();
+                        move || {
+                            if let Some(ui) = weak_ui.upgrade() {
+                                ui.window().set_minimized(false);
+                                let _ = ui.window().show();
+                                ui.invoke_focus_main();
+                                controller.new_note();
+                            }
+                        }
+                    });
+                    tray.on_exit_requested({
+                        let controller = controller.clone();
+                        move || {
+                            controller.save_now();
+                            controller.cleanup_notifications();
+                            let _ = slint::quit_event_loop();
+                        }
+                    });
+                    Some(tray)
+                }
                 Err(error) => {
-                    nlk_native::show_fatal_error(&format!("Notelikeus could not create its tray icon: {error}"));
-                    return;
+                    eprintln!("Notelikeus tray icon unavailable: {error}");
+                    None
                 }
             };
-            let weak_ui = ui.as_weak();
-            tray.on_open_requested({
-                let weak_ui = weak_ui.clone();
-                move || {
-                    if let Some(ui) = weak_ui.upgrade() {
-                        ui.window().set_minimized(false);
-                        let _ = ui.window().show();
-                        ui.invoke_focus_main();
-                    }
-                }
-            });
-            tray.on_new_note_requested({
-                let weak_ui = weak_ui.clone();
-                let controller = controller.clone();
-                move || {
-                    if let Some(ui) = weak_ui.upgrade() {
-                        ui.window().set_minimized(false);
-                        let _ = ui.window().show();
-                        ui.invoke_focus_main();
-                        controller.new_note();
-                    }
-                }
-            });
-            tray.on_exit_requested({
-                let controller = controller.clone();
-                move || {
-                    controller.save_now();
-                    controller.cleanup_notifications();
-                    let _ = slint::quit_event_loop();
-                }
-            });
+            controller.set_tray_available(tray.is_some());
 
             let activation_timer = Timer::default();
             activation_timer.start(TimerMode::Repeated, Duration::from_millis(400), move || {
@@ -71,7 +78,7 @@ fn main() {
             // The tray component owns the native icon and activation timer; keep both alive on the loop.
             let _tray = tray;
             let _activation_timer = activation_timer;
-            if let Err(error) = slint::ComponentHandle::run(&ui) {
+            if let Err(error) = slint::run_event_loop_until_quit() {
                 nlk_native::show_fatal_error(&format!("Notelikeus stopped unexpectedly: {error}"));
             }
             controller.save_now();

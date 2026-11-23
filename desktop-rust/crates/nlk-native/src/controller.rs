@@ -81,6 +81,7 @@ pub struct Controller {
     state: RefCell<State>,
     settings: RefCell<crate::settings::AppSettings>,
     editor_dirty_hint: Cell<bool>,
+    tray_available: Cell<bool>,
     tray_explained: Cell<bool>,
     autosave: Timer,
     toast: Timer,
@@ -232,6 +233,7 @@ impl Controller {
             state: RefCell::default(),
             settings: RefCell::new(initial_settings.clone()),
             editor_dirty_hint: Cell::new(false),
+            tray_available: Cell::new(false),
             tray_explained: Cell::new(false),
             autosave: Timer::default(),
             toast: Timer::default(),
@@ -422,10 +424,14 @@ impl Controller {
         controller
     }
 
+    pub fn set_tray_available(&self, available: bool) {
+        self.tray_available.set(available);
+    }
+
     fn on_window_close_requested(&self) -> slint::CloseRequestResponse {
         // Persist open draft edits cleanly before closing or minimizing to tray.
         self.save_now();
-        if self.jobs.holds_notes() || !self.svc().has_pending_reminders() {
+        if !self.tray_available.get() || self.jobs.holds_notes() || !self.svc().has_pending_reminders() {
             self.cleanup_notifications();
             let _ = slint::quit_event_loop();
             return slint::CloseRequestResponse::HideWindow;
