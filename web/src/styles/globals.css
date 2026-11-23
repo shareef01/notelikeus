@@ -61,6 +61,20 @@
   --text-note-body--line-height: 1.6;
   --text-note-body--letter-spacing: 0.005em;
   --text-note-body--font-weight: 400;
+  /* Editor roles (docs/design/DESIGN_SYSTEM.md §3). The editor title was 26px / 32px from sm —
+     larger than any heading in the app, and 4px above the Windows client's. 28px keeps it
+     clearly the page's heading without dwarfing the body it introduces. */
+  --text-editor-title: 26px;
+  --text-editor-title--line-height: 1.2;
+  --text-editor-title--letter-spacing: -0.025em;
+  --text-editor-title--font-weight: 600;
+  --text-editor-title-lg: 28px;
+  --text-editor-title-lg--line-height: 1.2;
+  --text-editor-title-lg--letter-spacing: -0.025em;
+  --text-editor-title-lg--font-weight: 600;
+  /* Long-form reading size; the editor body is deliberately larger than the 15px card preview. */
+  --text-editor-body: 17px;
+  --text-editor-body-lg: 18px;
   --text-section-label: 11px;
   --text-section-label--line-height: 16px;
   --text-section-label--letter-spacing: 0.08em;
@@ -396,7 +410,7 @@
   min-height: min(60vh, 32rem);
   outline: none;
   overflow-wrap: anywhere;
-  font-size: 17px;
+  font-size: var(--text-editor-body);
   line-height: 1.75;
   letter-spacing: .005em;
   white-space: pre-wrap;
@@ -413,4 +427,4 @@
   opacity: .65;
   pointer-events: none;
 }
-@media (min-width: 640px) { .rich-note-body { font-size: 18px; } }
+@media (min-width: 640px) { .rich-note-body { font-size: var(--text-editor-body-lg); } }

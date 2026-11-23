@@ -121,6 +121,27 @@ object AppType {
             letterSpacing = 0.075.sp
         )
 
+    /**
+     * A checklist row on a grid card — the card body size on a tighter line, matching the web card,
+     * which renders these rows in `text-note-body`. It was `labelSmall` (11sp), the smallest text on
+     * the card and smaller than the timestamp beside it, for what is the note's actual content.
+     */
+    val noteCardChecklistItem: TextStyle
+        @Composable get() = noteCardBody.copy(lineHeight = 22.sp)
+
+    /**
+     * Card metadata: the checklist "+N", progress counts. 12sp, the floor for card text on every
+     * client (web `text-[12px]`, Slint `Type.meta`).
+     */
+    val noteCardMeta: TextStyle
+        @Composable get() = MaterialTheme.typography.labelMedium.copy(
+            fontWeight = FontWeight.Medium,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            letterSpacing = 0.sp,
+            fontFeatureSettings = "tnum"
+        )
+
     /** Chrome overline — section headers, drawer labels. Matches web `section-label`. */
     val chromeLabel: TextStyle
         @Composable get() = MaterialTheme.typography.labelSmall.copy(

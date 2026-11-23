@@ -5,6 +5,7 @@
 slint::include_modules!();
 
 pub mod backup;
+pub mod contrast;
 pub mod controller;
 pub mod images;
 pub mod instance;

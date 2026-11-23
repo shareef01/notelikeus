@@ -676,7 +676,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             }}
             placeholder="Title"
             maxLength={MAX_NOTE_TITLE_CHARS}
-            className="w-full resize-none overflow-hidden bg-transparent text-[26px] font-semibold leading-tight tracking-[-0.03em] outline-none placeholder:text-current placeholder:opacity-80 sm:text-[32px]"
+            className="w-full resize-none overflow-hidden bg-transparent text-editor-title outline-none placeholder:text-current placeholder:opacity-80 sm:text-editor-title-lg"
             style={{ color: contentColor }}
           />
 
