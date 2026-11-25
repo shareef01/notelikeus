@@ -1,5 +1,7 @@
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { ownerAccessToken } from '@/lib/supabase/ownerSession';
+import { parseAttachmentPlacement } from '@/lib/attachments/attachmentPlacement';
+import type { AttachmentPlacement } from '@/types/attachment';
 
 export interface NoteAttachmentMetadata {
   attachmentId: string;
@@ -9,9 +11,11 @@ export interface NoteAttachmentMetadata {
   sizeBytes: number;
   attachmentType: string;
   createdAt: number;
+  placement?: AttachmentPlacement;
 }
 
 function parseAttachmentMetadata(row: Record<string, unknown>): NoteAttachmentMetadata {
+  const placement = parseAttachmentPlacement(row.placement);
   return {
     attachmentId: String(row.attachment_id ?? ''),
     noteId: String(row.note_id ?? ''),
@@ -20,6 +24,7 @@ function parseAttachmentMetadata(row: Record<string, unknown>): NoteAttachmentMe
     sizeBytes: Number(row.size_bytes ?? 0),
     attachmentType: String(row.attachment_type ?? 'image'),
     createdAt: Number(row.created_at ?? 0),
+    ...(placement ? { placement } : {}),
   };
 }
 

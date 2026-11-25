@@ -1,4 +1,5 @@
 import { ATTACHMENT_R2_PREFIX } from '@/lib/attachments/attachmentPaths';
+import { matchesPlacementBody, placementBody } from '@/lib/attachments/attachmentPlacement';
 import { labelFromName } from '@/types/label';
 import { NO_NOTE_COLOR } from '@/theme/colors';
 import type { Note } from '@/types/note';
@@ -97,11 +98,44 @@ export function supabaseNoteToNote(payload: SupabaseNotePayload): Note {
  * server row yet. `restore_note` has no such parameter, and PostgREST matches overloads by argument
  * names, so its caller passes `attachmentIds: false`.
  */
+export interface SupabaseAttachmentPlacementArg {
+  attachmentId: string;
+  bodySha256: string;
+  offset: number;
+  ordinal: number;
+}
+
+export function noteAttachmentPlacementsForRpc(note: Note): SupabaseAttachmentPlacementArg[] {
+  if (note.checklist.length > 0) return [];
+  const body = placementBody(note.content);
+  const placements: SupabaseAttachmentPlacementArg[] = [];
+  for (const attachment of note.attachments) {
+    if (
+      !attachment.storagePath.startsWith(ATTACHMENT_R2_PREFIX) ||
+      attachment.type !== 'image' ||
+      !attachment.placement ||
+      !matchesPlacementBody(attachment.placement, body)
+    ) {
+      continue;
+    }
+    placements.push({
+      attachmentId: attachment.id,
+      bodySha256: attachment.placement.bodySha256,
+      offset: attachment.placement.offset,
+      ordinal: attachment.placement.ordinal,
+    });
+  }
+  return placements;
+}
+
 export function noteToSupabaseRpcArgs(
   note: Note,
   baseRevision: number | null,
   wipeGeneration: number,
-  { attachmentIds = true }: { attachmentIds?: boolean } = {},
+  {
+    attachmentIds = true,
+    attachmentPlacements = false,
+  }: { attachmentIds?: boolean; attachmentPlacements?: boolean } = {},
 ) {
   const args = {
     p_note_id: note.id,
@@ -125,11 +159,16 @@ export function noteToSupabaseRpcArgs(
     p_wipe_generation: wipeGeneration,
   };
   if (!attachmentIds) return args;
-  return {
+  const withIds = {
     ...args,
     p_attachment_ids: note.attachments
       .filter((attachment) => attachment.storagePath.startsWith(ATTACHMENT_R2_PREFIX))
       .map((attachment) => attachment.id),
+  };
+  if (!attachmentPlacements) return withIds;
+  return {
+    ...withIds,
+    p_attachment_placements: noteAttachmentPlacementsForRpc(note),
   };
 }
 

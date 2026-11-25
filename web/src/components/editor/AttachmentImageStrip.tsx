@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ConfirmDialog } from '@/components/ui/ModalDialog';
+import { AttachmentImageViewer } from '@/components/editor/AttachmentImageViewer';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import {
   peekAttachmentPreviewUrl,
   releaseAttachmentPreview,
@@ -17,6 +21,9 @@ interface AttachmentImageStripProps {
   attachments: Attachment[];
   contentColor: string;
   onRemove: (attachmentId: string) => void;
+  inlineSlots: ReadonlyMap<string, HTMLElement>;
+  onPlace?: (attachmentId: string) => void;
+  onUnplace?: (attachmentId: string) => void;
 }
 
 export function AttachmentImageStrip({
@@ -24,21 +31,36 @@ export function AttachmentImageStrip({
   attachments,
   contentColor,
   onRemove,
+  inlineSlots,
+  onPlace,
+  onUnplace,
 }: AttachmentImageStripProps) {
+  const [viewerId, setViewerId] = useState<string | null>(null);
   if (attachments.length === 0) return null;
 
   return (
-    <div className="mt-5 flex flex-col gap-3">
-      {attachments.map((attachment) => (
-        <AttachmentPreview
-          // Keyed by note too, so the state below starts over for a different note's picture.
-          key={`${noteId}:${attachment.id}`}
+    <div className="mt-5 flex flex-col gap-3 empty:hidden">
+      {attachments.map((attachment, index) => {
+        const slot = inlineSlots.get(attachment.id);
+        // Keyed by note too, so the state below starts over for a different note's picture.
+        const key = `${noteId}:${attachment.id}`;
+        const preview = <AttachmentPreview
+          key={key}
           noteId={noteId}
           attachment={attachment}
           contentColor={contentColor}
           onRemove={() => onRemove(attachment.id)}
-        />
-      ))}
+          onPlace={slot || !onPlace ? undefined : () => onPlace(attachment.id)}
+          onUnplace={slot && onUnplace ? () => onUnplace(attachment.id) : undefined}
+          viewing={viewerId === attachment.id}
+          openViewer={() => setViewerId(attachment.id)}
+          closeViewer={() => setViewerId(null)}
+          position={attachments.length > 1 ? `${index + 1} of ${attachments.length}` : undefined}
+          previous={index > 0 ? () => setViewerId(attachments[index - 1]!.id) : undefined}
+          next={index < attachments.length - 1 ? () => setViewerId(attachments[index + 1]!.id) : undefined}
+        />;
+        return slot ? createPortal(preview, slot, key) : preview;
+      })}
     </div>
   );
 }
@@ -48,11 +70,27 @@ function AttachmentPreview({
   attachment,
   contentColor,
   onRemove,
+  onPlace,
+  onUnplace,
+  viewing,
+  openViewer,
+  closeViewer,
+  position,
+  previous,
+  next,
 }: {
   noteId: string;
   attachment: Attachment;
   contentColor: string;
   onRemove: () => void;
+  onPlace?: () => void;
+  onUnplace?: () => void;
+  viewing: boolean;
+  openViewer: () => void;
+  closeViewer: () => void;
+  position?: string;
+  previous?: () => void;
+  next?: () => void;
 }) {
   // Opened before: the full picture is still cached, and nothing is fetched again.
   const [previewUrl, setPreviewUrl] = useState(() => peekAttachmentPreviewUrl(noteId, attachment.id));
@@ -62,6 +100,8 @@ function AttachmentPreview({
     previewUrl ? null : peekAttachmentThumbnailUrl(noteId, attachment.id),
   );
   const [failed, setFailed] = useState(false);
+  const [confirmRemoval, setConfirmRemoval] = useState(false);
+  const [invalidUrls, setInvalidUrls] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -90,35 +130,86 @@ function AttachmentPreview({
     };
   }, [attachment, noteId, placeholderUrl]);
 
-  const shownUrl = previewUrl ?? placeholderUrl;
+  const shownUrl = [previewUrl, placeholderUrl].find((url) => url && !invalidUrls.includes(url));
+  const loadFailed = failed || invalidUrls.length > 0;
+  const markDecodeFailure = (url: string) => {
+    setInvalidUrls((urls) => urls.includes(url) ? urls : [...urls, url]);
+  };
 
   return (
-    <div className="relative min-h-12 min-w-12 max-w-full self-start overflow-hidden rounded-2xl border border-[color-mix(in_srgb,currentColor_12%,transparent)]">
+    <figure className="max-w-full self-start">
       {shownUrl ? (
-        <img
-          src={shownUrl}
-          alt="Note attachment"
-          decoding="async"
-          className="mx-auto block h-auto max-h-[min(24rem,45dvh)] w-auto max-w-full object-contain"
-        />
+        <button
+          type="button"
+          aria-label="Open image"
+          onClick={(event) => {
+            event.currentTarget.focus({ preventScroll: true });
+            openViewer();
+          }}
+          className={`block min-h-11 min-w-11 max-w-full cursor-zoom-in rounded-note ${CHROME_FOCUS}`}
+        >
+          <img
+            src={shownUrl}
+            alt="Note attachment"
+            decoding="async"
+            onError={() => markDecodeFailure(shownUrl)}
+            className="mx-auto block h-auto max-h-[60dvh] w-auto max-w-full rounded-note object-contain"
+          />
+        </button>
       ) : (
         <div
-          className="flex min-h-28 items-center justify-center px-4 text-sm opacity-80"
+          role="status"
+          className="flex min-h-28 items-center justify-center rounded-note bg-true-surface-variant px-4 text-sm"
           style={{ color: contentColor }}
         >
-          {failed ? 'Could not load image' : 'Loading image…'}
+          {loadFailed ? 'Could not load image' : 'Loading image…'}
         </div>
       )}
-      <button
-        type="button"
-        onClick={onRemove}
-        className="absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        aria-label="Remove image"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-          <path d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 1 0 5.7 7.11L10.59 12l-4.89 4.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z" />
-        </svg>
-      </button>
-    </div>
+      {onPlace || onUnplace ? (
+        <button
+          type="button"
+          className={`tap-target rounded-note px-2 text-sm font-medium opacity-80 hover:opacity-100 ${CHROME_FOCUS}`}
+          onClick={onUnplace ?? onPlace}
+        >
+          {onUnplace ? 'Move to attachment strip' : 'Place after cursor paragraph'}
+        </button>
+      ) : null}
+      {loadFailed && !shownUrl ? (
+        <button
+          type="button"
+          className={`tap-target px-3 text-sm text-brand-muted ${CHROME_FOCUS}`}
+          onClick={() => setConfirmRemoval(true)}
+        >
+          Remove image
+        </button>
+      ) : null}
+      {viewing ? (
+        <AttachmentImageViewer
+          url={shownUrl ?? undefined}
+          failed={loadFailed}
+          onDecodeFailure={markDecodeFailure}
+          onClose={closeViewer}
+          onRemove={() => setConfirmRemoval(true)}
+          position={position}
+          previous={previous}
+          next={next}
+        />
+      ) : null}
+      {confirmRemoval ? createPortal(
+        <ConfirmDialog
+          open
+          title="Remove this image?"
+          description="This removes the image from this note."
+          confirmLabel="Remove image"
+          onCancel={() => setConfirmRemoval(false)}
+          onConfirm={() => {
+            setConfirmRemoval(false);
+            closeViewer();
+            onRemove();
+          }}
+        />,
+        document.body,
+      ) : null}
+    </figure>
   );
 }

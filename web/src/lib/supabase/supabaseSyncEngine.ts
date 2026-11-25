@@ -161,8 +161,26 @@ export async function applyNoteChange(
   const wipeGeneration = await wipeGenerationForPush(userId);
   const token = await ownerAccessToken(userId);
   const args = noteToSupabaseRpcArgs(note, baseRevision, wipeGeneration);
-  const { data, error } = await getSupabaseClient().rpc('apply_note_change', args)
-    .setHeader('Authorization', `Bearer ${token}`);
+  const hasRemoteAttachments = 'p_attachment_ids' in args && args.p_attachment_ids.length > 0;
+  let data: unknown;
+  let error: unknown;
+  if (hasRemoteAttachments) {
+    const placementArgs = noteToSupabaseRpcArgs(note, baseRevision, wipeGeneration, {
+      attachmentPlacements: true,
+    });
+    ({ data, error } = await getSupabaseClient()
+      .rpc('apply_note_change_with_placements', placementArgs)
+      .setHeader('Authorization', `Bearer ${token}`));
+    if ((error as { code?: unknown } | null)?.code === 'PGRST202') {
+      ({ data, error } = await getSupabaseClient()
+        .rpc('apply_note_change', args)
+        .setHeader('Authorization', `Bearer ${token}`));
+    }
+  } else {
+    ({ data, error } = await getSupabaseClient()
+      .rpc('apply_note_change', args)
+      .setHeader('Authorization', `Bearer ${token}`));
+  }
   // The request is bound to its owner, but the response must not mutate the next session's
   // global tombstone state after a sign-out/account switch.
   await ownerAccessToken(userId);

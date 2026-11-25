@@ -49,6 +49,34 @@ class AttachmentPreviewDecodeTest {
     }
 
     @Test
+    fun `a narrow portrait is bounded by height and keeps its aspect`() {
+        val preview = checkNotNull(decodeAttachmentPreview(png(800, 4000), maxWidthPx = 1280))
+
+        assertEquals(256, preview.width)
+        assertEquals(1280, preview.height)
+    }
+
+    @Test
+    fun `a JPEG portrait follows its EXIF orientation`() {
+        val bitmap = Bitmap.createBitmap(40, 20, Bitmap.Config.ARGB_8888)
+        val jpeg = ByteArrayOutputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+            out.toByteArray()
+        }
+        // APP1, little-endian TIFF, one orientation tag with value 6 (90 degrees clockwise).
+        val exif = byteArrayOf(
+            0xff.toByte(), 0xe1.toByte(), 0, 34, 69, 120, 105, 102, 0, 0,
+            73, 73, 42, 0, 8, 0, 0, 0, 1, 0,
+            18, 1, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0,
+        )
+        val portrait = jpeg.copyOfRange(0, 2) + exif + jpeg.copyOfRange(2, jpeg.size)
+        val preview = checkNotNull(decodeAttachmentPreview(portrait, maxWidthPx = 1280))
+
+        assertEquals(20, preview.width)
+        assertEquals(40, preview.height)
+    }
+
+    @Test
     fun `bytes that are not a picture decode to null`() {
         assertNull(decodeAttachmentPreview(byteArrayOf(1, 2, 3), maxWidthPx = 1280))
     }

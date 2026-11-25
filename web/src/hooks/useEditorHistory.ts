@@ -4,13 +4,31 @@ import { useToastStore } from '@/store/toastStore';
 
 const KEY = 'notelikeusEditor';
 let backHandler: (() => Promise<void>) | null = null;
+let saveBeforeSwitch: (() => Promise<boolean>) | null = null;
 export function recordEditorHistoryNoteId(noteId: string | null | undefined) {
   if (noteId && routeFromHistory()) window.history.replaceState({...window.history.state,
     [KEY]: {mode: 'edit', noteId}}, '', window.location.href);
 }
-export function registerEditorBackHandler(handler: () => Promise<void>) {
+export function registerEditorBackHandler(handler: () => Promise<void>, save: () => Promise<boolean>) {
   backHandler = handler;
-  return () => { if (backHandler === handler) backHandler = null; };
+  saveBeforeSwitch = save;
+  return () => {
+    if (backHandler === handler) {
+      backHandler = null;
+      saveBeforeSwitch = null;
+    }
+  };
+}
+
+/** Docked notes can switch without closing first. Keep a draft open if its local write fails. */
+export async function navigateEditor(next: () => void) {
+  const current = useUiStore.getState().editorRoute;
+  try {
+    if (saveBeforeSwitch && !(await saveBeforeSwitch())) return;
+    if (useUiStore.getState().editorRoute === current) next();
+  } catch {
+    useToastStore.getState().show('Could not save your note. Try again before switching.', 'error');
+  }
 }
 function routeFromHistory(): EditorRoute | null {
   const route = window.history.state?.[KEY];
@@ -38,6 +56,8 @@ export function useEditorHistory() {
     const onPop = () => {
       const current = useUiStore.getState().editorRoute;
       const target = routeFromHistory();
+      // A workspace route can leave the same docked note mounted underneath it.
+      if (JSON.stringify(current) === JSON.stringify(target)) return;
       if (current.mode === 'closed') {
         if (target) useUiStore.setState({editorRoute: target});
         return;

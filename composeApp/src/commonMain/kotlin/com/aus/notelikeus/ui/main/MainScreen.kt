@@ -23,6 +23,7 @@ import com.aus.notelikeus.domain.model.SavedFilter
     import androidx.compose.material3.windowsizeclass.WindowSizeClass
     import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
     import androidx.compose.runtime.*
+    import androidx.compose.runtime.saveable.rememberSaveable
     import androidx.compose.ui.Alignment
     import androidx.compose.ui.Modifier
     import androidx.compose.ui.draw.alpha
@@ -114,7 +115,7 @@ fun MainScreen(
     }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    var showProfileSheet by remember { mutableStateOf(false) }
+    var showProfileSheet by rememberSaveable { mutableStateOf(false) }
     var showFiltersSheet by remember { mutableStateOf(false) }
     var showPermanentDeleteConfirm by remember { mutableStateOf(false) }
     // A card swiped while viewing Trash, waiting on the same confirmation as the selection.
@@ -387,12 +388,13 @@ fun MainScreen(
     }
 
     val screenFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
-    LaunchedEffect(Unit) {
-        screenFocusRequester.requestFocus()
+    val notesVisible = !showProfileSheet || AppConfig.isDesktop
+    LaunchedEffect(notesVisible) {
+        if (notesVisible) screenFocusRequester.requestFocus()
     }
 
-    LaunchedEffect(pendingFocusSearch) {
-        if (pendingFocusSearch) {
+    LaunchedEffect(notesVisible, pendingFocusSearch) {
+        if (notesVisible && pendingFocusSearch) {
             searchFocusRequester.requestFocus()
         }
     }
@@ -403,7 +405,7 @@ fun MainScreen(
         }
     }
 
-    Box(
+    if (notesVisible) Box(
         modifier = Modifier
             .fillMaxSize()
             .focusRequester(screenFocusRequester)
@@ -605,7 +607,6 @@ fun MainScreen(
         }
     }
 
-    // Settings sheet
     if (showFiltersSheet) {
         FiltersSheet(
             query = state.query,

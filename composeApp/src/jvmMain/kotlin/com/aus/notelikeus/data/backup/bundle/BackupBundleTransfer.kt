@@ -3,6 +3,7 @@ package com.aus.notelikeus.data.backup.bundle
 import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentStagingStore
 import com.aus.notelikeus.data.attachments.GUEST_STAGING_OWNER
+import com.aus.notelikeus.data.attachments.PlacementBody
 import com.aus.notelikeus.data.attachments.createAttachmentId
 import com.aus.notelikeus.data.attachments.isFileAttachment
 import com.aus.notelikeus.data.attachments.isPendingAttachment
@@ -14,6 +15,7 @@ import com.aus.notelikeus.data.backup.BundleExportOutcome
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.domain.model.Attachment
+import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.util.AppLog
 import kotlinx.serialization.json.Json
@@ -48,9 +50,11 @@ class BackupBundleTransfer(
 
     private fun ownerId(): String = ownerIdProvider() ?: GUEST_STAGING_OWNER
 
+    private data class StagedImage(val sourceId: String, val attachment: Attachment)
+
     /** What [stageBundleAttachments] produced: the staged rows, and the counts it moved. */
     private class StagedBundleAttachments(
-        val byNoteId: Map<Long, List<Attachment>>,
+        val byNoteId: Map<Long, List<StagedImage>>,
         val imported: Int,
         val skipped: Int,
     )
@@ -72,7 +76,7 @@ class BackupBundleTransfer(
         warnings: MutableList<String>,
         alreadySkipped: Int,
     ): StagedBundleAttachments {
-        val byNoteId = LinkedHashMap<Long, MutableList<Attachment>>()
+        val byNoteId = LinkedHashMap<Long, MutableList<StagedImage>>()
         var skipped = alreadySkipped
         var imported = 0
 
@@ -108,13 +112,17 @@ class BackupBundleTransfer(
             }
 
             byNoteId.getOrPut(newNoteId) { ArrayList() }.add(
-                Attachment(
-                    id = freshId,
-                    noteId = newNoteId,
-                    storagePath = pendingStoragePath(freshId),
-                    type = blob.type.ifBlank { "image" },
-                    mimeType = mime,
-                    sizeBytes = blob.bytes.size.toLong(),
+                StagedImage(
+                    sourceId = entry.attachmentId,
+                    attachment = Attachment(
+                        id = freshId,
+                        noteId = newNoteId,
+                        storagePath = pendingStoragePath(freshId),
+                        type = blob.type.ifBlank { "image" },
+                        mimeType = mime,
+                        sizeBytes = blob.bytes.size.toLong(),
+                        placement = entry.placement,
+                    ),
                 ),
             )
             imported++
@@ -131,20 +139,49 @@ class BackupBundleTransfer(
      * rather than rewriting whatever the replacement dataset holds at that id.
      */
     private suspend fun attachStagedAttachments(
-        byNoteId: Map<Long, List<Attachment>>,
+        byNoteId: Map<Long, List<StagedImage>>,
         commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+        warnings: MutableList<String>,
     ): Boolean {
+        var ignoredPositions = false
         for ((newNoteId, attachments) in byNoteId) {
             val note = repository.getNoteById(newNoteId) ?: continue
+            val restored = restorePlacements(note, attachments)
+            if (restored.count { it.placement != null } < attachments.count { it.attachment.placement != null }) {
+                ignoredPositions = true
+            }
             val attached = repository.updateNote(
-                note.copy(attachments = note.attachments + attachments),
+                note.copy(attachments = note.attachments + restored),
                 commitToken,
             )
             if (attached is com.aus.notelikeus.domain.repository.LocalCommitResult.StaleGeneration) {
                 return false
             }
         }
+        if (ignoredPositions) {
+            warnings.add("Some image positions could not be restored. The images are in the attachment strip.")
+        }
         return true
+    }
+
+    private fun restorePlacements(note: Note, images: List<StagedImage>): List<Attachment> {
+        if (images.none { it.attachment.placement != null }) return images.map { it.attachment }
+        val body = if (note.checklist.isEmpty()) PlacementBody(note.content) else null
+        val valid = images.mapNotNull { image ->
+            val placement = image.attachment.placement ?: return@mapNotNull null
+            if (body?.matches(placement) == true) image to placement else null
+        }
+        val placements = valid.associate { (image, placement) -> image.attachment.id to placement }.toMutableMap()
+        // Ties were ordered by the old ids, which were reminted when the bytes were staged.
+        for (group in valid.groupBy { (_, placement) -> placement.offset }.values) {
+            val sorted = group.sortedWith(compareBy({ it.second.ordinal }, { it.first.sourceId }))
+            if (sorted.zipWithNext().any { (a, b) -> a.second.ordinal == b.second.ordinal }) {
+                sorted.forEachIndexed { ordinal, (image, placement) ->
+                    placements[image.attachment.id] = placement.copy(ordinal = ordinal.toLong())
+                }
+            }
+        }
+        return images.map { it.attachment.copy(placement = placements[it.attachment.id]) }
     }
 
     override fun looksLikeBundle(fileName: String?, head: ByteArray): Boolean =
@@ -226,6 +263,7 @@ class BackupBundleTransfer(
             attachmentId = attachment.id,
             type = attachment.type.ifBlank { "image" },
             mimeType = attachment.mimeType,
+            placement = attachment.placement,
         ) {
             if (download == null || local) {
                 readLocalAttachmentBytes(attachment)?.bytes.also { if (it == null) tally.unreadable++ }
@@ -380,7 +418,7 @@ class BackupBundleTransfer(
         attachmentsImported = staged.imported
 
         if (
-            !attachStagedAttachments(byNoteId = staged.byNoteId, commitToken = commitToken)
+            !attachStagedAttachments(byNoteId = staged.byNoteId, commitToken = commitToken, warnings = warnings)
         ) {
             // The dataset this import belonged to is gone: its bytes are staged but unreferenced,
             // and its rows were wiped with it. Reported as superseded, never as Success.

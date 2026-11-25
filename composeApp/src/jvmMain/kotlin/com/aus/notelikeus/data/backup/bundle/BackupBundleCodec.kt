@@ -1,7 +1,10 @@
 package com.aus.notelikeus.data.backup.bundle
 
+import com.aus.notelikeus.data.attachments.MAX_PLACEMENT_INTEGER
+import com.aus.notelikeus.data.attachments.PlacementBody
 import com.aus.notelikeus.data.backup.BackupBundleManifest
 import com.aus.notelikeus.data.backup.BundleAttachmentDto
+import com.aus.notelikeus.domain.model.AttachmentPlacement
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -15,7 +18,10 @@ import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -34,6 +40,7 @@ data class BundleAttachmentSource(
     val type: String = "image",
     val mimeType: String? = null,
     val bytes: ByteArray,
+    val placement: AttachmentPlacement? = null,
 )
 
 /** One image for [BackupBundleCodec.writeBackupBundle], read on demand so the writer holds one at a time. */
@@ -42,6 +49,7 @@ class BundleAttachmentEntry(
     val attachmentId: String,
     val type: String = "image",
     val mimeType: String? = null,
+    val placement: AttachmentPlacement? = null,
     /** The image's bytes, or null when they are not available on this device. May be called twice. */
     val read: suspend () -> ByteArray?,
 )
@@ -117,6 +125,7 @@ object BackupBundleCodec {
                         attachmentId = source.attachmentId,
                         type = source.type,
                         mimeType = source.mimeType,
+                        placement = source.placement,
                     ) { source.bytes }
                 },
                 origin = BundleOrigin(app = app, appVersion = appVersion, exportedAt = exportedAt),
@@ -179,6 +188,15 @@ object BackupBundleCodec {
         images: List<MeasuredImage>,
         origin: BundleOrigin,
     ): ByteArray {
+        val noteBodies = if (images.any { it.source.placement != null }) {
+            (backupDocument["notes"] as? JsonArray).orEmpty().mapNotNull { element ->
+                val note = element as? JsonObject ?: return@mapNotNull null
+                val id = (note["id"] as? JsonPrimitive)?.longOrNull ?: return@mapNotNull null
+                val content = (note["content"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+                if ((note["checklist"] as? JsonArray).isNullOrEmpty()) id to content else null
+            }.toMap()
+        } else emptyMap()
+        val bodies = HashMap<Long, PlacementBody>()
         val manifest = buildJsonObject {
             put("formatVersion", BackupBundleManifest.BUNDLE_FORMAT_VERSION)
             put("app", origin.app)
@@ -196,6 +214,17 @@ object BackupBundleCodec {
                             image.source.mimeType?.let { put("mimeType", it) }
                             put("sizeBytes", image.size)
                             put("sha256", image.sha256)
+                            image.source.placement?.let { placement ->
+                                val id = image.source.noteId
+                                val body = noteBodies[id] ?: return@let
+                                if (bodies.getOrPut(id) { PlacementBody(body) }.matches(placement)) {
+                                    put("placement", buildJsonObject {
+                                        put("bodySha256", placement.bodySha256)
+                                        put("offset", placement.offset)
+                                        put("ordinal", placement.ordinal)
+                                    })
+                                }
+                            }
                         },
                     )
                 }
@@ -417,30 +446,46 @@ object BackupBundleCodec {
         val seen = HashSet<String>()
         val attachments = ArrayList<BundleAttachmentDto>()
         val referencedNames = hashSetOf(BackupBundleLimits.BUNDLE_MANIFEST_ENTRY)
+        var invalidPlacement = false
         for (candidate in rawAttachments) {
             val entry = candidate.jsonObjectOrNull() ?: continue
-            val attachmentId = entry["attachmentId"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            val validId = BackupBundleLimits.ATTACHMENT_ID_PATTERN.matches(attachmentId)
-            // A repeated id is skipped silently; an unusable one is refused below, with a warning.
-            if (validId && !seen.add(attachmentId)) continue
-            val mediaName = mediaEntryName(attachmentId)
-            if (validId) referencedNames.add(mediaName)
-            val refusal = attachmentRefusal(attachmentId, byName[mediaName])
-            if (refusal != null) {
-                warnings.add(refusal)
-                continue
-            }
-            attachments.add(attachmentDto(entry, attachmentId, mediaName))
+            val parsed = indexAttachmentEntry(entry, byName, seen, referencedNames, warnings) ?: continue
+            if (parsed.second) invalidPlacement = true
+            attachments.add(parsed.first)
         }
 
         val strayMedia = byName.keys.count {
             it.startsWith(BackupBundleLimits.BUNDLE_MEDIA_PREFIX) && it !in referencedNames
         }
         val dropped = warnings.size
+        if (invalidPlacement) warnings.add("An invalid image position was ignored.")
         if (strayMedia > 0) {
             warnings.add("$strayMedia file(s) in the bundle are not listed in its manifest")
         }
         return AttachmentIndex(attachments, dropped, warnings)
+    }
+
+    private fun indexAttachmentEntry(
+        entry: JsonObject,
+        byName: Map<String, ZipEntry>,
+        seen: MutableSet<String>,
+        referencedNames: MutableSet<String>,
+        warnings: MutableList<String>,
+    ): Pair<BundleAttachmentDto, Boolean>? {
+        val attachmentId = entry["attachmentId"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val validId = BackupBundleLimits.ATTACHMENT_ID_PATTERN.matches(attachmentId)
+        // A repeated id is skipped silently; an unusable one is refused below, with a warning.
+        if (validId && !seen.add(attachmentId)) return null
+        val mediaName = mediaEntryName(attachmentId)
+        if (validId) referencedNames.add(mediaName)
+        val refusal = attachmentRefusal(attachmentId, byName[mediaName])
+        if (refusal != null) {
+            warnings.add(refusal)
+            return null
+        }
+        val placement = parsePlacement(entry["placement"])
+        val invalidPlacement = entry.containsKey("placement") && placement == null
+        return attachmentDto(entry, attachmentId, mediaName).copy(placement = placement) to invalidPlacement
     }
 
     /** Why a listed attachment cannot be imported, or null when it can. */
@@ -463,6 +508,16 @@ object BackupBundleCodec {
             sizeBytes = entry["sizeBytes"]?.jsonPrimitive?.longOrNull,
             sha256 = entry["sha256"]?.jsonPrimitive?.contentOrNull.orEmpty().lowercase().ifEmpty { null },
         )
+
+    private fun parsePlacement(value: JsonElement?): AttachmentPlacement? {
+        val entry = value as? JsonObject ?: return null
+        val hash = (entry["bodySha256"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull ?: return null
+        if (hash.length != 64 || hash.any { it !in '0'..'9' && it !in 'a'..'f' }) return null
+        val offset = (entry["offset"] as? JsonPrimitive)?.takeUnless { it.isString }?.longOrNull ?: return null
+        val ordinal = (entry["ordinal"] as? JsonPrimitive)?.takeUnless { it.isString }?.longOrNull ?: return null
+        if (offset !in 1..MAX_PLACEMENT_INTEGER || ordinal !in 0..MAX_PLACEMENT_INTEGER) return null
+        return AttachmentPlacement(hash, offset, ordinal)
+    }
 
     /**
      * The bytes of [entry], or null when more than [limit] arrive. The limit is enforced on what is

@@ -1,6 +1,7 @@
 package com.aus.notelikeus.data.backup.bundle
 
 import com.aus.notelikeus.data.sync.actionToken
+import com.aus.notelikeus.contract.ContractFixtures
 import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentStagingStore
 import com.aus.notelikeus.data.attachments.GUEST_STAGING_OWNER
@@ -16,6 +17,8 @@ import com.aus.notelikeus.domain.model.Note
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import okio.Buffer
@@ -139,6 +142,33 @@ class BackupBundleTransferTest {
         assertEquals(2, parsed.media.size)
         assertTrue(parsed.media["pending-att"]!!.bytes.contentEquals(pendingBytes))
         assertTrue(parsed.media["file-att"]!!.bytes.contentEquals(fileBytes))
+    }
+
+    @Test
+    fun positionedWebBackupSurvivesImportAndReExport() = runBlocking {
+        val repository = FakeNoteRepository()
+        val transfer = transfer(repository, MemoryStaging(), MemoryLocalStorage())
+        val bytes = ContractFixtures.readBytes("backup/v4-positioned-image.nlkbak")
+        val result = assertIs<BackupImportResult.Success>(transfer.importBundle(bytes, actionToken()))
+        assertEquals(1, result.attachmentsImported)
+        assertTrue(result.warnings.isEmpty())
+        val note = repository.getAllNotesForBackup().single()
+        val image = note.attachments.single()
+        val placement = assertNotNull(image.placement)
+        assertEquals(10L, placement.offset)
+        assertEquals(0L, placement.ordinal)
+        assertNotEquals("att-cross-1", image.id)
+
+        val output = Buffer().also { transfer.exportBundle(it) }
+        val exported = BackupBundleCodec.parseBackupBundle(output.readByteArray())
+        assertEquals(placement, exported.manifest.attachments.single().placement)
+        assertEquals(70, exported.media.getValue(image.id).bytes.size)
+
+        repository.updateNote(note.copy(content = "Changed body"))
+        val changed = Buffer().also { transfer.exportBundle(it) }
+        val stale = BackupBundleCodec.parseBackupBundle(changed.readByteArray())
+        assertNull(stale.manifest.attachments.single().placement)
+        assertEquals(70, stale.media.getValue(image.id).bytes.size)
     }
 
     @Test

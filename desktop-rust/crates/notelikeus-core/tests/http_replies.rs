@@ -200,3 +200,83 @@ fn checked_base_url_refuses_userinfo_and_bad_ports() {
         assert!(checked_base_url(bad).is_err(), "{bad}");
     }
 }
+
+#[test]
+fn apply_note_change_with_placements_falls_back_on_pgrst202() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::{Arc, Mutex};
+
+    use notelikeus_core::model::{ApplyNoteChangeArgs, AttachmentPlacementArg, Note};
+    use notelikeus_core::sync::Transport;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+    let seen_server = Arc::clone(&seen);
+    let server = std::thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut req_bytes = Vec::new();
+            let mut buf = [0u8; 4096];
+            let header_end = loop {
+                let n = stream.read(&mut buf).unwrap();
+                assert!(n > 0, "unexpected EOF reading request headers");
+                req_bytes.extend_from_slice(&buf[..n]);
+                if let Some(pos) = req_bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break pos + 4;
+                }
+            };
+            let header_str = String::from_utf8_lossy(&req_bytes[..header_end]).to_string();
+            let content_len: usize = header_str
+                .lines()
+                .find_map(|line| {
+                    let (k, v) = line.split_once(':')?;
+                    k.eq_ignore_ascii_case("content-length").then(|| v.trim().parse().ok()).flatten()
+                })
+                .unwrap_or(0);
+            while req_bytes.len() < header_end + content_len {
+                let n = stream.read(&mut buf).unwrap();
+                if n == 0 {
+                    break;
+                }
+                req_bytes.extend_from_slice(&buf[..n]);
+            }
+            let path = header_str.lines().next().unwrap_or("").split_whitespace().nth(1).unwrap_or("").to_string();
+            seen_server.lock().unwrap().push(path.clone());
+            let response = if path.ends_with("/apply_note_change_with_placements") {
+                let body = r#"{"code":"PGRST202","message":"Could not find the function"}"#;
+                format!(
+                    "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+            } else {
+                let body = r#"{"status":"applied","revision":9,"server_updated_at":1234}"#;
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+            };
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+            let _ = stream.shutdown(std::net::Shutdown::Write);
+        }
+    });
+
+    let mut transport = SupabaseTransport::new(&format!("http://{addr}"), "sb_publishable_demo", "tok").unwrap();
+    let mut note = Note::new(42, 1_000);
+    note.content = "Before\nAfter".into();
+    let args = ApplyNoteChangeArgs::new(&note, Some(1), vec!["att-1".into()], 0).with_placements(vec![
+        AttachmentPlacementArg { attachment_id: "att-1".into(), body_sha256: "a".repeat(64), offset: 7, ordinal: 0 },
+    ]);
+    let outcome = transport.apply_note_change(&args).unwrap();
+    server.join().unwrap();
+
+    assert_eq!(outcome, ApplyOutcome::Applied { revision: 9, server_updated_at: Some(1234) });
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec!["/rest/v1/rpc/apply_note_change_with_placements", "/rest/v1/rpc/apply_note_change"]
+    );
+}

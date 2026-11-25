@@ -16,6 +16,7 @@ import java.io.File
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,8 +25,11 @@ import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import com.aus.notelikeus.data.local.DatabaseRecoveryNotice
 import com.aus.notelikeus.domain.repository.SettingsRepository
+import com.aus.notelikeus.domain.model.ThemeBase
+import com.aus.notelikeus.domain.model.ThemePreference
 import com.aus.notelikeus.ui.navigation.extractEditorNoteId
 import com.aus.notelikeus.ui.navigation.extractSharedText
 import com.aus.notelikeus.ui.navigation.intentRequestsNewNote
@@ -97,6 +101,20 @@ class MainActivity : FragmentActivity() {
             // thread.
             val isStartupReady by AppStartup.isReady.collectAsState()
             if (isStartupReady) {
+                val theme by settingsRepository.themePreference.collectAsState(ThemePreference())
+                val systemDark = isSystemInDarkTheme()
+                val lightBackground = when (theme.base) {
+                    ThemeBase.SYSTEM -> !systemDark
+                    ThemeBase.LIGHT -> true
+                    ThemeBase.DARK -> false
+                }
+                SideEffect {
+                    WindowCompat.getInsetsController(window, window.decorView).apply {
+                        isAppearanceLightStatusBars = lightBackground
+                        isAppearanceLightNavigationBars = lightBackground
+                    }
+                }
+
                 // The quarantine that records this notice runs during the database open, so it
                 // can only be read once that has finished — not in onCreate.
                 LaunchedEffect(Unit) {

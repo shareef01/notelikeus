@@ -15,6 +15,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::Error;
 use crate::crypto::{self, KEY_LEN};
@@ -39,6 +40,93 @@ pub struct Attachment {
     pub mime_type: String,
     pub size_bytes: u64,
     pub location: Location,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placement: Option<AttachmentPlacement>,
+}
+
+/// A position in the exact UTF-8 note body, counted in Unicode scalar values.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentPlacement {
+    pub body_sha256: String,
+    pub offset: u64,
+    pub ordinal: u64,
+}
+
+pub struct PlacementBody {
+    digest: String,
+    offsets: BTreeSet<u64>,
+}
+
+impl PlacementBody {
+    pub fn new(body: &str) -> Self {
+        let mut lines = body.split('\n').peekable();
+        let mut offsets = BTreeSet::new();
+        let mut offset = 0;
+        while let Some(line) = lines.next() {
+            let next = lines.peek();
+            offset += line.chars().count() as u64 + u64::from(next.is_some());
+            if offset > 0 && !(line.starts_with("• ") && next.is_some_and(|line| line.starts_with("• "))) {
+                offsets.insert(offset);
+            }
+        }
+        Self { digest: format!("{:x}", Sha256::digest(body.as_bytes())), offsets }
+    }
+
+    pub fn matches(&self, placement: &AttachmentPlacement) -> bool {
+        const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
+        placement.body_sha256 == self.digest
+            && self.offsets.contains(&placement.offset)
+            && placement.ordinal <= MAX_SAFE_INTEGER
+    }
+
+    pub fn is_boundary(&self, offset: u64) -> bool {
+        self.offsets.contains(&offset)
+    }
+
+    pub fn at(&self, offset: u64, ordinal: u64) -> Option<AttachmentPlacement> {
+        let placement = AttachmentPlacement { body_sha256: self.digest.clone(), offset, ordinal };
+        self.matches(&placement).then_some(placement)
+    }
+}
+
+/// The plain text editor saves snapshots. Keep boundaries that survive the changed span.
+pub fn rebase_placements(images: &mut [Attachment], old: &str, new: &str) {
+    if old == new || !images.iter().any(|image| image.placement.is_some()) {
+        return;
+    }
+    let old_body = PlacementBody::new(old);
+    let new_body = PlacementBody::new(new);
+    let old_len = old.chars().count() as u64;
+    let new_len = new.chars().count() as u64;
+    let prefix = old.chars().zip(new.chars()).take_while(|(a, b)| a == b).count() as u64;
+    let suffix = old
+        .chars()
+        .rev()
+        .zip(new.chars().rev())
+        .take((old_len.min(new_len) - prefix) as usize)
+        .take_while(|(a, b)| a == b)
+        .count() as u64;
+    for image in images {
+        let Some(placement) = image.placement.as_ref().filter(|placement| old_body.matches(placement)) else {
+            continue;
+        };
+        let offset = placement.offset;
+        let mapped = if offset == old_len && prefix == old_len && !old.ends_with('\n') {
+            offset
+                + new.chars().skip(offset as usize).position(|ch| ch == '\n').map_or(new_len - offset, |i| i as u64 + 1)
+        } else if offset <= prefix {
+            offset
+        } else if offset > old_len - suffix {
+            new_len - (old_len - offset)
+        } else {
+            continue;
+        };
+        // Retain the old digest when the boundary disappears so undo can recover it.
+        if let Some(placement) = new_body.at(mapped, placement.ordinal) {
+            image.placement = Some(placement);
+        }
+    }
 }
 
 impl Attachment {
@@ -57,6 +145,8 @@ pub struct RemoteAttachment {
     pub mime_type: Option<String>,
     #[serde(default)]
     pub size_bytes: Option<f64>,
+    #[serde(default)]
+    pub placement: Option<AttachmentPlacement>,
 }
 
 /// The image types the Worker accepts, from the file's first bytes (never the file name). The ones the
@@ -120,11 +210,20 @@ pub fn merge_listing(
         if removed.get(&row.note_id).is_some_and(|ids| ids.contains(&row.attachment_id)) {
             continue;
         }
+        let placement = if awaiting_commit.contains(&row.note_id)
+            && let Some(local_image) =
+                local.get(&row.note_id).and_then(|images| images.iter().find(|image| image.id == row.attachment_id))
+        {
+            local_image.placement.clone()
+        } else {
+            row.placement.clone()
+        };
         merged.entry(row.note_id.clone()).or_default().push(Attachment {
             id: row.attachment_id.clone(),
             mime_type: row.mime_type.clone().unwrap_or_else(|| "application/octet-stream".into()),
             size_bytes: row.size_bytes.unwrap_or(0.0).max(0.0) as u64,
             location: Location::Uploaded { object_key: row.object_key.clone() },
+            placement,
         });
     }
     for (note_id, attachments) in local {
@@ -296,7 +395,20 @@ mod tests {
     use super::*;
 
     fn att(id: &str, location: Location) -> Attachment {
-        Attachment { id: id.into(), mime_type: "image/png".into(), size_bytes: 3, location }
+        Attachment { id: id.into(), mime_type: "image/png".into(), size_bytes: 3, location, placement: None }
+    }
+
+    #[test]
+    fn a_removed_boundary_falls_back_and_undo_recovers_it() {
+        let original = "First 🧭\nSecond";
+        let merged = "First 🧭Second";
+        let mut images = [att("image", Location::Pending)];
+        images[0].placement = PlacementBody::new(original).at(8, 0);
+        rebase_placements(&mut images, original, merged);
+        let anchor = images[0].placement.as_ref().unwrap();
+        assert!(!PlacementBody::new(merged).matches(anchor));
+        rebase_placements(&mut images, merged, original);
+        assert!(PlacementBody::new(original).matches(images[0].placement.as_ref().unwrap()));
     }
 
     fn row(note: &str, id: &str) -> RemoteAttachment {
@@ -306,6 +418,7 @@ mod tests {
             object_key: format!("owners/u/notes/{note}/{id}"),
             mime_type: Some("image/jpeg".into()),
             size_bytes: Some(1234.0),
+            placement: None,
         }
     }
 
@@ -349,6 +462,45 @@ mod tests {
         assert_eq!(ids("3"), ["elsewhere"], "images added on another device arrive");
         assert!(!merged.contains_key("9"), "no images for a note this device does not have");
         assert_eq!(merged["1"][0].size_bytes, 1234);
+    }
+
+    #[test]
+    fn the_listing_hydrates_remote_placements_and_preserves_pending_edits() {
+        let remote_pos = PlacementBody::new("Before 🧭\n\nAfter").at(10, 0).unwrap();
+        let local_pos = PlacementBody::new("Before 🧭\n\nAfter").at(15, 0).unwrap();
+        let mut local = BTreeMap::new();
+        local.insert(
+            "1".to_string(),
+            vec![Attachment {
+                placement: Some(local_pos.clone()),
+                ..att("a1", Location::Uploaded { object_key: "k1".into() })
+            }],
+        );
+        local.insert(
+            "2".to_string(),
+            vec![Attachment {
+                placement: Some(local_pos.clone()),
+                ..att("a2", Location::Uploaded { object_key: "k2".into() })
+            }],
+        );
+        local.insert(
+            "3".to_string(),
+            vec![Attachment {
+                placement: Some(local_pos.clone()),
+                ..att("a3", Location::Uploaded { object_key: "k3".into() })
+            }],
+        );
+        let remote = [
+            RemoteAttachment { placement: Some(remote_pos.clone()), ..row("1", "a1") },
+            RemoteAttachment { placement: None, ..row("2", "a2") },
+            RemoteAttachment { placement: Some(remote_pos.clone()), ..row("3", "a3") },
+        ];
+        let awaiting = BTreeSet::from(["3".to_string()]);
+        let live = BTreeSet::from(["1".to_string(), "2".to_string(), "3".to_string()]);
+        let merged = merge_listing(&local, &remote, &BTreeMap::new(), &awaiting, &live);
+        assert_eq!(merged["1"][0].placement, Some(remote_pos), "synced note adopts remote placement");
+        assert_eq!(merged["2"][0].placement, None, "synced note clears placement removed elsewhere");
+        assert_eq!(merged["3"][0].placement, Some(local_pos), "unpushed note keeps its local placement");
     }
 
     #[test]

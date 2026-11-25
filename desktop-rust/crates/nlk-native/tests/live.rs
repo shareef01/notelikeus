@@ -7,6 +7,9 @@
 //!   NLK_TEST_SUPABASE_URL=http://127.0.0.1:54326
 //!   NLK_TEST_SUPABASE_KEY=<local anon or publishable key>
 //!   NLK_TEST_MAILPIT_URL=http://127.0.0.1:54324
+//!
+//! Set `NLK_TEST_WEB_RECOVERY_DIR` to the web attachment recovery test's output directory and
+//! `NLK_TEST_ATTACHMENTS_URL` to the local Worker to verify Windows sync and restore.
 
 use std::path::PathBuf;
 
@@ -23,6 +26,64 @@ use serde_json::Value;
 use slint::{ComponentHandle, Model};
 
 const PASSWORD: &str = "a-long-test-password-1";
+
+#[test]
+fn a_large_web_image_syncs_and_restores_on_windows() {
+    let (Some(fixture), Ok(url), Ok(key), Ok(worker), Ok(mailpit)) = (
+        std::env::var_os("NLK_TEST_WEB_RECOVERY_DIR"),
+        std::env::var("NLK_TEST_SUPABASE_URL"),
+        std::env::var("NLK_TEST_SUPABASE_KEY"),
+        std::env::var("NLK_TEST_ATTACHMENTS_URL"),
+        std::env::var("NLK_TEST_MAILPIT_URL"),
+    ) else {
+        eprintln!("skipped: set NLK_TEST_WEB_RECOVERY_DIR and the local Supabase and Worker variables");
+        return;
+    };
+    for endpoint in [&url, &worker, &mailpit] {
+        assert!(endpoint.starts_with("http://127.0.0.1:") || endpoint.starts_with("http://localhost:"));
+    }
+    let fixture = PathBuf::from(fixture);
+    let original = std::fs::read(fixture.join("original.png")).unwrap();
+    assert!(original.len() > 7 * 1024 * 1024);
+    let email = std::fs::read_to_string(fixture.join("account-email.txt")).unwrap();
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let dir = std::env::temp_dir().join(format!("nlk-native-web-backup-{nanos}"));
+    let config = SyncConfig { url, publishable_key: key, captcha_page_url: None, attachments_url: Some(worker) };
+    let restored_dir = dir.join("restore");
+    let mut synced = NotesService::open(
+        &dir.join("sync"),
+        Box::new(PlaintextKeyProtectorForTests),
+        Box::new(SystemIds),
+        Some(config),
+    )
+    .unwrap();
+    synced.request_code(email.trim(), None).unwrap();
+    synced.verify_code(email.trim(), &emailed_code(&mailpit, email.trim())).unwrap();
+    synced.sync_now().unwrap();
+    let note = synced.note(&synced.list()[0].id).unwrap();
+    assert_eq!(note.title, "Large attachment recovery");
+    assert_eq!(note.images.len(), 1);
+    let bytes = synced.image_source().bytes(&note.id, &note.images[0].id).unwrap();
+    assert!(bytes == original, "the synced Windows note contains the original image bytes");
+    drop(synced);
+
+    let mut service =
+        NotesService::open(&restored_dir, Box::new(PlaintextKeyProtectorForTests), Box::new(SystemIds), None).unwrap();
+    let report = nlk_native::backup::import_file(&mut service, &fixture.join("recovered.nlkbak")).unwrap();
+    assert_eq!((report.notes_imported, report.attachments_imported, report.attachments_skipped), (1, 1, 0));
+    drop(service);
+
+    let service =
+        NotesService::open(&restored_dir, Box::new(PlaintextKeyProtectorForTests), Box::new(SystemIds), None).unwrap();
+    let restored = &service.list()[0];
+    assert_eq!(restored.title, "Large attachment recovery");
+    let note = service.note(&restored.id).unwrap();
+    assert_eq!(note.images.len(), 1);
+    let image_bytes = service.image_source().bytes(&note.id, &note.images[0].id).unwrap();
+    assert!(image_bytes == original, "the reopened Windows store contains the original image bytes");
+    drop(service);
+    std::fs::remove_dir_all(dir).unwrap();
+}
 
 fn press(ui: &AppWindow, label: &str) {
     ElementHandle::find_by_accessible_label(ui, label)

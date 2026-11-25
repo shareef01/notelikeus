@@ -139,4 +139,17 @@ describe('PrivacyPolicyDialog stays in step with PRIVACY_POLICY.md', () => {
       expect(summary).toContain(provider);
     }
   });
+
+  it('describes Rust Windows storage and sign-out consistently across policy surfaces', async () => {
+    const copies = [
+      policy,
+      (await renderDialog()).textContent ?? '',
+      readRepositoryFile('web/public/privacy.html'),
+      readRepositoryFile('composeApp/src/commonMain/composeResources/values/strings.xml'),
+    ];
+    for (const copy of copies) {
+      expect(copy).toContain('The Rust Windows app seals notes, attachments and sign-in sessions with AES-GCM using a key protected by Windows DPAPI.');
+      expect(copy).toContain('On Rust Windows, signing out returns to guest notes.');
+    }
+  });
 });

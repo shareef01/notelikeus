@@ -16,4 +16,14 @@ data class Attachment(
     val type: String = "image",
     val mimeType: String? = null,
     val sizeBytes: Long? = null,
+    val placement: AttachmentPlacement? = null,
+)
+
+/** Position in the exact UTF-8 note body, counted in Unicode scalar values. */
+@Immutable
+@Serializable
+data class AttachmentPlacement(
+    val bodySha256: String,
+    val offset: Long,
+    val ordinal: Long,
 )

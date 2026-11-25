@@ -18,6 +18,7 @@ import {
   setOwnerMeta,
 } from '@/lib/local/notesLocalRepository';
 import { createEmptyNote } from '@/types/note';
+import { bodyDigest } from '@/lib/attachments/attachmentPlacement';
 
 function makeNote(id: string, localId: number) {
   return createEmptyNote({ id, localId, title: `Note ${id}`, content: `Body ${id}` });
@@ -189,6 +190,8 @@ describe('notesLocalRepository', () => {
 
   it('seals title/content at rest while returning plaintext to callers', async () => {
     const note = makeNote('seal-1', 10);
+    const placement = { bodySha256: bodyDigest(note.content), offset: note.content.length, ordinal: 0 };
+    note.attachments = [{ id: 'image-1', noteId: note.localId, type: 'image', storagePath: 'pending:image-1', placement }];
     await putNote('user-seal', note);
 
     const raw = await withStore<{ note: { title?: string; content?: string; sealedBody?: ArrayBuffer } } | undefined>(
@@ -201,11 +204,13 @@ describe('notesLocalRepository', () => {
     expect(raw?.note.title).toBe('');
     expect(raw?.note.content).toBe('');
     expect(JSON.stringify(raw?.note)).not.toContain('Body seal-1');
+    expect(JSON.stringify(raw?.note)).not.toContain(placement.bodySha256);
 
     const listed = await listNotes('user-seal');
     expect(listed).toHaveLength(1);
     expect(listed[0]?.title).toBe('Note seal-1');
     expect(listed[0]?.content).toBe('Body seal-1');
+    expect(listed[0]?.attachments).toEqual(note.attachments);
   });
 
   it('dual-reads legacy plaintext and migrates it', async () => {

@@ -177,10 +177,8 @@ class AttachmentOrphanIsolationFenceTest {
             functionName: String,
             body: JsonObject,
         ): JsonObject {
-            if (functionName == "apply_note_change") {
+            if (functionName == "apply_note_change" || functionName == "apply_note_change_with_placements") {
                 noteCommitArgs += body["p_attachment_ids"]?.toString().orEmpty()
-            }
-            if (functionName == "apply_note_change") {
                 return JsonObject(
                     mapOf(
                         "status" to JsonPrimitive("applied"),

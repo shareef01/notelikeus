@@ -1,6 +1,7 @@
 package com.aus.notelikeus.data.attachments
 
 import com.aus.notelikeus.domain.model.Attachment
+import com.aus.notelikeus.domain.model.AttachmentPlacement
 import com.aus.notelikeus.domain.model.Note
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -46,10 +47,20 @@ data class NoteAttachmentMetadata(
     val sizeBytes: Long,
     val attachmentType: String,
     val createdAt: Long = 0L,
+    val placement: AttachmentPlacement? = null,
 )
 
-fun attachmentFromMetadata(note: Note, row: NoteAttachmentMetadata): Attachment {
+fun attachmentFromMetadata(
+    note: Note,
+    row: NoteAttachmentMetadata,
+    preserveLocalPlacement: Boolean = false,
+): Attachment {
     require(note.id != null) { "note id required" }
+    val placement = if (preserveLocalPlacement) {
+        note.attachments.firstOrNull { it.id == row.attachmentId }?.placement
+    } else {
+        row.placement
+    }
     return Attachment(
         id = row.attachmentId,
         noteId = note.id,
@@ -57,6 +68,7 @@ fun attachmentFromMetadata(note: Note, row: NoteAttachmentMetadata): Attachment 
         type = row.attachmentType,
         mimeType = row.mimeType,
         sizeBytes = row.sizeBytes,
+        placement = placement,
     )
 }
 
@@ -76,8 +88,10 @@ fun mergeAttachmentsIntoNotes(
     val byNoteId = rows.groupBy { it.noteId }
     return notes.map { note ->
         val noteId = note.id?.toString() ?: return@map note
-        val remote = (byNoteId[noteId] ?: emptyList()).map { row -> attachmentFromMetadata(note, row) }
         val keepR2 = awaitingCommit(note)
+        val remote = (byNoteId[noteId] ?: emptyList()).map { row ->
+            attachmentFromMetadata(note, row, preserveLocalPlacement = keepR2)
+        }
         val pending = note.attachments.filter {
             isPendingAttachment(it.storagePath) || (keepR2 && isR2Attachment(it.storagePath))
         }
@@ -89,6 +103,9 @@ fun mergeAttachmentsIntoNotes(
 
 fun attachmentsKey(attachments: List<Attachment>): String =
     attachments
-        .map { "${it.id}:${it.storagePath}:${it.mimeType.orEmpty()}:${it.sizeBytes ?: ""}" }
+        .map {
+            val placementKey = it.placement?.let { p -> ":${p.bodySha256}:${p.offset}:${p.ordinal}" }.orEmpty()
+            "${it.id}:${it.storagePath}:${it.mimeType.orEmpty()}:${it.sizeBytes ?: ""}$placementKey"
+        }
         .sorted()
         .joinToString(",")

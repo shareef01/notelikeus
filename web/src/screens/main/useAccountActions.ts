@@ -296,6 +296,7 @@ export function useAccountActions({
         staged.result.notesImported,
         userId,
       );
+      if (scope.isActive()) closeProfile();
 
       const parts: string[] = [];
       if (staged.result.notesImported > 0) {
@@ -317,11 +318,10 @@ export function useAccountActions({
             : base;
       // A partial failure is named in the same breath as the success, so the count and the
       // caveat cannot be read separately.
-      toast(
-        attachmentsSkipped > 0
-          ? `${synced} — ${plural(attachmentsSkipped, 'image')} could not be restored`
-          : synced,
-      );
+      const summary = attachmentsSkipped > 0
+        ? `${synced} — ${plural(attachmentsSkipped, 'image')} could not be restored`
+        : synced;
+      toast(bundle?.placementWarning ? `${summary}. ${bundle.placementWarning}` : summary);
     } catch (error) {
       // Only the local write throws, and it is all or nothing (AUDIT-005): no note was written, so
       // nothing references the images just staged. Take them back.

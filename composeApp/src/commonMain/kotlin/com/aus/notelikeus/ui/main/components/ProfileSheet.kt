@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.PrivacyTip
@@ -36,10 +38,13 @@ import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +73,7 @@ import com.aus.notelikeus.ui.components.AppFilterChip
 import com.aus.notelikeus.ui.main.CloudAccount
 import com.aus.notelikeus.ui.main.CloudSyncStatus
 import com.aus.notelikeus.util.AppConfig
+import com.aus.notelikeus.util.PlatformBackHandler
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.AppType
@@ -124,46 +130,43 @@ fun ProfileSheet(
         PrivacyPolicyDialog(onDismiss = { showPrivacyPolicy = false })
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        shape = MaterialTheme.shapes.extraLarge,
-        containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = { BottomSheetDefaults.DragHandle() }
-    ) {
+    val settingsContent: @Composable (Modifier) -> Unit = { modifier ->
         Column(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = Spacing.xxl)
-                .navigationBarsPadding()
+                .then(if (AppConfig.isDesktop) Modifier.navigationBarsPadding() else Modifier)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.lg)
-            ) {
-                BrandMarkIcon(
-                    size = Size.chipHeightCompact,
-                    backgroundColor = MaterialTheme.colorScheme.onSurface,
-                    stripeColor = MaterialTheme.colorScheme.surface,
-                    ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                )
-                Spacer(modifier = Modifier.width(Size.iconTiny))
-                Column {
-                    Text(
-                        text = stringResource(Res.string.app_name),
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
+            if (AppConfig.isDesktop) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.lg)
+                ) {
+                    BrandMarkIcon(
+                        size = Size.chipHeightCompact,
+                        backgroundColor = MaterialTheme.colorScheme.onSurface,
+                        stripeColor = MaterialTheme.colorScheme.surface,
+                        ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
-                    Text(
-                        text = stringResource(Res.string.settings_local_app),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Spacer(modifier = Modifier.width(Size.iconTiny))
+                    Column {
+                        Text(
+                            text = stringResource(Res.string.app_name),
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
+                        )
+                        Text(
+                            text = stringResource(Res.string.settings_local_app),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
-            }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
-            )
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
+                )
+            }
 
             // Read top to bottom: who you are and how sync is doing, how the app looks, your data,
             // then about. Sign out and Delete account stay last, away from routine settings: they
@@ -393,6 +396,40 @@ fun ProfileSheet(
                     }
                 )
             }
+        }
+    }
+
+    if (AppConfig.isDesktop) {
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            shape = MaterialTheme.shapes.extraLarge,
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            settingsContent(Modifier)
+        }
+    } else {
+        PlatformBackHandler(onBack = onDismiss)
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.surface,
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            stringResource(Res.string.nav_settings),
+                            modifier = Modifier.semantics { heading() }
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(Res.string.cd_back))
+                        }
+                    }
+                )
+            }
+        ) { padding ->
+            settingsContent(Modifier.padding(padding))
         }
     }
 }

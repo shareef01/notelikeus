@@ -10,7 +10,7 @@ mod backup;
 mod diagnostics;
 mod settings;
 
-pub use backup::{BackupAttachmentSource, BackupImportReport};
+pub use backup::{BackupAttachmentSource, BackupImage, BackupImportReport};
 pub use settings::DeleteAccountReport;
 
 use std::collections::BTreeSet;
@@ -140,6 +140,8 @@ pub struct ImageView {
     pub size_bytes: u64,
     /// Only on this device so far (a guest's images always are).
     pub pending: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placement: Option<attachments::AttachmentPlacement>,
 }
 
 /// What a background thread needs to show an image without holding the notes: this account's sealed
@@ -424,6 +426,7 @@ impl NotesService {
                             mime_type: a.mime_type.clone(),
                             size_bytes: a.size_bytes,
                             pending: a.is_pending(),
+                            placement: a.placement.clone(),
                         })
                         .collect()
                 })
@@ -457,6 +460,7 @@ impl NotesService {
             mime_type: mime_type.to_string(),
             size_bytes: bytes.len() as u64,
             location: Location::Pending,
+            placement: None,
         });
         let now = self.ids.now_millis();
         if let Err(error) = sync::edit_note(&mut self.state, id, now, |_| {}) {
@@ -654,9 +658,10 @@ impl NotesService {
         let blobs = self.store.blobs();
         let now = self.ids.now_millis();
         for (original_id, copy_id) in forked {
-            if !self.state.notes.contains_key(copy_id) {
+            let Some(copy_note) = self.state.notes.get(copy_id) else {
                 continue;
-            }
+            };
+            let copy_body = copy_note.checklist.is_empty().then(|| attachments::PlacementBody::new(&copy_note.content));
             let Some(orig_images) = self.state.attachments.get(original_id).cloned() else {
                 continue;
             };
@@ -675,11 +680,13 @@ impl NotesService {
                 if blobs.put_pending(&new_id, &bytes).is_err() {
                     continue;
                 }
+                let placement = image.placement.filter(|p| copy_body.as_ref().is_some_and(|b| b.matches(p)));
                 self.state.attachments.entry(copy_id.clone()).or_default().push(Attachment {
                     id: new_id,
                     mime_type: image.mime_type,
                     size_bytes: bytes.len() as u64,
                     location: Location::Pending,
+                    placement,
                 });
                 added_any = true;
             }
@@ -1183,12 +1190,46 @@ impl NotesService {
             return Ok(self.view(current));
         }
         let before = self.state.clone();
+        if let Some(images) = self.state.attachments.get_mut(id) {
+            attachments::rebase_placements(images, &current.content, content);
+        }
         let now = self.ids.now_millis();
         sync::edit_note(&mut self.state, id, now, |n| {
             n.title = title.to_string();
             n.content = content.to_string();
         })
         .map_err(|e| e.to_string())?;
+        self.commit(before)?;
+        Ok(self.view(&self.state.notes[id]))
+    }
+
+    pub fn set_image_placement(&mut self, id: &str, image_id: &str, offset: Option<u64>) -> Result<NoteView, String> {
+        let note = self.state.notes.get(id).ok_or("That note no longer exists.")?;
+        if note.is_trashed || !note.checklist.is_empty() {
+            return Err("Picture placement is available in text notes.".into());
+        }
+        let images = self.state.attachments.get(id).ok_or("That picture no longer exists.")?;
+        let index = images.iter().position(|image| image.id == image_id).ok_or("That picture no longer exists.")?;
+        let placement = if let Some(offset) = offset {
+            let body = attachments::PlacementBody::new(&note.content);
+            let ordinal = images
+                .iter()
+                .filter_map(|image| image.placement.as_ref())
+                .filter(|placement| placement.offset == offset && body.matches(placement))
+                .map(|placement| placement.ordinal)
+                .max()
+                .map_or(0, |last| (last + 1).min((1 << 53) - 1));
+            Some(body.at(offset, ordinal).ok_or("Choose a position between text blocks.")?)
+        } else {
+            None
+        };
+        if images[index].placement == placement {
+            return Ok(self.view(note));
+        }
+        let before = self.state.clone();
+        let now = self.ids.now_millis();
+        self.state.attachments.get_mut(id).unwrap()[index].placement = placement;
+        sync::edit_note(&mut self.state, id, now, |_| {}).map_err(|e| e.to_string())?;
         self.commit(before)?;
         Ok(self.view(&self.state.notes[id]))
     }

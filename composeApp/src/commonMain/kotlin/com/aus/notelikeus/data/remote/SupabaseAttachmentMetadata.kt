@@ -1,7 +1,9 @@
 package com.aus.notelikeus.data.remote
 
+import com.aus.notelikeus.data.attachments.MAX_PLACEMENT_INTEGER
 import com.aus.notelikeus.data.attachments.NoteAttachmentMetadata
 import com.aus.notelikeus.data.attachments.PendingDeletedAttachment
+import com.aus.notelikeus.domain.model.AttachmentPlacement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -111,9 +113,22 @@ class SupabaseAttachmentMetadata(
                 sizeBytes = obj.longField("size_bytes") ?: 0L,
                 attachmentType = obj.stringField("attachment_type") ?: "image",
                 createdAt = obj.longField("created_at") ?: 0L,
+                placement = obj.placementField(),
             )
         }
     }
+}
+
+private val HEX_64 = Regex("^[a-f0-9]{64}$")
+
+private fun JsonObject.placementField(): AttachmentPlacement? {
+    val raw = get("placement") as? JsonObject ?: return null
+    val digest = raw.stringField("bodySha256") ?: return null
+    if (!HEX_64.matches(digest)) return null
+    val offset = raw.longField("offset") ?: return null
+    val ordinal = raw.longField("ordinal") ?: return null
+    if (offset <= 0L || ordinal !in 0L..MAX_PLACEMENT_INTEGER) return null
+    return AttachmentPlacement(bodySha256 = digest, offset = offset, ordinal = ordinal)
 }
 
 private fun JsonObject.stringField(key: String): String? =

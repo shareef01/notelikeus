@@ -17,6 +17,7 @@ import { EditorOptionsSheet } from '@/components/editor/EditorOptionsSheet';
 import { LinkDialog } from '@/components/editor/LinkDialog';
 import { EditorContent } from '@tiptap/react';
 import { useRichNoteEditor } from '@/hooks/useRichNoteEditor';
+import { useInlineAttachmentWidgets } from '@/hooks/useInlineAttachmentWidgets';
 import { recordEditorHistoryNoteId, registerEditorBackHandler } from '@/hooks/useEditorHistory';
 import { ReminderPickerDialog } from '@/components/editor/ReminderPickerDialog';
 import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
@@ -24,6 +25,7 @@ import { useNoteEditor } from '@/hooks/useNoteEditor';
 import { useImagePasteAndDrop } from '@/hooks/useImagePasteAndDrop';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
+import { bodyDigest, placementPositions } from '@/lib/attachments/attachmentPlacement';
 import { isConflictedCopyTitle } from '@/lib/notes/conflictResolution';
 import { useCloudSync } from '@/hooks/useCloudSync';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
@@ -210,12 +212,31 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [linkTarget, setLinkTarget] = useState<{from: number; to: number; href: string; doc: unknown} | null>(null);
   const [showReminderPicker, setShowReminderPicker] = useState(false);
-  const rich = useRichNoteEditor(state.content, (text) => {
+  const rich = useRichNoteEditor(state.content, (text, edit) => {
     if (/(?:^|\n)\[(?: )?\] $/.test(text)) {
       const result = editor.setContentSmart(text, text.length, text.length);
       if (result.structureChanged) editor.convertContentToChecklist();
-    } else editor.setContent(text);
+    } else editor.setContent(text, edit);
   }, {undo: () => editor.undoConversion(), redo: () => editor.redoConversion()});
+  const hasChecklist = state.checklist.length > 0;
+  const canPlaceImages = !hasChecklist && Boolean(rich.editor);
+  const inlineSlots = useInlineAttachmentWidgets(rich.editor, state.content, state.attachments, canPlaceImages);
+
+  const placeImage = (attachmentId: string) => {
+    if (!rich.editor) return;
+    const { doc, selection } = rich.editor.state;
+    const boundary = Array.from(placementPositions(doc, state.content)).find(([, position]) => position >= selection.to);
+    if (!boundary) {
+      useToastStore.getState().show('Put the cursor in a paragraph of the note to place the image.', 'error');
+      return;
+    }
+    const [offset] = boundary;
+    const bodySha256 = bodyDigest(state.content);
+    const lastOrdinal = state.attachments.reduce((last, { placement }) =>
+      placement?.bodySha256 === bodySha256 && placement.offset === offset ? Math.max(last, placement.ordinal) : last, -1);
+    editor.setAttachmentPlacement(attachmentId, { bodySha256, offset, ordinal: Math.min(lastOrdinal + 1, Number.MAX_SAFE_INTEGER) });
+    rich.editor.commands.focus(undefined, { scrollIntoView: false });
+  };
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -236,7 +257,6 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const surface = noteSurfaceStyle(0, { solid: true, isDarkPalette });
   const noteAccent = noteSurfaceStyle(state.color, { solid: true, isDarkPalette }).backgroundColor;
   const contentColor = surface.color;
-  const hasChecklist = state.checklist.length > 0;
   const isFloatLayout = isTabletUp && editorLayout === 'float';
   const editorGutterClass = 'px-layout-gap lg:px-8 xl:px-10';
   const writingColumnClass = editorWritingColumnClass(editorLayout, isTabletUp);
@@ -279,7 +299,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
     });
     observer.observe(field);
     return () => observer.disconnect();
-  }, [state.title]);
+  }, [state.title, editorLayout, isTabletUp]);
 
   const onFloatClose = useCallback(() => {
     void handleBack();
@@ -292,7 +312,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
   useEffect(() => registerEditorBackHandler(async () => {
     if (dismissFocusTrapExcept(floatPanelRef.current, overlayPanelRef.current)) return;
     await handleBack();
-  }), [handleBack, floatPanelRef, overlayPanelRef]);
+  }, async () => (await editor.flushSave()).status !== 'failed'), [handleBack, editor, floatPanelRef, overlayPanelRef]);
 
   const handleDelete = async () => {
     // Trashing is a write like any other; closing on a failed one would report a delete that
@@ -773,6 +793,12 @@ export function EditorScreen({ route }: EditorScreenProps) {
               attachments={state.attachments}
               contentColor={contentColor}
               onRemove={editor.removeAttachment}
+              inlineSlots={inlineSlots}
+              onPlace={canPlaceImages && state.content.trim() ? placeImage : undefined}
+              onUnplace={canPlaceImages ? (id) => {
+                editor.setAttachmentPlacement(id);
+                rich.editor?.commands.focus(undefined, { scrollIntoView: false });
+              } : undefined}
             />
           ) : null}
         </div>

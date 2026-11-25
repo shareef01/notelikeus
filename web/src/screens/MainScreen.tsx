@@ -1,4 +1,4 @@
-import { useEditorHistory } from '@/hooks/useEditorHistory';
+import { navigateEditor, useEditorHistory } from '@/hooks/useEditorHistory';
 import { version as appVersion } from '../../package.json';
 import { AddIcon } from '@/components/icons/Icons';
 
@@ -46,6 +46,7 @@ import { useUiStore } from '@/store/uiStore';
 
 import type { Note, NoteFilter } from '@/types/note';
 import { MainDialogs, NO_DIALOGS_OPEN, type MainDialogState } from '@/screens/main/MainDialogs';
+import { useSettingsRoute } from '@/screens/main/useSettingsRoute';
 import { getEmptyState } from '@/screens/main/mainEmptyState';
 import { ConfirmDialog } from '@/components/ui/ModalDialog';
 import { Button } from '@/components/ui/Button';
@@ -79,6 +80,7 @@ const DiagnosticsDialog = lazy(() =>
 
 export function MainScreen() {
   useEditorHistory();
+  const { settingsOpen, openSettings, closeSettings } = useSettingsRoute();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -107,7 +109,7 @@ export function MainScreen() {
 
   const setListScrolled = useUiStore((s) => s.setListScrolled);
 
-  const openNewNote = useUiStore((s) => s.openNewNote);
+  const openNewNote = () => void navigateEditor(useUiStore.getState().openNewNote);
 
   const openNote = useUiStore((s) => s.openNote);
   const openAuthScreen = useUiStore((s) => s.openAuthScreen);
@@ -248,7 +250,7 @@ export function MainScreen() {
       toggleNoteSelection(note.id);
       return;
     }
-    openNote(note.id);
+    void navigateEditor(() => openNote(note.id));
   };
 
   const handleNoteLongPress = (note: Note) => {
@@ -327,7 +329,7 @@ export function MainScreen() {
     userId: user?.uid,
     closeSignOutConfirm: () => openDialogs({ signOutConfirm: false }),
     closeDeleteAccountConfirm: () => openDialogs({ deleteAccountConfirm: false }),
-    closeProfile: () => openDialogs({ profile: false }),
+    closeProfile: closeSettings,
   });
 
   const emptyState = getEmptyState(
@@ -340,11 +342,8 @@ export function MainScreen() {
   const isTabletUp = useIsTabletUp();
   const editorRoute = useUiStore((s) => s.editorRoute);
   const editorLayout = useUiStore((s) => s.editorLayout);
-  const desktopEditor = isTabletUp && editorRoute.mode !== 'closed' ? editorRoute : null;
-  const dockedEditor =
-    desktopEditor && editorLayout === 'dock' ? desktopEditor : null;
-  const overlayEditor =
-    desktopEditor && editorLayout !== 'dock' ? desktopEditor : null;
+  const activeEditor = editorRoute.mode === 'closed' ? null : editorRoute;
+  const dockedEditor = activeEditor != null && isTabletUp && editorLayout === 'dock';
 
   // Main-screen keys stand aside while a dialog holds the keyboard, and decline (rather than
   // swallow) a key while the editor is open, so Ctrl+F there still opens the browser's find bar.
@@ -353,7 +352,7 @@ export function MainScreen() {
     searchInputRef.current?.focus();
   };
   useShortcuts(
-    [
+    settingsOpen ? [{ key: 'Escape', action: closeSettings }] : [
       { key: '/', action: focusSearch },
       { key: 'k', ctrlOrMeta: true, action: focusSearch },
       { key: 'f', ctrlOrMeta: true, action: focusSearch },
@@ -377,7 +376,12 @@ export function MainScreen() {
   );
 
   return (
-    <div className="flex min-h-screen w-full bg-true-surface">
+    <>
+      <div
+        className="flex min-h-screen w-full bg-true-surface"
+        style={settingsOpen ? { visibility: 'hidden' } : undefined}
+        inert={settingsOpen}
+      >
 
       <SideDrawer
         open={drawerOpen}
@@ -398,7 +402,7 @@ export function MainScreen() {
         currentSavedFilter={currentSavedFilter}
         onApplySavedFilter={handleApplySavedFilter}
         onDeleteSavedFilter={deleteSavedFilter}
-        onOpenSettings={() => openDialogs({ profile: true })}
+        onOpenSettings={() => { setDrawerOpen(false); openSettings(); }}
 
       />
 
@@ -433,7 +437,7 @@ export function MainScreen() {
           hasActiveFilters={hasActiveFilters}
           onClearFilters={clearFilters}
           onMenuClick={() => setDrawerOpen(true)}
-          onProfileClick={() => openDialogs({ profile: true })}
+          onProfileClick={openSettings}
           userEmail={user?.email ?? null}
           viewColumns={viewColumns}
           onViewColumnsChange={setViewColumns}
@@ -640,17 +644,12 @@ export function MainScreen() {
         ) : null}
         </div>
 
-        {dockedEditor ? (
-          // No animate-in here: EditorScreen renders fixed-position descendants
-          // (EditorOptionsSheet, LinkDialog, ReminderPickerDialog), and tailwindcss-animate's
-          // shared `enter` keyframe always applies a transform — even for plain fade-in —
-          // which would make this non-fixed wrapper a containing block for those fixed
-          // descendants for the animation's duration, mispositioning them if opened mid-animation.
-          // Sticky and one viewport tall, so the editor scrolls inside itself. As a plain flex item
-          // it grew to the height of the note list beside it: the page scrolled both together, and
-          // with a dozen notes the save status and More options sat thousands of pixels down while
-          // scrolling to them took Back and the layout switch off screen.
-          <div className="sticky top-0 h-dvh min-w-0 flex-1 self-start bg-true-surface">
+        {activeEditor ? (
+          // Keep the same editor mounted when its presentation changes. The dock stays one
+          // viewport tall so its controls remain in reach while the library scrolls.
+          <div className={dockedEditor
+            ? 'sticky top-0 h-dvh min-w-0 flex-1 self-start bg-true-surface'
+            : 'contents'}>
             <ErrorBoundary
               variant="overlay"
               allowClearData={false}
@@ -658,28 +657,15 @@ export function MainScreen() {
             >
               <Suspense fallback={null}>
                 <EditorScreen
-                  key={dockedEditor.mode === 'new' ? 'new' : dockedEditor.noteId}
-                  route={dockedEditor}
+                  key={activeEditor.mode === 'new' ? 'new' : activeEditor.noteId}
+                  route={activeEditor}
                 />
               </Suspense>
             </ErrorBoundary>
           </div>
         ) : null}
 
-        {overlayEditor ? (
-          <ErrorBoundary
-            variant="overlay"
-            allowClearData={false}
-            onDismiss={() => useUiStore.getState().closeEditor()}
-          >
-            <Suspense fallback={null}>
-              <EditorScreen
-                key={overlayEditor.mode === 'new' ? 'new' : overlayEditor.noteId}
-                route={overlayEditor}
-              />
-            </Suspense>
-          </ErrorBoundary>
-        ) : null}
+      </div>
       </div>
 
       {/* Mounted per opening, so the sheet starts fresh: no half-typed name, no label search. */}
@@ -700,6 +686,8 @@ export function MainScreen() {
       <MainDialogs
         open={dialogs}
         onOpenChange={openDialogs}
+        settingsOpen={settingsOpen}
+        onCloseSettings={closeSettings}
         noteCount={notes.length}
         trashedCount={navCounts.trashed}
         selectedCount={selectedNoteIds.length}
@@ -779,7 +767,7 @@ export function MainScreen() {
         onConfirm={() => void confirmImport()}
       />
 
-    </div>
+    </>
 
   );
 

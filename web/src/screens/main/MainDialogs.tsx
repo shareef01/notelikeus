@@ -12,7 +12,6 @@ import { SortSheet } from '@/components/layout/SortSheet';
 
 /** Which of the mutually-exclusive overlays is open. */
 export interface MainDialogState {
-  profile: boolean;
   signOutConfirm: boolean;
   deleteAccountConfirm: boolean;
   privacyPolicy: boolean;
@@ -22,7 +21,6 @@ export interface MainDialogState {
 }
 
 export const NO_DIALOGS_OPEN: MainDialogState = {
-  profile: false,
   signOutConfirm: false,
   deleteAccountConfirm: false,
   privacyPolicy: false,
@@ -34,6 +32,8 @@ export const NO_DIALOGS_OPEN: MainDialogState = {
 interface MainDialogsProps {
   open: MainDialogState;
   onOpenChange: (next: Partial<MainDialogState>) => void;
+  settingsOpen: boolean;
+  onCloseSettings: () => void;
 
   noteCount: number;
   trashedCount: number;
@@ -88,6 +88,8 @@ interface MainDialogsProps {
 export function MainDialogs({
   open,
   onOpenChange,
+  settingsOpen,
+  onCloseSettings,
   noteCount,
   trashedCount,
   selectedCount,
@@ -122,8 +124,8 @@ export function MainDialogs({
   return (
     <>
       <ProfileSheet
-        open={open.profile}
-        onClose={() => onOpenChange({ profile: false })}
+        open={settingsOpen}
+        onClose={onCloseSettings}
         noteCount={noteCount}
         viewColumns={viewColumns}
         sortOrder={sortOrder}

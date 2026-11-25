@@ -5,6 +5,8 @@ import {
   sealNoteBytes,
 } from '@/lib/crypto/notesBytesCodec';
 import { getNotesCryptoKey } from '@/lib/crypto/notesCryptoKey';
+import { parseAttachmentPlacement } from '@/lib/attachments/attachmentPlacement';
+import type { AttachmentPlacement } from '@/types/attachment';
 import type { ChecklistItem } from '@/types/checklist';
 import type { Note } from '@/types/note';
 
@@ -13,6 +15,7 @@ interface NoteSecrets {
   title: string;
   content: string;
   checklist: ChecklistItem[];
+  attachmentPlacements?: Record<string, AttachmentPlacement>;
 }
 
 /**
@@ -47,7 +50,13 @@ export function isSealedStoredNote(note: StoredNotePayload): boolean {
 }
 
 function blankSecrets(note: Note): Note {
-  return { ...note, title: '', content: '', checklist: [] };
+  return {
+    ...note,
+    title: '',
+    content: '',
+    checklist: [],
+    attachments: note.attachments.map(({ placement: _placement, ...attachment }) => attachment),
+  };
 }
 
 export class NoteDecryptionError extends Error {
@@ -100,6 +109,8 @@ export async function sealNoteForStorage(
     content: note.content,
     checklist: note.checklist,
   };
+  const positioned = note.attachments.flatMap(({ id, placement }) => placement ? [[id, placement] as const] : []);
+  if (positioned.length) secrets.attachmentPlacements = Object.fromEntries(positioned);
   const plain = new TextEncoder().encode(JSON.stringify(secrets));
   const sealed = await sealNoteBytes(key, plain, noteAad(ownerId, note.id));
   const { sealedBody: _drop, ...rest } = note as StoredNotePayload;
@@ -164,6 +175,10 @@ export async function openStoredNote(
     title: typeof parsed.title === 'string' ? parsed.title : '',
     content: typeof parsed.content === 'string' ? parsed.content : '',
     checklist: Array.isArray(parsed.checklist) ? parsed.checklist : [],
+    attachments: parsed.attachmentPlacements ? shell.attachments.map((attachment) => {
+      const placement = parseAttachmentPlacement(parsed.attachmentPlacements?.[attachment.id]);
+      return placement ? { ...attachment, placement } : attachment;
+    }) : shell.attachments,
   };
 }
 

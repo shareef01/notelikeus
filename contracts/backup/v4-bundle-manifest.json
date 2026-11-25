@@ -52,6 +52,7 @@
     "entryNames": "manifest.json at the archive root, and media/<attachmentId> for each attachment. attachmentId must match ^[A-Za-z0-9_-]{1,128}$, which is what makes zip-slip structurally impossible: a reader resolves media entries from the validated id in the manifest, never from a path in the archive.",
     "noteId": "The note's id inside `backup.notes`. Import reassigns local ids, so a reader must map old note id -> newly assigned id and rewrite the attachment's owner accordingly.",
     "sha256": "Lowercase hex of the entry's bytes. A mismatch drops that one attachment and is reported; it must never drop the note.",
+    "placement": "Optional image position with bodySha256 (lowercase hex SHA-256 of the exact UTF-8 note body), offset (Unicode scalar count at a block boundary, including its following line feed if present), and ordinal (nonnegative order among images at that boundary). Readers use attachmentId to break ordinal ties. An unsupported or invalid placement leaves the image in the attachment strip.",
     "additive": "Import is additive, exactly as v3 import is: notes arrive as new notes with newly allocated ids. Importing the same bundle twice yields two copies, and the attachment ids are re-minted so the second copy does not collide with the first.",
     "excluded": "A bundle never carries access tokens, refresh tokens, encryption keys, cached sessions, sync cursors, server revisions, knownCloudIds, or any owner identifier."
   }

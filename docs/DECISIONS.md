@@ -7,11 +7,15 @@ Each entry records **what was decided**, **why**, and **what it would cost to re
 
 ---
 
-## D1 — Tinted surface carries the note colour. No accent bar.
+## D1 — Tinted surfaces carry note colour in the library
 
 **Decided:** a coloured note renders as a tinted container (`container` + `onContainer` tonal
 roles). The 2dp strip in List view is removed. Cards with no colour keep the existing hairline
 outline so they still read as cards.
+
+The active editors use the theme's writing surface and show the note colour in a short
+accent near the title or toolbar. This keeps the colour visible while long notes use the
+same text contrast in every note. Windows contrast themes use system colours throughout.
 
 **Why:** the strip only existed in List view, and it was drawn from `contentColor`/`outline` —
 it was never rendering the note's colour, so the two layouts disagreed about what it meant. It
@@ -1214,3 +1218,67 @@ now. Not done here: launching the packaged app (CI's `package` job does) and a h
 Material3 surfaces on a device and on Windows.
 
 **Cost to reverse:** one catalog change back, plus restoring the holds from this file's history.
+
+## Proposed — Place attachments between paragraphs without changing the note body format
+
+The first version places a picture between text blocks. The Markdown body stays a string, and the
+existing attachment IDs, Worker upload, and note commit remain the source of membership. Store the
+position separately from both the image bytes and Markdown. A placement names the owning note and
+an existing attachment ID, carries the SHA-256 of the exact UTF-8 body, and records a Unicode scalar
+offset at a block boundary and an ordinal for pictures at that boundary. Use attachment ID to break
+ordinal ties deterministically. A checklist keeps the attachment strip until it has an explicit placement
+model of its own.
+
+**Editing and older clients.** An editor resolves each valid placement to a local document position,
+maps that position through insertions and deletions, then writes a new offset and digest in the same
+save as the new body. Deleting a placement returns the picture to the attachment strip. The existing
+Remove image action remains the operation that deletes an attachment. Validate boundaries against
+the serialized Markdown, including fenced code, CRLF, and non-BMP text. When a reader lacks placement
+support or finds a digest mismatch, missing attachment, or invalid boundary, it shows the image in
+the strip. An older client can keep editing the body and managing attachments. A text change from
+that client makes incompatible placements fall back to the strip, while a metadata-only edit leaves
+the body digest valid. Avoid inserting Markdown image URLs or private object keys into the body.
+
+**Sync and rollout.** Add an owner-scoped placement store and a versioned mutation with an explicit
+capability. Commit new placements with the same note revision check and attachment commitment
+transaction used for the body. An omitted placement payload preserves prior metadata. An explicit
+empty list clears it. Validate that every referenced attachment belongs to the note and is being
+committed in that transaction or was already committed. Attachment removal and account deletion
+remove their placement rows with the existing owner and note checks. Include placements in the
+encrypted local state and pending edit so retries preserve one logical result. Roll out reading and
+fallback first, then enable placement editing once the server and all three maintained readers have
+fixture coverage. On a conflict copy, remap both the note and copied attachment IDs and retain only
+placements matching the copied body. Existing clients continue to sync through their current RPCs.
+
+**Backup compatibility.** Keep v3 notes-only JSON unchanged. Put optional placement metadata in the
+v4 attachment entries. Older web, Rust, and Kotlin readers can keep using the attachment fields they
+already read. Verify that with the oldest supported builds before writing the field. During import,
+apply placements only after the body and image pass validation and their IDs have been remapped.
+Show skipped images or placements in the result, and keep the rest of the note usable. Add shared
+fixtures for repeated import, old-client saves, offline edits, lost upload replies, concurrent text
+and placement changes, and complete versus partial backups. Include Unicode offsets, duplicate
+positions, paragraph deletion, a missing image, and a client without the new capability.
+
+The shared `contracts/backup/v4-positioned-image.nlkbak` fixture exercises the additive field on
+the current web, Kotlin, and Rust readers. Its body has an emoji before the anchor to distinguish
+Unicode scalar offsets from UTF-16 code units and UTF-8 byte offsets.
+
+The web guest editor now supports placing and removing image positions between text blocks. It
+stores the position and body digest in the encrypted note payload and carries valid positions
+through complete v4 backup export and guest import. If an edit removes the boundary, the image
+returns to the strip and undo can recover its position. Signed-in web imports currently restore
+the image into the strip. Android and Windows store matching positions from v4 imports and carry
+them through v4 re-export with newly assigned IDs. Windows shows positioned pictures in Read mode.
+Guest users place pictures from the attachment strip in Edit mode using the text cursor, and can
+move them back to the strip from Read mode. The Markdown source input stays intact. When a text
+edit removes an anchor, its image returns to the strip. Android uses the same Read and Edit flow
+for text notes. Its reader uses the existing Markdown rendering and attachment viewer.
+
+Signed-in placement sync is implemented via `20261124000000_attachment_placements.sql`:
+`note_attachments.placement` stores optional JSONB placement metadata, `get_sync_generation`
+advertises `attachment_placements: true`, `list_user_attachments` returns each committed row's
+`placement`, and `apply_note_change_with_placements` commits note changes, attachment promotion,
+and validated placements in a single transaction. Web, Rust, and Kotlin call
+`apply_note_change_with_placements` when committing notes with uploaded (`r2:`) attachments and
+fall back to `apply_note_change` on `PGRST202` against older servers; older clients continue
+calling `apply_note_change` without disruption.

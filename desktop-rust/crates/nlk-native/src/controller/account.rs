@@ -123,20 +123,26 @@ fn open_browser(url: &str) -> Result<(), String> {
             )
         };
         // ShellExecute reports success as a value above 32.
-        if result as isize > 32 {
-            Ok(())
-        } else {
-            Err("Couldn't open your browser for the security check. Try again.".into())
-        }
+        if result as isize > 32 { Ok(()) } else { Err("Couldn't open your browser. Try again.".into()) }
     }
     #[cfg(not(windows))]
     {
         let _ = url;
-        Err("Couldn't open your browser for the security check.".into())
+        Err("Couldn't open your browser.".into())
     }
 }
 
 impl Controller {
+    pub(super) fn open_preview_link(&self, href: &str) {
+        let Some(url) = super::view::normalize_safe_href(href) else {
+            self.show_toast("This link isn't supported.", None, None);
+            return;
+        };
+        if let Err(message) = open_browser(&url) {
+            self.show_toast(&message, None, None);
+        }
+    }
+
     fn raise_sync_due(&self, timer: &Timer, mode: TimerMode, after: Duration) {
         let weak = self.ui.clone();
         timer.start(mode, after, move || {
@@ -342,7 +348,9 @@ impl Controller {
     }
 
     pub(super) fn sign_out(&self) {
-        self.save_now();
+        if !self.save_now() {
+            return;
+        }
         self.close_sheet();
         let result = self.svc().sign_out();
         self.pictures.clear();

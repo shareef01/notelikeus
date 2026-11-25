@@ -2203,8 +2203,23 @@ class NoteSyncEngine(
         carried: Map<String, Attachment> = emptyMap(),
     ): Note {
         val copy = ConflictResolution.conflictedCopyOf(local, carried.values.toList())
-        val id = innerInsert(copy)
-        val inserted = copy.copy(id = id, attachments = copy.attachments.map { it.copy(noteId = id) })
+        val copyBody = if (copy.checklist.isEmpty()) {
+            com.aus.notelikeus.data.attachments.PlacementBody(copy.content)
+        } else {
+            null
+        }
+        val filteredCopy = if (copy.attachments.any { it.placement != null }) {
+            copy.copy(
+                attachments = copy.attachments.map { attachment ->
+                    val kept = attachment.placement?.takeIf { copyBody?.matches(it) == true }
+                    if (kept == attachment.placement) attachment else attachment.copy(placement = kept)
+                },
+            )
+        } else {
+            copy
+        }
+        val id = innerInsert(filteredCopy)
+        val inserted = filteredCopy.copy(id = id, attachments = filteredCopy.attachments.map { it.copy(noteId = id) })
         // The attachment metadata names its note, which has an id only now.
         if (inserted.attachments.isNotEmpty()) noteDao.updateNote(inserted.toNoteEntity())
         AppLog.warn(TAG, "Kept an unsynced edit to note ${local.id} as conflicted copy $id")

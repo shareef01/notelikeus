@@ -14,6 +14,34 @@ class MarkdownOffsetMappingTest {
     }
 
     @Test
+    fun `long notes keep formatting and cursor offsets across lines`() {
+        val line = "🌿 **bold** and _italic_ [link](https://example.com)\r\n"
+        val visible = "🌿 bold and italic link\r\n"
+        val count = 600
+        val source = line.repeat(count)
+        val transformed = RichTextParser.toTransformedText(source, Color.Black)
+        assertEquals(visible.repeat(count), transformed.text.text)
+        val mapping = transformed.offsetMapping
+        val sourceOffset = line.length * 315 + line.indexOf("italic") + 1
+        val displayOffset = visible.length * 315 + visible.indexOf("italic") + 1
+        assertEquals(displayOffset, mapping.originalToTransformed(sourceOffset))
+        assertEquals(sourceOffset, mapping.transformedToOriginal(displayOffset))
+        assertEquals(transformed.text.length, mapping.originalToTransformed(source.length))
+        assertEquals(source.length, mapping.transformedToOriginal(transformed.text.length))
+    }
+
+    @Test
+    fun `an oversized line stays literal without affecting its neighbors`() {
+        val longLine = "[".repeat(92_000) + "**literal**\n"
+        val transformed = RichTextParser.toTransformedText("**first**\n${longLine}_last_", Color.Black)
+        assertEquals("first\n${longLine}last", transformed.text.text)
+        val sourceOffset = "**first**\n".length + 90_000
+        val displayOffset = "first\n".length + 90_000
+        assertEquals(displayOffset, transformed.offsetMapping.originalToTransformed(sourceOffset))
+        assertEquals(sourceOffset, transformed.offsetMapping.transformedToOriginal(displayOffset))
+    }
+
+    @Test
     fun `offset mapping keeps cursor inside bold content`() {
         val source = "**hello**"
         val mapping = RichTextParser.buildOffsetMapping(source)

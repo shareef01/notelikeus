@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use notelikeus_core::attachments::{self, Attachment, Location, MAX_ATTACHMENT_BYTES};
+use notelikeus_core::attachments::{
+    self, Attachment, AttachmentPlacement, Location, MAX_ATTACHMENT_BYTES, PlacementBody,
+};
 use notelikeus_core::model::{ChecklistItem, Note};
 use notelikeus_core::sync;
 use serde::Serialize;
@@ -39,6 +41,13 @@ pub struct BackupAttachmentSource {
     pub attachment_id: String,
     pub mime_type: String,
     pub bytes: Vec<u8>,
+    pub placement: Option<AttachmentPlacement>,
+}
+
+pub struct BackupImage {
+    pub note_id: String,
+    pub bytes: Vec<u8>,
+    pub placement: Option<AttachmentPlacement>,
 }
 
 #[derive(Serialize)]
@@ -181,6 +190,8 @@ impl NotesService {
         let mut seen = std::collections::HashSet::new();
         for (note_id, images) in &self.state.attachments {
             let Some(note) = self.state.notes.get(note_id) else { continue };
+            let body = (note.checklist.is_empty() && images.iter().any(|image| image.placement.is_some()))
+                .then(|| PlacementBody::new(&note.content));
             for image in images {
                 if included.len() >= MAX_ATTACHMENTS {
                     skipped += 1;
@@ -198,6 +209,10 @@ impl NotesService {
                                 attachment_id: image.id.clone(),
                                 mime_type: mime_type.to_string(),
                                 bytes,
+                                placement: image
+                                    .placement
+                                    .clone()
+                                    .filter(|placement| body.as_ref().is_some_and(|body| body.matches(placement))),
                             });
                         } else {
                             skipped += 1;
@@ -212,7 +227,8 @@ impl NotesService {
 
     /// Stores a verified backup image under a newly generated id, preserving the imported note time.
     pub fn add_backup_image(&mut self, note_id: &str, bytes: &[u8]) -> Result<(), String> {
-        let (imported, _) = self.add_backup_images(&[(note_id.to_string(), bytes.to_vec())])?;
+        let image = BackupImage { note_id: note_id.to_string(), bytes: bytes.to_vec(), placement: None };
+        let (imported, _, _) = self.add_backup_images(&[image])?;
         if imported == 0 {
             return Err("That file isn't a supported picture.".into());
         }
@@ -220,18 +236,20 @@ impl NotesService {
     }
 
     /// Stores a batch of verified backup images in one save, preserving each imported note time.
-    pub fn add_backup_images(&mut self, items: &[(String, Vec<u8>)]) -> Result<(usize, usize), String> {
+    pub fn add_backup_images(&mut self, items: &[BackupImage]) -> Result<(usize, usize, usize), String> {
         if items.is_empty() {
-            return Ok((0, 0));
+            return Ok((0, 0, 0));
         }
         let blobs = self.store.blobs();
         let before = self.state.clone();
         let mut created_blobs = Vec::new();
         let mut imported = 0usize;
         let mut skipped = 0usize;
+        let mut placements_skipped = 0;
+        let mut bodies = HashMap::new();
         let mut touched_timestamps: HashMap<String, i64> = HashMap::new();
 
-        for (note_id, bytes) in items {
+        for BackupImage { note_id, bytes, placement } in items {
             let Some(note) = self.state.notes.get(note_id) else {
                 skipped += 1;
                 continue;
@@ -255,18 +273,24 @@ impl NotesService {
                 continue;
             }
             touched_timestamps.entry(note_id.clone()).or_insert(note.timestamp);
+            let valid_placement = placement.clone().filter(|placement| {
+                note.checklist.is_empty()
+                    && bodies.entry(note_id).or_insert_with(|| PlacementBody::new(&note.content)).matches(placement)
+            });
+            placements_skipped += usize::from(placement.is_some() && valid_placement.is_none());
             self.state.attachments.entry(note_id.clone()).or_default().push(Attachment {
                 id: image_id.clone(),
                 mime_type: mime_type.to_string(),
                 size_bytes: bytes.len() as u64,
                 location: Location::Pending,
+                placement: valid_placement,
             });
             created_blobs.push(image_id);
             imported += 1;
         }
 
         if imported == 0 {
-            return Ok((0, skipped));
+            return Ok((0, skipped, placements_skipped));
         }
 
         let now = self.ids.now_millis();
@@ -289,7 +313,7 @@ impl NotesService {
             }
             return Err(error);
         }
-        Ok((imported, skipped))
+        Ok((imported, skipped, placements_skipped))
     }
 
     /// Adds notes from a v3/legacy JSON backup. It validates the document before touching the store.

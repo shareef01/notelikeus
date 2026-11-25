@@ -1,9 +1,10 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
-use notelikeus_app::{BackupImportReport, NotesService};
+use notelikeus_app::{BackupImage, BackupImportReport, NotesService};
+use notelikeus_core::attachments::AttachmentPlacement;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use zip::write::SimpleFileOptions;
@@ -67,7 +68,7 @@ pub fn export_bundle(service: &NotesService, path: &Path) -> Result<BackupExport
         .iter()
         .map(|attachment| {
             let sha256 = format!("{:x}", Sha256::digest(&attachment.bytes));
-            json!({
+            let mut entry = json!({
                 "noteId": attachment.note_id,
                 "attachmentId": attachment.attachment_id,
                 "path": format!("media/{}", attachment.attachment_id),
@@ -75,7 +76,11 @@ pub fn export_bundle(service: &NotesService, path: &Path) -> Result<BackupExport
                 "mimeType": attachment.mime_type,
                 "sizeBytes": attachment.bytes.len(),
                 "sha256": sha256,
-            })
+            });
+            if let Some(placement) = &attachment.placement {
+                entry["placement"] = json!(placement);
+            }
+            entry
         })
         .collect();
     let metadata = serde_json::to_vec(&json!({
@@ -212,7 +217,9 @@ fn import_bundle(service: &mut NotesService, path: &Path) -> Result<BackupImport
     }
     let mut report = service.import_backup_v3(&backup_bytes)?;
     let mut seen_ids = HashSet::new();
-    let mut verified_images: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut verified_images = Vec::new();
+    let mut positions = BTreeMap::new();
+    let mut placements_skipped = 0;
     for candidate in attachments {
         let Some(entry) = candidate.as_object() else {
             report.attachments_skipped += 1;
@@ -294,12 +301,37 @@ fn import_bundle(service: &mut NotesService, path: &Path) -> Result<BackupImport
             report.attachments_skipped += 1;
             continue;
         }
-        verified_images.push((new_note_id, bytes));
+        let placement = entry.get("placement").and_then(parse_placement);
+        placements_skipped += usize::from(entry.contains_key("placement") && placement.is_none());
+        if let Some(placement) = &placement {
+            positions
+                .entry((new_note_id.clone(), placement.body_sha256.clone(), placement.offset))
+                .or_insert_with(Vec::new)
+                .push((placement.ordinal, attachment_id, verified_images.len()));
+        }
+        verified_images.push(BackupImage { note_id: new_note_id, bytes, placement });
+    }
+    // A tie uses the source id. Preserve that order after local ids are regenerated.
+    for group in positions.values_mut() {
+        group.sort_unstable();
+        if group.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+            for (ordinal, &(_, _, index)) in group.iter().enumerate() {
+                if let Some(placement) = &mut verified_images[index].placement {
+                    placement.ordinal = ordinal as u64;
+                }
+            }
+        }
     }
     if !verified_images.is_empty() {
-        let (imported, batch_skipped) = service.add_backup_images(&verified_images)?;
+        let (imported, batch_skipped, batch_positions_skipped) = service.add_backup_images(&verified_images)?;
+        placements_skipped += batch_positions_skipped;
         report.attachments_imported += imported;
         report.attachments_skipped += batch_skipped;
+    }
+    if placements_skipped > 0 {
+        report
+            .warnings
+            .push("Some image positions could not be restored. The images are in the attachment strip.".into());
     }
     if report.attachments_skipped > 0 {
         report.warnings.push(format!(
@@ -368,6 +400,14 @@ fn valid_attachment_id(value: &str) -> bool {
 
 fn valid_sha256(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn parse_placement(value: &Value) -> Option<AttachmentPlacement> {
+    const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
+    let digest = value.get("bodySha256")?.as_str().filter(|digest| valid_sha256(digest))?;
+    let offset = value.get("offset")?.as_u64().filter(|offset| (1..=MAX_SAFE_INTEGER).contains(offset))?;
+    let ordinal = value.get("ordinal")?.as_u64().filter(|ordinal| *ordinal <= MAX_SAFE_INTEGER)?;
+    Some(AttachmentPlacement { body_sha256: digest.to_owned(), offset, ordinal })
 }
 
 struct CappedWriter {
@@ -451,6 +491,43 @@ mod tests {
             fs::remove_dir_all(&dir2).unwrap();
             fs::remove_dir_all(&dir).unwrap();
         }
+    }
+
+    #[test]
+    fn a_v4_bundle_with_optional_placement_restores_the_note_and_picture() {
+        let dir = temp_dir("v4-placement");
+        let mut service = open_service(&dir);
+        let report = import_file(&mut service, &contracts_dir().join("backup/v4-positioned-image.nlkbak")).unwrap();
+        assert_eq!((report.notes_imported, report.attachments_imported, report.attachments_skipped), (1, 1, 0));
+        let note = service.note(&service.list()[0].id).unwrap();
+        assert_eq!(note.title, "Positioned image");
+        assert_eq!(note.content, "Before 🧭\n\nAfter");
+        assert_eq!(service.image_source().bytes(&note.id, &note.images[0].id).unwrap().len(), 70);
+        assert!(report.warnings.is_empty());
+        drop(service);
+        let mut service = open_service(&dir);
+        let exported = dir.join("positioned-roundtrip.nlkbak");
+        export_bundle(&service, &exported).unwrap();
+        let mut archive = ZipArchive::new(File::open(exported).unwrap()).unwrap();
+        let manifest: Value = serde_json::from_reader(archive.by_name(MANIFEST_ENTRY).unwrap()).unwrap();
+        assert_eq!(
+            manifest["attachments"][0]["placement"],
+            json!({
+                "bodySha256": format!("{:x}", Sha256::digest(note.content.as_bytes())),
+                "offset": 10,
+                "ordinal": 0,
+            })
+        );
+        drop(archive);
+
+        service.update(&note.id, &note.title, "Changed body").unwrap();
+        let exported = dir.join("stale-position.nlkbak");
+        assert_eq!(export_bundle(&service, &exported).unwrap().images_included, 1);
+        let mut archive = ZipArchive::new(File::open(exported).unwrap()).unwrap();
+        let manifest: Value = serde_json::from_reader(archive.by_name(MANIFEST_ENTRY).unwrap()).unwrap();
+        assert!(manifest["attachments"][0].get("placement").is_none());
+        drop(archive);
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

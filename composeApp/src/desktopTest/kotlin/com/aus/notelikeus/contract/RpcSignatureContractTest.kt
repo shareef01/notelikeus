@@ -32,8 +32,15 @@ class RpcSignatureContractTest {
     @Test
     fun `apply_note_change arguments match a deployed overload`() = runTest {
         val rpc = RecordingRpc()
-        SupabaseNoteTransport(rpc).putNotes(IDENTITY, listOf(note()))
+        SupabaseNoteTransport(rpc).putNotes(IDENTITY, listOf(note(withAttachment = false)))
         assertMatchesAnOverload(rpc.single("apply_note_change"), "apply_note_change")
+    }
+
+    @Test
+    fun `apply_note_change_with_placements arguments match a deployed overload`() = runTest {
+        val rpc = RecordingRpc()
+        SupabaseNoteTransport(rpc).putNotes(IDENTITY, listOf(note(withAttachment = true)))
+        assertMatchesAnOverload(rpc.single("apply_note_change_with_placements"), "apply_note_change_with_placements")
     }
 
     @Test
@@ -61,23 +68,27 @@ class RpcSignatureContractTest {
         )
     }
 
-    /** A note carrying a remote attachment, so any attachment-id argument is actually sent. */
-    private fun note() = Note(
+    /** A note carrying a remote attachment when [withAttachment] is true, so attachment arguments are sent. */
+    private fun note(withAttachment: Boolean = true) = Note(
         id = NOTE_ID,
         title = "note",
         content = "body",
         timestamp = 1_000L,
         color = 0,
-        attachments = listOf(
-            Attachment(
-                id = "att-remote",
-                noteId = NOTE_ID,
-                storagePath = "$ATTACHMENT_R2_PREFIX owners/$OWNER/notes/$NOTE_ID/att-remote",
-                type = "image",
-                mimeType = "image/png",
-                sizeBytes = 3,
-            ),
-        ),
+        attachments = if (withAttachment) {
+            listOf(
+                Attachment(
+                    id = "att-remote",
+                    noteId = NOTE_ID,
+                    storagePath = "$ATTACHMENT_R2_PREFIX owners/$OWNER/notes/$NOTE_ID/att-remote",
+                    type = "image",
+                    mimeType = "image/png",
+                    sizeBytes = 3,
+                ),
+            )
+        } else {
+            emptyList()
+        },
     )
 
     private class RecordingRpc : SupabaseRpcClient {

@@ -152,6 +152,16 @@ pub enum CloudChange {
     Tombstone(CloudTombstoneRow),
 }
 
+/// One entry of `p_attachment_placements` for `apply_note_change_with_placements`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentPlacementArg {
+    pub attachment_id: String,
+    pub body_sha256: String,
+    pub offset: u64,
+    pub ordinal: u64,
+}
+
 /// The `apply_note_change` argument object (`contracts/cloud/note-rpc-args.json`).
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct ApplyNoteChangeArgs {
@@ -171,6 +181,9 @@ pub struct ApplyNoteChangeArgs {
     pub p_checklist: Vec<ChecklistItem>,
     pub p_attachment_ids: Vec<String>,
     pub p_wipe_generation: i64,
+    /// Present when this commit carries image placement metadata for `apply_note_change_with_placements`.
+    #[serde(skip_serializing)]
+    pub attachment_placements: Option<Vec<AttachmentPlacementArg>>,
 }
 
 impl ApplyNoteChangeArgs {
@@ -192,6 +205,12 @@ impl ApplyNoteChangeArgs {
             p_checklist: note.checklist.clone(),
             p_attachment_ids: attachment_ids,
             p_wipe_generation: wipe_generation,
+            attachment_placements: None,
         }
+    }
+
+    pub fn with_placements(mut self, placements: Vec<AttachmentPlacementArg>) -> Self {
+        self.attachment_placements = Some(placements);
+        self
     }
 }

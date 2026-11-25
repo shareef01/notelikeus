@@ -29,6 +29,7 @@ export function attachmentFromMetadata(
     type: row.attachmentType,
     mimeType: row.mimeType,
     sizeBytes: row.sizeBytes,
+    ...(row.placement ? { placement: row.placement } : {}),
   };
 }
 
@@ -36,7 +37,8 @@ export function attachmentsKey(attachments: Attachment[]): string {
   return attachments
     .map(
       (attachment) =>
-        `${attachment.id}:${attachment.storagePath}:${attachment.mimeType ?? ''}:${attachment.sizeBytes ?? ''}`,
+        `${attachment.id}:${attachment.storagePath}:${attachment.mimeType ?? ''}:${attachment.sizeBytes ?? ''}` +
+        (attachment.placement ? `:${attachment.placement.bodySha256}:${attachment.placement.offset}:${attachment.placement.ordinal}` : ''),
     )
     .sort()
     .join(',');

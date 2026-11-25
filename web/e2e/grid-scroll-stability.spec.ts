@@ -24,6 +24,9 @@ async function enterGuestWithNotes(
   await expect(page.getByRole('button', { name: 'New note' }).first()).toBeVisible({
     timeout: 20_000,
   });
+  // Guest bootstrap replaces the in-memory list with IndexedDB results. Inject the fixture
+  // after that read so a slower local load cannot overwrite the synthetic notes.
+  await page.waitForFunction(() => (window as any).__NOTELIKEUS_NOTES_STORE__?.getState().status === 'ready');
 
   // Populate synthetic notes in store via test hook
   await page.evaluate(
@@ -94,6 +97,82 @@ async function enterGuestWithNotes(
 }
 
 test.describe('Scalability & Progressive Grid Validation', () => {
+  test('large List bounds mounted cards and preserves reorder across sections', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium', 'Exercises mouse and keyboard reordering on desktop');
+    await enterGuestWithNotes(page, 2_000);
+    await page.getByRole('radio', { name: 'List — one column', exact: true }).click();
+
+    const cards = page.locator('[data-note-open]');
+    const boundaryRow = page.locator('[data-reorder-note="perf-note-79"]');
+    const handle = boundaryRow.getByRole('button', { name: 'Reorder note' });
+    await page.locator('[data-sentinel="notes-grid"]').scrollIntoViewIfNeeded();
+    await expect(page.locator('[data-note-open="perf-note-80"]')).toBeAttached();
+    await expect(boundaryRow).toHaveAttribute('data-board-index', '79');
+
+    await handle.focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(boundaryRow).toHaveAttribute('data-board-index', '80');
+    await expect(handle).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(boundaryRow).toHaveAttribute('data-board-index', '79');
+    await expect(handle).toBeFocused();
+
+    await handle.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+    const box = (await handle.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 80);
+    await expect(boundaryRow).toHaveAttribute('data-board-index', '80');
+    await page.mouse.move(x, y + 160);
+    await page.mouse.up();
+    await expect(boundaryRow).toHaveAttribute('data-board-index', '81');
+    await handle.evaluate((element) => element.blur());
+
+    const finalCard = page.locator('[data-note-open="perf-note-1999"]');
+    await expect.poll(async () => {
+      if (await finalCard.count()) return true;
+      await page.evaluate(() => document.querySelector('[data-sentinel="notes-grid"]')?.scrollIntoView({ block: 'end' }));
+      return false;
+    }, { timeout: 25_000, intervals: [50] }).toBe(true);
+    await finalCard.scrollIntoViewIfNeeded();
+    await expect(finalCard).toBeInViewport();
+    await expect.poll(() => cards.count()).toBeLessThanOrEqual(480);
+
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(page.locator('[data-note-open="perf-note-0"]')).toBeInViewport();
+    await expect(finalCard).toHaveCount(0);
+    await expect.poll(() => cards.count()).toBeLessThanOrEqual(480);
+    console.log(`[2,000 List Return to Top] Cards: ${await cards.count()}`);
+  });
+
+  test('large mobile List lets a touch drag cross sections without swiping the card', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile-chrome', 'Exercises touch on a narrow viewport');
+    await enterGuestWithNotes(page, 2_000);
+    await page.getByRole('radio', { name: 'List — one column', exact: true }).click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByRole('button', { name: 'View: List. Tap to change', exact: true })).toBeVisible();
+
+    await page.locator('[data-sentinel="notes-grid"]').scrollIntoViewIfNeeded();
+    await expect(page.locator('[data-note-open="perf-note-80"]')).toBeAttached();
+    const row = page.locator('[data-reorder-note="perf-note-79"]');
+    const handle = row.getByRole('button', { name: 'Reorder note' });
+    await handle.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+    const box = (await handle.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + 80 }] });
+    await expect(row).toHaveAttribute('data-board-index', '80');
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + 160 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await cdp.detach();
+    await expect(row).toHaveAttribute('data-board-index', '81');
+    await expect(page.getByRole('button', { name: 'Clear selection', exact: true })).toHaveCount(0);
+  });
+
   test('scroll position and card count stability across sync, edits, pinning, and checkboxes (>1,000 notes)', async ({
     page,
   }) => {
@@ -523,8 +602,22 @@ test.describe('Scalability & Progressive Grid Validation', () => {
         finalCard?.focus();
         const interactionLatencyMs = Math.round(performance.now() - tFocus);
 
-        // 4. Return to top and measure reset stats
+        // 4. Return to top and wait for offscreen cards to be released.
         window.scrollTo(0, 0);
+        await new Promise<void>((resolve, reject) => {
+          const deadline = performance.now() + 5_000;
+          function tick() {
+            if (document.querySelector('[data-note-open="perf-note-0"]')
+                && document.querySelectorAll('[data-note-open]').length <= 480) {
+              resolve();
+            } else if (performance.now() >= deadline) {
+              reject(new Error('The first section did not return within the card budget'));
+            } else {
+              requestAnimationFrame(tick);
+            }
+          }
+          tick();
+        });
         const returnTopStats = {
           scrollY: window.scrollY,
           cards: document.querySelectorAll('[data-note-open]').length,
@@ -542,7 +635,9 @@ test.describe('Scalability & Progressive Grid Validation', () => {
       });
 
       expect(benchmarkResult.finalNoteRendered).toBe(true);
-      expect(benchmarkResult.peakStats.cards).toBe(10_000);
+      expect(benchmarkResult.peakStats.cards).toBeLessThanOrEqual(480);
+      expect(benchmarkResult.returnTopStats.cards).toBeLessThanOrEqual(480);
+      expect(benchmarkResult.returnTopStats.domNodes).toBeLessThan(18_000);
       expect(benchmarkResult.returnTopStats.scrollY).toBe(0);
 
       console.log(
@@ -552,7 +647,5 @@ test.describe('Scalability & Progressive Grid Validation', () => {
         `[10,000 Return to Top] ScrollY: ${benchmarkResult.returnTopStats.scrollY}, Cards: ${benchmarkResult.returnTopStats.cards}, DOM Nodes: ${benchmarkResult.returnTopStats.domNodes}, Heap: ${benchmarkResult.returnTopStats.heapMb}MB`,
       );
 
-      // Clean up DOM before page fixture teardown so CDP does not serialize 228k DOM nodes
-      await page.goto('about:blank');
     });
 });

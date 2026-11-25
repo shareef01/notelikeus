@@ -419,6 +419,7 @@
 .has-note-attachments .rich-note-body { min-height: 3rem; }
 .rich-note-body ul { list-style: disc; padding-left: 1.5em; margin: .35em 0; }
 .rich-note-body li > p { margin: 0; }
+.rich-note-body [data-inline-attachment] { margin-block: .625rem; }
 .rich-note-body a { color: inherit; text-decoration: underline; text-underline-offset: .2em; }
 .rich-note-body p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);

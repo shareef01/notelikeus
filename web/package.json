@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
+    "@noble/hashes": "1.8.0",
     "@supabase/supabase-js": "^2.119.0",
     "@tiptap/extension-placeholder": "3.33.0",
     "@tiptap/pm": "3.33.0",

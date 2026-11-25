@@ -10,18 +10,18 @@ remaining feasibility study.
 | Client | Note store | Encrypted at rest by the app? | Attachment bytes on disk |
 |---|---|---|---|
 | Android | Room + SQLCipher | **Yes.** 32-byte random passphrase, sealed by an AndroidKeyStore AES-GCM key (`DatabaseKeyManager`), with a legacy `EncryptedSharedPreferences` migration path. | **Yes (app-level).** AES-GCM under a dedicated Keystore alias (`AndroidAttachmentBytesProtector`); dual-read accepts legacy plaintext during migration. |
-| Windows (Desktop) | Room + Willena `sqlite-jdbc` (SQLCipher v4) | **Yes (default on Windows).** 32-byte passphrase in `~/.notelikeus/notes-db.key`, sealed with DPAPI (`DesktopDatabaseKeyManager`); one-way plaintext→encrypted migration via `PRAGMA rekey`. Opt out with `notelikeus.desktop.jdbcSqlite=false`. | **Yes (app-level).** AES-GCM under a DPAPI-sealed AES key (`DesktopAttachmentBytesProtector`); dual-read accepts legacy plaintext during migration. |
+| Windows (Rust) | Per-account sealed state files in `%APPDATA%\NotelikeusRust` | **Yes.** AES-GCM with a data key protected by current-user DPAPI. The session file is sealed using the same key. | **Yes.** AES-GCM with owner- and attachment-bound authenticated data. |
+| Windows (legacy Kotlin) | Room + Willena `sqlite-jdbc` (SQLCipher v4) | **Yes (default on Windows).** 32-byte passphrase in `~/.notelikeus/notes-db.key`, sealed with DPAPI (`DesktopDatabaseKeyManager`); one-way plaintext→encrypted migration via `PRAGMA rekey`. Opt out with `notelikeus.desktop.jdbcSqlite=false`. | **Yes (app-level).** AES-GCM under a DPAPI-sealed AES key (`DesktopAttachmentBytesProtector`); dual-read accepts legacy plaintext during migration. |
 | Web | IndexedDB (+ `localStorage` for preferences) | **Yes (app-level) for note bodies.** Title/content/checklist sealed (`NLN1`) under a non-extractable WebCrypto key; dual-read accepts legacy plaintext. Flags/colors/sync metadata stay readable. | **Yes (app-level) for staged pending blobs.** AES-GCM (`NLA1`) under a separate non-extractable WebCrypto key; dual-read accepts legacy plaintext. |
 
-Two things on Windows *are* protected beyond OS ACLs: the Supabase session token file is sealed
+In the legacy Kotlin Windows app, the Supabase session token file is sealed
 with DPAPI (`platform/Dpapi.kt`, used by `DesktopSupabaseSessionPersistence`), attachment
 image / staging bytes under `~/.notelikeus/` are AES-GCM sealed under a separate DPAPI-wrapped
 key file (`attachment-aes.key`), and the notes Room database is SQLCipher-encrypted under
 `notes-db.key` (also DPAPI) when running on Windows (the default).
 
-`PRIVACY_POLICY.md` states platform encryption accurately — SQLCipher for Android notes,
-AES-GCM attachments on Android and Desktop, Web/Desktop notes DB limits, and no E2E claim for
-cloud sync. Update that file whenever a client gains or loses encryption.
+The [privacy policy](../PRIVACY_POLICY.md) describes each client's storage and the cloud sync
+boundary. For Rust implementation details, see the [Rust workspace documentation](../desktop-rust/README.md).
 
 ## Android attachment bytes — implemented (AES-GCM + Keystore)
 

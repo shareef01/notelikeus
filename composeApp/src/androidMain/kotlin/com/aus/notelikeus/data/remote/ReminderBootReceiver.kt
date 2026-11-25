@@ -4,7 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.aus.notelikeus.domain.repository.NoteRepository
-import com.aus.notelikeus.data.ReminderScheduler
+import com.aus.notelikeus.domain.platform.ReminderManager
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import kotlinx.coroutines.CoroutineScope
@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 class ReminderBootReceiver : BroadcastReceiver(), KoinComponent {
 
     private val repository: NoteRepository by inject()
-    private val reminderScheduler: ReminderScheduler by inject()
+    private val reminderManager: ReminderManager by inject()
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
@@ -25,7 +25,7 @@ class ReminderBootReceiver : BroadcastReceiver(), KoinComponent {
                 repository.getNotesWithActiveReminders(now).forEach { note ->
                     val noteId = note.id ?: return@forEach
                     val timestamp = note.reminderTimestamp ?: return@forEach
-                    reminderScheduler.scheduleReminder(
+                    reminderManager.scheduleReminder(
                         noteId = noteId,
                         timestamp = timestamp
                     )

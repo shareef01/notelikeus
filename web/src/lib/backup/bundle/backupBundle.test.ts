@@ -25,6 +25,8 @@ import { importNotesFromBackup } from '@/lib/backup/importBackup';
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
 import { clearPendingAttachmentsForTests, storePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
 import { pendingStoragePath } from '@/lib/attachments/attachmentPaths';
+import { bodyDigest } from '@/lib/attachments/attachmentPlacement';
+import { readContractBinaryFixture } from '@/lib/contract/contractFixtures';
 import { GUEST_OWNER_ID } from '@/lib/local/constants';
 import { labelFromName } from '@/types/label';
 import { createEmptyNote, type Note } from '@/types/note';
@@ -53,6 +55,43 @@ beforeEach(async () => {
 });
 
 describe('bundle format', () => {
+  it('stages and re-exports a positioned image with its Unicode scalar offset', async () => {
+    const archive = readContractBinaryFixture('backup/v4-positioned-image.nlkbak');
+    const parsed = await parseBackupBundle(archive);
+    const imported = await applyBundle(parsed, [], { ownerId: GUEST_OWNER_ID });
+    const restored = imported.merged[0]!;
+    const image = restored.attachments[0]!;
+    expect(imported.warnings).toEqual([]);
+    expect(image.id).not.toBe('att-cross-1');
+    expect(image.placement).toEqual({ bodySha256: bodyDigest(restored.content), offset: 10, ordinal: 0 });
+
+    const exported = await buildBundleFromNotes([restored], GUEST_OWNER_ID);
+    const reimport = await parseBackupBundle(exported.bytes);
+    expect(reimport.manifest.attachments[0]?.placement).toEqual(image.placement);
+    expect(reimport.manifest.backup.notes).toMatchObject([{ content: 'Before 🧭\n\nAfter' }]);
+  });
+
+  it('keeps the image when its anchor no longer matches the note', async () => {
+    const parsed = await parseBackupBundle(readContractBinaryFixture('backup/v4-positioned-image.nlkbak'));
+    parsed.manifest.attachments[0]!.placement!.offset = 7;
+    const imported = await applyBundle(parsed, [], { ownerId: GUEST_OWNER_ID });
+    expect(imported.attachmentsImported).toBe(1);
+    expect(imported.merged[0]?.attachments[0]?.placement).toBeUndefined();
+    expect(imported.warnings).toContain('Some image positions could not be restored. The images are in the attachment strip.');
+  });
+
+  it('preserves the order of images with tied ordinals when their ids change', async () => {
+    const source = note('7', { content: 'First\nSecond' });
+    const placement = { bodySha256: bodyDigest(source.content), offset: 6, ordinal: 0 };
+    const archive = await buildBackupBundle(exportBackupPayload([source], 1), [
+      { noteId: 7, attachmentId: 'z-image', type: 'image', bytes: PNG, placement },
+      { noteId: 7, attachmentId: 'a-image', type: 'image', bytes: PNG, placement },
+    ]);
+    const imported = await applyBundle(await parseBackupBundle(archive), [], { ownerId: GUEST_OWNER_ID });
+    expect(imported.warnings).toEqual([]);
+    expect(imported.merged[0]?.attachments.map((attachment) => attachment.placement?.ordinal)).toEqual([1, 0]);
+  });
+
   it('embeds the v3 backup document verbatim', async () => {
     const notes = [note('7', { title: 'Trip', labels: [labelFromName('Travel')] })];
     const document = exportBackupPayload(notes, 1767225600000);

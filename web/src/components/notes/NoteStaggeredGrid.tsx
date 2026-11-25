@@ -30,7 +30,7 @@ interface NoteStaggeredGridProps {
   listActions?: NoteListActions;
   searchQuery?: string;
   allowReorder?: boolean;
-  onMoveNote?: (fromIndex: number, toIndex: number) => void;
+  onMoveNote?: (fromIndex: number, toIndex: number) => boolean | void;
   onReorderComplete?: () => void;
   /**
    * One step up or down, announced: the cards' Move up / Move down actions and the reorder
@@ -124,6 +124,9 @@ function buildBoardItems(
 
 const INITIAL_RENDER_COUNT = 80;
 const CHUNK_RENDER_COUNT = 60;
+const WINDOWED_BOARD_THRESHOLD = 1_500;
+const WINDOWED_SECTION_SIZE = 80;
+const WINDOWED_HANDLER_CACHE_LIMIT = WINDOWED_SECTION_SIZE * 6;
 
 const CARD_CONTENT_VISIBILITY_STYLE: Record<ViewColumns, React.CSSProperties> = {
   1: { contentVisibility: 'auto', containIntrinsicSize: 'auto 110px' },
@@ -167,6 +170,9 @@ export function NoteStaggeredGrid({
     () => buildBoardItems(notes, sortOrder, searchQuery, groupByDate),
     [notes, sortOrder, searchQuery, groupByDate],
   );
+  // Section boundaries change how CSS columns balance. Use them on large collections.
+  const windowBoard = boardItems.length > WINDOWED_BOARD_THRESHOLD
+    && typeof IntersectionObserver !== 'undefined';
 
   const queryKey = `${filter}:${searchQuery}:${sortOrder}:${viewPreference}`;
   const [prevQueryKey, setPrevQueryKey] = useState(queryKey);
@@ -204,7 +210,7 @@ export function NoteStaggeredGrid({
   }, [visibleCount, boardItems.length]);
 
   const [draggingIndex, setDraggingIndex] = useState(-1);
-  const dragOffsetRef = useRef(0);
+  const dragRef = useRef<{ pointerId: number; index: number; lastY: number; offset: number } | null>(null);
 
   // A card that leaves the list — archived, trashed, restored or deleted from its quick actions —
   // took keyboard focus with it, and focus fell to <body>: a keyboard user started again from the
@@ -218,9 +224,13 @@ export function NoteStaggeredGrid({
     refocusIndexRef.current = null;
     // The action failed and the card is still here, holding focus: leave it there.
     if (grid.contains(document.activeElement)) return;
-    const cards = grid.querySelectorAll<HTMLElement>('[data-note-open]');
-    cards[Math.min(index, cards.length - 1)]?.focus();
-  }, [notes]);
+    const cards = Array.from(grid.querySelectorAll<HTMLElement>('[data-note-open]'));
+    const next = windowBoard
+      ? cards.find((card) => Number(card.closest<HTMLElement>('[data-board-index]')?.dataset.boardIndex) >= index)
+        ?? cards.at(-1)
+      : cards[Math.min(index, cards.length - 1)];
+    next?.focus();
+  }, [notes, windowBoard]);
 
   // Stable callbacks per note (A13). NoteCard is memoised, but every render handed each card new
   // closures, so the memo never held: ticking one checkbox re-rendered all 500 cards of a large
@@ -256,7 +266,14 @@ export function NoteStaggeredGrid({
       moveUp: () => latest.current.onMoveNoteBy?.(noteId, -1),
       moveDown: () => latest.current.onMoveNoteBy?.(noteId, 1),
     };
-    handlerCache.current.set(noteId, created);
+    const cache = handlerCache.current;
+    if (windowBoard) {
+      for (const oldest of cache.keys()) {
+        if (cache.size < WINDOWED_HANDLER_CACHE_LIMIT) break;
+        cache.delete(oldest);
+      }
+    }
+    cache.set(noteId, created);
     return created;
   };
   const labelClick = useRef((name: string) => latest.current.onLabelClick?.(name)).current;
@@ -349,113 +366,124 @@ export function NoteStaggeredGrid({
     return <NoteCard {...cardProps(note)} {...reorderProps} />;
   };
 
-  const handleDragStart = (index: number) => {
+  const handleDragStart = (index: number, event: React.PointerEvent<HTMLButtonElement>) => {
+    const grid = gridRef.current;
+    if (event.button !== 0 || !grid || dragRef.current) return;
+    event.stopPropagation();
+    // A card can remount in another section during a move. The board owns the pointer capture.
+    grid.setPointerCapture(event.pointerId);
+    dragRef.current = { pointerId: event.pointerId, index, lastY: event.clientY, offset: 0 };
     setDraggingIndex(index);
-    dragOffsetRef.current = 0;
   };
 
-  const handleDragMove = (deltaY: number) => {
-    if (draggingIndex < 0 || !onMoveNote) return;
-    dragOffsetRef.current += deltaY;
-
-    if (dragOffsetRef.current > REORDER_THRESHOLD_PX && draggingIndex < notes.length - 1) {
-      onMoveNote(draggingIndex, draggingIndex + 1);
-      setDraggingIndex((current) => current + 1);
-      dragOffsetRef.current = 0;
-      return;
-    }
-
-    if (dragOffsetRef.current < -REORDER_THRESHOLD_PX && draggingIndex > 0) {
-      onMoveNote(draggingIndex, draggingIndex - 1);
-      setDraggingIndex((current) => current - 1);
-      dragOffsetRef.current = 0;
-    }
+  const handleDragMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || event.buttons === 0 || !onMoveNote) return;
+    drag.offset += event.clientY - drag.lastY;
+    drag.lastY = event.clientY;
+    if (Math.abs(drag.offset) <= REORDER_THRESHOLD_PX) return;
+    const next = drag.index + Math.sign(drag.offset);
+    drag.offset = 0;
+    if (next < 0 || next >= notes.length || onMoveNote(drag.index, next) === false) return;
+    drag.index = next;
+    setDraggingIndex(next);
   };
 
-  const handleDragEnd = () => {
-    if (draggingIndex >= 0) {
-      setDraggingIndex(-1);
-      dragOffsetRef.current = 0;
-      onReorderComplete?.();
-    }
+  const handleDragEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    setDraggingIndex(-1);
+    onReorderComplete?.();
   };
-
-  const columnGapPx = 16;
 
   const visibleItems =
     boardItems.length > INITIAL_RENDER_COUNT ? boardItems.slice(0, visibleCount) : boardItems;
 
+  const renderItem = (item: BoardItem) => {
+    if (item.type === 'header') {
+      return (
+        // Space above every group but the first. The header used to carry `first:pt-0`, but it
+        // is always its wrapper's first child, so no header had space above it and "Today" sat
+        // against the last pinned card.
+        <div
+          key={item.key}
+          className={`[&:not(:first-child)]:pt-2 ${
+            isList ? 'col-span-full' : 'mb-2 w-full break-inside-avoid'
+          }`}
+          style={isList ? undefined : { columnSpan: 'all' }}
+        >
+          <NoteSectionHeader title={item.title} />
+        </div>
+      );
+    }
+
+    const { note, index } = item;
+    if (canReorder) {
+      return (
+        <ReorderRow
+          key={note.id}
+          noteId={note.id}
+          boardIndex={windowBoard ? index : undefined}
+          isDragging={draggingIndex === index}
+          onDragStart={(event) => handleDragStart(index, event)}
+          onKeyboardMove={(delta) => {
+            if (onMoveNoteBy) {
+              onMoveNoteBy(note.id, delta);
+              return;
+            }
+            const target = index + delta;
+            if (!onMoveNote || target < 0 || target >= notes.length) return;
+            onMoveNote(index, target);
+            onReorderComplete?.();
+          }}
+          render={(reorderHandleProps) => renderCard(note, reorderHandleProps)}
+        />
+      );
+    }
+
+    return (
+      <div
+        key={note.id}
+        data-board-index={windowBoard ? index : undefined}
+        className={`min-w-0 ${isList ? '' : 'mb-4 break-inside-avoid'}`}
+        style={windowBoard ? undefined : CARD_CONTENT_VISIBILITY_STYLE[viewPreference]}
+      >
+        {renderCard(note)}
+      </div>
+    );
+  };
+
+  const columnStyle = { columnWidth: cardMin, columnGap: 16 };
+  const listLayout = 'grid grid-cols-1 gap-2.5 sm:gap-3';
   return (
     <div
       ref={gridRef}
+      onPointerMove={handleDragMove}
+      onPointerUp={handleDragEnd}
+      onPointerCancel={handleDragEnd}
+      onLostPointerCapture={handleDragEnd}
       data-selecting={selectionMode || undefined}
       className={`w-full px-shell pb-24 pt-2 ${
         isList
-          ? 'mx-auto grid max-w-content grid-cols-1 gap-2.5 sm:gap-3'
+          ? `mx-auto max-w-content ${windowBoard ? 'flex flex-col gap-2.5 sm:gap-3' : listLayout}`
           : 'mx-auto max-w-board'
       }`}
-      style={
-        isList
-          ? undefined
-          : {
-              columnWidth: cardMin,
-              columnGap: columnGapPx,
-            }
-      }
+      style={isList || windowBoard ? undefined : columnStyle}
     >
-      {visibleItems.map((item) => {
-        if (item.type === 'header') {
-          return (
-            // Space above every group but the first. The header used to carry `first:pt-0`, but it
-            // is always its wrapper's first child, so no header had space above it and "Today" sat
-            // against the last pinned card.
-            <div
-              key={item.key}
-              className={`[&:not(:first-child)]:pt-2 ${
-                isList ? 'col-span-full' : 'mb-2 w-full break-inside-avoid'
-              }`}
-              style={isList ? undefined : { columnSpan: 'all' }}
-            >
-              <NoteSectionHeader title={item.title} />
-            </div>
-          );
-        }
-
-        const { note, index } = item;
-        if (canReorder) {
-          return (
-            <ReorderRow
-              key={note.id}
-              index={index}
-              isDragging={draggingIndex === index}
-              onDragStart={handleDragStart}
-              onDragMove={handleDragMove}
-              onDragEnd={handleDragEnd}
-              onKeyboardMove={(delta) => {
-                if (onMoveNoteBy) {
-                  onMoveNoteBy(note.id, delta);
-                  return;
-                }
-                const target = index + delta;
-                if (!onMoveNote || target < 0 || target >= notes.length) return;
-                onMoveNote(index, target);
-                onReorderComplete?.();
-              }}
-              render={(reorderHandleProps) => renderCard(note, reorderHandleProps)}
-            />
-          );
-        }
-
-        return (
-          <div
-            key={note.id}
-            className={`min-w-0 ${isList ? '' : 'mb-4 break-inside-avoid'}`}
-            style={CARD_CONTENT_VISIBILITY_STYLE[viewPreference]}
-          >
-            {renderCard(note)}
-          </div>
-        );
-      })}
+      {windowBoard
+        ? Array.from({ length: Math.ceil(visibleItems.length / WINDOWED_SECTION_SIZE) }, (_, section) => {
+            const start = section * WINDOWED_SECTION_SIZE;
+            return (
+              <WindowedBoardSection
+                key={`${queryKey}:${start}`}
+                className={isList ? listLayout : 'flow-root'}
+                style={isList ? undefined : columnStyle}
+              >
+                {() => visibleItems.slice(start, start + WINDOWED_SECTION_SIZE).map(renderItem)}
+              </WindowedBoardSection>
+            );
+          })
+        : visibleItems.map(renderItem)}
       {visibleCount < boardItems.length ? (
         <div
           ref={sentinelRef}
@@ -469,44 +497,88 @@ export function NoteStaggeredGrid({
   );
 }
 
+/** Keep the measured height when a section leaves the viewport so the scroll position stays put. */
+function WindowedBoardSection({
+  children,
+  className,
+  style,
+}: {
+  children: () => ReactNode;
+  className: string;
+  style?: React.CSSProperties;
+}) {
+  const elementRef = useRef<HTMLDivElement>(null);
+  const [placeholderHeight, setPlaceholderHeight] = useState<number | null>(null);
+  const [focusWithin, setFocusWithin] = useState(false);
+  const nearby = useRef(true);
+
+  useEffect(() => {
+    const element = elementRef.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry) return;
+      nearby.current = entry.isIntersecting;
+      setFocusWithin(element.contains(document.activeElement));
+      setPlaceholderHeight(entry.isIntersecting ? null : element.getBoundingClientRect().height);
+    }, { rootMargin: '1200px' });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const showCards = placeholderHeight == null || focusWithin;
+  return (
+    <div
+      ref={elementRef}
+      className={className}
+      style={showCards ? style : { height: placeholderHeight }}
+      onFocus={() => setFocusWithin(true)}
+      onBlur={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        setFocusWithin(false);
+        if (!nearby.current) setPlaceholderHeight(event.currentTarget.getBoundingClientRect().height);
+      }}
+    >
+      {showCards ? children() : null}
+    </div>
+  );
+}
+
 function ReorderRow({
-  index,
+  noteId,
+  boardIndex,
   isDragging,
   onDragStart,
-  onDragMove,
-  onDragEnd,
   onKeyboardMove,
   render,
 }: {
-  index: number;
+  noteId: string;
+  boardIndex?: number;
   isDragging: boolean;
-  onDragStart: (index: number) => void;
-  onDragMove: (deltaY: number) => void;
-  onDragEnd: () => void;
+  onDragStart: NoteReorderHandleProps['onPointerDown'];
   onKeyboardMove: (delta: -1 | 1) => void;
   render: (reorderHandleProps: NoteReorderHandleProps) => ReactNode;
 }) {
   const reorderHandleProps: NoteReorderHandleProps = {
-    onPointerDown: (event) => {
-      event.currentTarget.setPointerCapture(event.pointerId);
-      onDragStart(index);
-    },
-    onPointerMove: (event) => {
-      if (event.buttons === 0) return;
-      onDragMove(event.movementY);
-    },
-    onPointerUp: onDragEnd,
-    onPointerCancel: onDragEnd,
+    onPointerDown: onDragStart,
     // WCAG 2.1.1 / 2.5.7: dragging was the only way to reorder.
     onKeyDown: (event) => {
       if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
       event.preventDefault();
+      const handle = event.currentTarget;
       onKeyboardMove(event.key === 'ArrowUp' ? -1 : 1);
+      if (boardIndex === undefined) return;
+      requestAnimationFrame(() => {
+        if (handle.isConnected || document.activeElement !== document.body) return;
+        const row = document.querySelector(`[data-reorder-note="${CSS.escape(noteId)}"]`);
+        row?.querySelector<HTMLButtonElement>('button[aria-label="Reorder note"]')?.focus();
+      });
     },
   };
 
   return (
     <div
+      data-board-index={boardIndex}
+      data-reorder-note={boardIndex === undefined ? undefined : noteId}
       className={`min-w-0 transition-[opacity,transform,box-shadow] duration-150 ${
         isDragging ? 'scale-[1.02] opacity-90 shadow-lg' : ''
       }`}

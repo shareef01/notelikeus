@@ -22,6 +22,8 @@ import {
   type ZipCentralEntry,
 } from '@/lib/backup/bundle/zip';
 import { assertJsonNestingWithinLimit } from '@/lib/backup/jsonNesting';
+import { parseAttachmentPlacement } from '@/lib/attachments/attachmentPlacement';
+import type { AttachmentPlacement } from '@/types/attachment';
 
 export const BUNDLE_FORMAT_VERSION = 4;
 export const BUNDLE_FILE_EXTENSION = '.nlkbak';
@@ -57,6 +59,7 @@ export interface BundleAttachmentEntry {
   mimeType?: string;
   sizeBytes?: number;
   sha256?: string;
+  placement?: AttachmentPlacement;
 }
 
 export interface BundleManifest {
@@ -75,6 +78,7 @@ export interface BundleAttachmentSource {
   type: string;
   mimeType?: string;
   bytes: Uint8Array;
+  placement?: AttachmentPlacement;
 }
 
 export class BundleFormatError extends Error {}
@@ -142,6 +146,7 @@ export async function buildBackupBundle(
       sizeBytes: source.bytes.byteLength,
       // eslint-disable-next-line no-await-in-loop -- digests are computed per entry
       sha256: await sha256Hex(source.bytes),
+      placement: parseAttachmentPlacement(source.placement),
     });
     media.push({ name, data: source.bytes });
   }
@@ -365,6 +370,8 @@ export async function parseBackupBundle(archive: Uint8Array): Promise<ParsedBund
       noteId: asFiniteInt(entry.noteId, 0),
     };
     media.set(attachmentId, record);
+    const placement = parseAttachmentPlacement(entry.placement);
+    if (entry.placement !== undefined && !placement) warnings.push('An invalid image position was ignored.');
     attachments.push({
       noteId: record.noteId,
       attachmentId,
@@ -373,6 +380,7 @@ export async function parseBackupBundle(archive: Uint8Array): Promise<ParsedBund
       mimeType: record.mimeType,
       sizeBytes: bytes.byteLength,
       sha256: declaredHash || undefined,
+      placement,
     });
   }
 

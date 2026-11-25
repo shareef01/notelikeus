@@ -365,7 +365,7 @@ class NoteRepositoryActionGenerationFenceTest {
         const val REPLACEMENT_TITLE = "replacement note"
         const val REPLACEMENT_CONTENT = "replacement body"
         const val REPLACEMENT_ATTACHMENTS_JSON =
-            """[{"id":"replacement-att","noteId":42,"storagePath":"r2:replacement/att-9","type":"image","mimeType":"image/png","sizeBytes":0}]"""
+            """[{"id":"replacement-att","noteId":42,"storagePath":"r2:replacement/att-9","type":"image","mimeType":"image/png","sizeBytes":0,"placement":null}]"""
 
         val TIMEOUT = 60.seconds
     }

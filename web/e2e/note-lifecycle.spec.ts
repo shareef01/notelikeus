@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { leaveEditor, openNewNote } from './helpers/newNote';
+import { leaveEditor, openNewNote, typeNewNoteTitle } from './helpers/newNote';
 import { reloadWhenServiceWorkerControls } from './helpers/reload';
 
 /**
@@ -18,6 +18,7 @@ const PASSWORD = 'e2e-password-123';
 function writeAccepted(page: Page) {
   return page.waitForResponse(
     (response) =>
+      response.ok() &&
       response.request().method() === 'POST' &&
       response.url().includes('/rpc/apply_note_change'),
     { timeout: 30_000 },
@@ -109,4 +110,59 @@ test('a title typed the moment a new note opens stays the title', async ({ page 
 
   await reloadApp(page);
   await expect(noteCard(page, title)).toBeVisible({ timeout: 30_000 });
+});
+
+test('an offline edit syncs on reconnect and its backup restores into a fresh account', async ({
+  browser,
+  page,
+}, info) => {
+  test.setTimeout(90_000);
+  await signUp(page);
+  const title = 'Offline recovery note';
+  const body = 'This text was written offline.';
+
+  await openNewNote(page);
+  await typeNewNoteTitle(page, title);
+  await page.getByRole('textbox', { name: 'Note body' }).fill('Original synced text.');
+  const created = writeAccepted(page);
+  await leaveEditor(page);
+  expect((await created).ok()).toBe(true);
+  await reloadApp(page);
+  await noteCard(page, title).click();
+  await expect(page.getByRole('textbox', { name: 'Note body' })).toHaveText('Original synced text.');
+
+  await page.context().setOffline(true);
+  await page.getByRole('textbox', { name: 'Note body' }).fill(body);
+  await leaveEditor(page);
+  await expect(noteCard(page, title)).toBeVisible();
+
+  const replayed = writeAccepted(page);
+  await page.context().setOffline(false);
+  expect((await replayed).ok()).toBe(true);
+
+  await page.getByRole('button', { name: 'Open settings', exact: true }).first().click();
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: /^Export notes only/ }).click(),
+  ]);
+  const backupPath = info.outputPath('offline-note.json');
+  await download.saveAs(backupPath);
+
+  const recovered = await browser.newPage({ ...info.project.use, baseURL: new URL(page.url()).origin });
+  try {
+    await signUp(recovered);
+    await recovered.getByRole('button', { name: 'Open settings', exact: true }).first().click();
+    const chooser = recovered.waitForEvent('filechooser');
+    await recovered.getByRole('button', { name: /^Import backup/ }).click();
+    await (await chooser).setFiles(backupPath);
+    const restored = writeAccepted(recovered);
+    await recovered.getByRole('dialog').getByRole('button', { name: 'Import', exact: true }).click();
+    expect((await restored).ok()).toBe(true);
+    await expect(noteCard(recovered, title)).toBeVisible();
+    await reloadApp(recovered);
+    await noteCard(recovered, title).click();
+    await expect(recovered.getByRole('textbox', { name: 'Note body' })).toHaveText(body);
+  } finally {
+    await recovered.close();
+  }
 });
