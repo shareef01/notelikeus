@@ -34,7 +34,9 @@ import {
   storePendingAttachment,
 } from '@/lib/attachments/pendingAttachmentStore';
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
-import type { Attachment } from '@/types/attachment';
+import { GUEST_OWNER_ID } from '@/lib/local/constants';
+import { comparePlacementOrder, matchesPlacementBody, placementBody } from '@/lib/attachments/attachmentPlacement';
+import type { Attachment, AttachmentPlacement } from '@/types/attachment';
 import type { Note } from '@/types/note';
 
 export interface BundleExportResult {
@@ -164,6 +166,7 @@ function bundleSource(
   note: Note,
   attachment: Attachment,
   read: { bytes: Uint8Array; mimeType?: string },
+  placement: AttachmentPlacement | undefined,
 ): BundleAttachmentSource {
   return {
     noteId: note.localId,
@@ -171,6 +174,7 @@ function bundleSource(
     type: attachment.type || 'image',
     mimeType: read.mimeType,
     bytes: read.bytes,
+    placement,
   };
 }
 
@@ -203,11 +207,22 @@ export async function buildBundleFromNotes(
   let downloadFailed = 0;
   let rejected = 0;
 
-  const items = notes.flatMap((note) => note.attachments.map((attachment) => ({ note, attachment })));
+  const items = notes.flatMap((note) => {
+    const body = note.checklist.length === 0 && note.attachments.some((attachment) => attachment.placement)
+      ? placementBody(note.content)
+      : undefined;
+    return note.attachments.map((attachment) => ({
+      note,
+      attachment,
+      placement: body && attachment.placement && matchesPlacementBody(attachment.placement, body)
+        ? attachment.placement
+        : undefined,
+    }));
+  });
   const total = items.length;
   let done = 0;
 
-  const tasks = items.map(({ note, attachment }) => async (): Promise<BundleAttachmentSource | null> => {
+  const tasks = items.map(({ note, attachment, placement }) => async (): Promise<BundleAttachmentSource | null> => {
     try {
       if (!isPendingAttachment(attachment.storagePath)) {
         if (mode === 'device' || !download) {
@@ -225,7 +240,7 @@ export async function buildBundleFromNotes(
           warnings.push(`An image in "${note.title || 'a note'}" could not be downloaded: ${fetched}.`);
           return null;
         }
-        return bundleSource(note, attachment, fetched);
+        return bundleSource(note, attachment, fetched, placement);
       }
       const local = ownerId ? await readLocalAttachmentBytes(attachment, ownerId).catch(() => null) : null;
       if (!local) {
@@ -236,7 +251,7 @@ export async function buildBundleFromNotes(
         rejected++;
         return null;
       }
-      return bundleSource(note, attachment, local);
+      return bundleSource(note, attachment, local, placement);
     } finally {
       options.onProgress?.(++done, total);
     }
@@ -314,10 +329,12 @@ export interface BundleImportPlan {
 
 /** An image the plan will restore, held in memory until the import is confirmed. */
 interface PlannedAttachment {
+  sourceId: string;
   target: Note;
   bytes: Uint8Array;
   mimeType?: string;
   type?: string;
+  placement?: AttachmentPlacement;
 }
 
 /**
@@ -333,6 +350,7 @@ export interface PlannedBundleImport extends BundleImportPlan {
 /** A confirmed import with its images staged; `staged` is what to take back if the commit fails. */
 export interface StagedBundleImport extends BundleImportPlan {
   staged: { attachmentId: string; noteId: string }[];
+  placementWarning?: string;
 }
 
 export async function readBundleFile(file: File): Promise<Uint8Array> {
@@ -386,10 +404,12 @@ export function planBundle(
       continue;
     }
     planned.push({
+      sourceId: entry.attachmentId,
       target,
       bytes: blobRecord.bytes,
       mimeType: blobRecord.mimeType,
       type: blobRecord.type,
+      placement: entry.placement,
     });
   }
 
@@ -422,6 +442,9 @@ export async function stagePlannedAttachments(
   const attachmentsByNote = new Map<string, Attachment[]>();
   const staged: StagedBundleImport['staged'] = [];
   let attachmentsSkipped = plan.attachmentsSkipped;
+  let placementsSkipped = 0;
+  const bodies = new Map<string, ReturnType<typeof placementBody>>();
+  const positionedByNote = new Map<string, { sourceId: string; placement: AttachmentPlacement }[]>();
 
   for (const item of plan.planned) {
     const freshId = createAttachmentId();
@@ -445,6 +468,23 @@ export async function stagePlannedAttachments(
 
     staged.push({ attachmentId: freshId, noteId: item.target.id });
     const list = attachmentsByNote.get(item.target.id) ?? [];
+    let placement: AttachmentPlacement | undefined;
+    if (item.placement) {
+      if (ownerId === GUEST_OWNER_ID && item.target.checklist.length === 0) {
+        let body = bodies.get(item.target.id);
+        if (!body) {
+          body = placementBody(item.target.content);
+          bodies.set(item.target.id, body);
+        }
+        if (matchesPlacementBody(item.placement, body)) {
+          placement = { ...item.placement };
+          const positioned = positionedByNote.get(item.target.id) ?? [];
+          positioned.push({ sourceId: item.sourceId, placement });
+          positionedByNote.set(item.target.id, positioned);
+        }
+      }
+      if (!placement) placementsSkipped++;
+    }
     list.push({
       id: freshId,
       noteId: item.target.localId,
@@ -452,9 +492,31 @@ export async function stagePlannedAttachments(
       type: item.type || 'image',
       mimeType: item.mimeType,
       sizeBytes: item.bytes.byteLength,
+      placement,
     });
     attachmentsByNote.set(item.target.id, list);
   }
+
+  for (const positioned of positionedByNote.values()) {
+    positioned.sort((a, b) => a.placement.offset - b.placement.offset ||
+      a.placement.ordinal - b.placement.ordinal || comparePlacementOrder(a.sourceId, b.sourceId));
+    // When ordinals tie, preserve the source order after the attachment ids are re-minted.
+    for (let start = 0; start < positioned.length;) {
+      let end = start + 1;
+      while (end < positioned.length && positioned[end]!.placement.offset === positioned[start]!.placement.offset) end++;
+      const group = positioned.slice(start, end);
+      if (group.some(({ placement }, index) => index > 0 && placement.ordinal === group[index - 1]!.placement.ordinal)) {
+        group.forEach(({ placement }, ordinal) => { placement.ordinal = ordinal; });
+      }
+      start = end;
+    }
+  }
+  const placementWarning = placementsSkipped
+    ? ownerId === GUEST_OWNER_ID
+      ? 'Some image positions could not be restored. The images are in the attachment strip.'
+      : 'Image positions are currently restored in guest notes. Your images are in the attachment strip.'
+    : undefined;
+  if (placementWarning) warnings.push(placementWarning);
 
   const merged = plan.merged.map((note) => {
     const attachments = attachmentsByNote.get(note.id);
@@ -476,6 +538,7 @@ export async function stagePlannedAttachments(
     attachmentsSkipped,
     warnings,
     staged,
+    placementWarning,
   };
 }
 

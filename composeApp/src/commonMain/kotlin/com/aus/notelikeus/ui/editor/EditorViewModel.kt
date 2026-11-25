@@ -9,10 +9,13 @@ import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.data.attachments.AttachmentSyncService
 import com.aus.notelikeus.data.attachments.GUEST_STAGING_OWNER
 import com.aus.notelikeus.data.attachments.MAX_ATTACHMENT_BYTES
+import com.aus.notelikeus.data.attachments.MAX_PLACEMENT_INTEGER
+import com.aus.notelikeus.data.attachments.PlacementBody
 import com.aus.notelikeus.data.attachments.createAttachmentId
 import com.aus.notelikeus.data.attachments.isPendingAttachment
 import com.aus.notelikeus.data.attachments.isR2AttachmentsEnabled
 import com.aus.notelikeus.data.attachments.pendingStoragePath
+import com.aus.notelikeus.data.attachments.rebaseAttachmentPlacements
 import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
@@ -456,17 +459,7 @@ class EditorViewModel(
         if (result.structureChanged) {
             convertContentToChecklist()
         } else {
-            contentEdited = true
-            val clamped = clampTextField(result.value, NoteBackupImporter.MAX_CONTENT_CHARS)
-            _state.update {
-                it.copy(
-                    contentValue = clamped,
-                    content = clamped.text,
-                    truncatedToSyncLimit = it.truncatedToSyncLimit ||
-                        clamped.text.length < result.value.text.length,
-                )
-            }
-            triggerAutosave()
+            applyEditedText(result.value)
         }
     }
 
@@ -643,6 +636,30 @@ class EditorViewModel(
             runCatching { attachmentSync?.releaseStagedAttachments(listOf(attachment)) }
         }
         triggerAutosave()
+    }
+
+    fun setAttachmentPlacement(attachmentId: String, place: Boolean): Boolean {
+        val current = _state.value
+        if (current.isTrashed || current.checklist.isNotEmpty()) return false
+        val image = current.attachments.firstOrNull { it.id == attachmentId } ?: return false
+        val placement = if (place) {
+            if (current.content.isBlank()) return false
+            val body = PlacementBody(current.content)
+            val anchor = body.placementAfter(current.contentValue.selection.max) ?: return false
+            val last = current.attachments.asSequence().mapNotNull { it.placement }
+                .filter { it.offset == anchor.offset && body.matches(it) }.maxOfOrNull { it.ordinal } ?: -1L
+            anchor.copy(ordinal = (last + 1).coerceAtMost(MAX_PLACEMENT_INTEGER))
+        } else null
+        if (image.placement == placement) return true
+
+        attachmentsEdited = true
+        _state.update { state ->
+            state.copy(attachments = state.attachments.map {
+                if (it.id == attachmentId) it.copy(placement = placement) else it
+            })
+        }
+        triggerAutosave()
+        return true
     }
 
     fun clearAttachmentStagingFailure() {
@@ -1071,15 +1088,23 @@ class EditorViewModel(
     }
 
     private fun applyFormatting(transform: (TextFieldValue) -> TextFieldValue) {
+        applyEditedText(transform(_state.value.contentValue))
+    }
+
+    private fun applyEditedText(value: TextFieldValue) {
         contentEdited = true
+        val updated = clampTextField(value, NoteBackupImporter.MAX_CONTENT_CHARS)
+        val current = _state.value
+        if (current.content != updated.text && current.attachments.any { it.placement != null }) {
+            attachmentsEdited = true
+        }
         _state.update { currentState ->
-            val transformed = transform(currentState.contentValue)
-            val updated = clampTextField(transformed, NoteBackupImporter.MAX_CONTENT_CHARS)
             currentState.copy(
                 contentValue = updated,
                 content = updated.text,
+                attachments = rebaseAttachmentPlacements(currentState.attachments, currentState.content, updated.text),
                 truncatedToSyncLimit = currentState.truncatedToSyncLimit ||
-                    updated.text.length < transformed.text.length,
+                    updated.text.length < value.text.length,
             )
         }
         triggerAutosave()

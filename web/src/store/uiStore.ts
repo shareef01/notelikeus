@@ -71,7 +71,7 @@ export const useUiStore = create<UiState>()(
       viewColumns: 2,
       listScrolled: false,
       editorRoute: { mode: 'closed' },
-      editorLayout: 'float',
+      editorLayout: 'fullscreen',
       authScreen: null,
       labelsOpen: false,
       selectedNoteIds: [],

@@ -33,9 +33,9 @@ async function pressAndCheckPrevented(page: Page, key: string): Promise<boolean>
   return page.evaluate(() => (window as unknown as { lastKeyPrevented?: boolean }).lastKeyPrevented ?? false);
 }
 
-test('N does nothing behind an open dialog', async ({ page }) => {
+test('N does nothing on the settings page', async ({ page }) => {
   await page.getByRole('button', { name: 'Open settings', exact: true }).first().click();
-  const settings = page.getByRole('dialog').first();
+  const settings = page.getByRole('main', { name: 'Settings' });
   await expect(settings).toBeVisible();
 
   await page.keyboard.press('n');

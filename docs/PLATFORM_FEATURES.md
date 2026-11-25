@@ -4,10 +4,10 @@ Moved out of the root README on 2026-11-18. The three clients share one data mod
 [`contracts/`](../contracts/) and [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md)); this table is
 what each one adds on top.
 
-| Capability | Android | Windows | Web PWA |
+| Capability | Android | Windows (Rust) | Web PWA |
 |---|:---:|:---:|:---:|
 | Works offline without an account | ✓ | ✓ | ✓ |
-| Encrypted local storage | SQLCipher, key in Android Keystore | SQLCipher, key under DPAPI | WebCrypto AES-GCM in IndexedDB |
+| Encrypted local storage | SQLCipher, key in Android Keystore | AES-GCM, data key protected by DPAPI | WebCrypto AES-GCM in IndexedDB |
 | Rich text, checklists, labels | ✓ | ✓ | ✓ |
 | Images (stored locally first, uploaded later) | ✓ | ✓ | ✓ |
 | Conflict copies with side-by-side review | ✓ | ✓ | ✓ |

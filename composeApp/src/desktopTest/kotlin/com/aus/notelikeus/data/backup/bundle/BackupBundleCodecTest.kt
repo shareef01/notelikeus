@@ -147,6 +147,15 @@ class BackupBundleCodecTest {
     }
 
     @Test
+    fun `optional placement metadata leaves the v4 note and picture readable`() {
+        val parsed = BackupBundleCodec.parseBackupBundle(ContractFixtures.readBytes("backup/v4-positioned-image.nlkbak"))
+        val note = parsed.manifest.backup["notes"]!!.jsonArray.single().jsonObject
+        assertEquals("Positioned image", note["title"]!!.jsonPrimitive.content)
+        assertEquals("Before \uD83E\uDDED\n\nAfter", note["content"]!!.jsonPrimitive.content)
+        assertEquals(70, parsed.media.getValue("att-cross-1").bytes.size)
+    }
+
+    @Test
     fun limitsMatchWebContract() {
         assertEquals(256L * 1024 * 1024, BackupBundleLimits.MAX_BUNDLE_FILE_BYTES)
         assertEquals(10L * 1024 * 1024, BackupBundleLimits.MAX_BUNDLE_ATTACHMENT_BYTES)

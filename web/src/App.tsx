@@ -1,4 +1,5 @@
 import { useAuthListener, useAuthSync } from '@/hooks/useAuth';
+import { navigateEditor } from '@/hooks/useEditorHistory';
 import { useGuestLocalNotesBootstrap } from '@/hooks/useGuestLocalNotesBootstrap';
 import { useNotesSync } from '@/hooks/useNotesSync';
 import { isSupabaseBackendEnabled } from '@/lib/supabase/env';
@@ -7,16 +8,12 @@ import { ThemeApplier } from '@/components/theme/ThemeApplier';
 import { AppSplash } from '@/components/boot/AppSplash';
 import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
 import { useUiStore } from '@/store/uiStore';
-import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { hadSessionLastLoad } from '@/lib/auth/sessionHint';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { WARNING_ALERT } from '@/lib/ui/alertStyles';
 
 const AUTH_READY_TIMEOUT_MS = 8_000;
 
-const EditorScreen = lazy(() =>
-  import('@/screens/EditorScreen').then((module) => ({ default: module.EditorScreen })),
-);
 const AuthScreen = lazy(() =>
   import('@/screens/AuthScreen').then((module) => ({ default: module.AuthScreen })),
 );
@@ -27,19 +24,13 @@ const LabelsScreen = lazy(() =>
 const remoteReady = isSupabaseBackendEnabled();
 
 export default function App() {
-  const editorMode = useUiStore((s) => s.editorRoute.mode);
-  const editorNoteId = useUiStore((s) =>
-    s.editorRoute.mode === 'edit' ? s.editorRoute.noteId : null,
-  );
   const authScreen = useUiStore((s) => s.authScreen);
   const labelsOpen = useUiStore((s) => s.labelsOpen);
   const setLabelsOpen = useUiStore((s) => s.setLabelsOpen);
   const openNewNote = useUiStore((s) => s.openNewNote);
   const openNote = useUiStore((s) => s.openNote);
-  const closeEditor = useUiStore((s) => s.closeEditor);
   const closeAuthScreen = useUiStore((s) => s.closeAuthScreen);
   const { user, isReady: authReady, isGuest } = useAuthListener();
-  const isTabletUp = useIsTabletUp();
   const [authTimedOut, setAuthTimedOut] = useState(false);
   const [hadSession] = useState(hadSessionLastLoad);
 
@@ -80,7 +71,8 @@ export default function App() {
       // only one of the two paths into openNote() was validating, and an id that is not a note
       // id opens the editor on nothing.
       if (data?.type === 'OPEN_NOTE' && typeof data.noteId === 'string' && /^\d+$/.test(data.noteId)) {
-        openNote(data.noteId);
+        const { noteId } = data;
+        void navigateEditor(() => openNote(noteId));
       }
     };
     navigator.serviceWorker?.addEventListener('message', onMessage);
@@ -137,27 +129,10 @@ export default function App() {
     );
   }
 
-  const showMobileEditor = !isTabletUp && editorMode !== 'closed';
-
   return (
     <>
       {themeApplier}
       <MainScreen />
-      {showMobileEditor ? (
-        <ErrorBoundary
-          variant="overlay"
-          allowClearData={false}
-          onDismiss={closeEditor}
-        >
-          <Suspense fallback={null}>
-            {editorMode === 'new' ? (
-              <EditorScreen key="new" route={{ mode: 'new' }} />
-            ) : editorNoteId ? (
-              <EditorScreen key={editorNoteId} route={{ mode: 'edit', noteId: editorNoteId }} />
-            ) : null}
-          </Suspense>
-        </ErrorBoundary>
-      ) : null}
       {authScreen ? (
         <ErrorBoundary
           variant="overlay"

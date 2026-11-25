@@ -328,6 +328,8 @@ fn http_rpcs_match_latest_supabase_migrations() {
         "p_checklist".to_string(),
     ];
 
+    let mut apply_change_with_placements_keys = apply_change_keys.clone();
+    apply_change_with_placements_keys.push("p_attachment_placements".into());
     let checks: Vec<(&str, Vec<String>)> = vec![
         ("get_sync_generation", vec![]),
         ("delete_all_user_cloud_data", vec![]),
@@ -338,6 +340,7 @@ fn http_rpcs_match_latest_supabase_migrations() {
         ("list_pending_deleted_attachments", vec![]),
         ("purge_deleted_note_attachment", vec!["p_attachment_id".into(), "p_note_id".into()]),
         ("apply_note_change", apply_change_keys),
+        ("apply_note_change_with_placements", apply_change_with_placements_keys),
         ("apply_note_delete", vec!["p_note_id".into(), "p_base_revision".into(), "p_wipe_generation".into()]),
         ("pull_changes", vec!["p_after_revision".into(), "p_limit".into()]),
         ("list_user_attachments", vec![]),

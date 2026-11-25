@@ -231,12 +231,33 @@ fn push_one(
 
     // R19.2: exactly the uploaded images this note version references, so the commit promotes those
     // provisional uploads and no others. A pending image has no server row to name.
-    let attachment_ids: Vec<String> = state
+    let uploaded: Vec<&crate::attachments::Attachment> = state
         .attachments
         .get(&local.id)
-        .map(|images| images.iter().filter(|a| !a.is_pending()).map(|a| a.id.clone()).collect())
+        .map(|images| images.iter().filter(|a| !a.is_pending()).collect())
         .unwrap_or_default();
-    let args = ApplyNoteChangeArgs::new(&local, pending.base_revision, attachment_ids, state.wipe_generation);
+    let attachment_ids: Vec<String> = uploaded.iter().map(|a| a.id.clone()).collect();
+    let mut args = ApplyNoteChangeArgs::new(&local, pending.base_revision, attachment_ids, state.wipe_generation);
+    if !uploaded.is_empty() {
+        let placements = if local.checklist.is_empty() {
+            let body = crate::attachments::PlacementBody::new(&local.content);
+            uploaded
+                .iter()
+                .filter_map(|a| {
+                    let placement = a.placement.as_ref().filter(|p| body.matches(p))?;
+                    Some(crate::model::AttachmentPlacementArg {
+                        attachment_id: a.id.clone(),
+                        body_sha256: placement.body_sha256.clone(),
+                        offset: placement.offset,
+                        ordinal: placement.ordinal,
+                    })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        args = args.with_placements(placements);
+    }
     let mut outcome = transport.apply_note_change(&args)?;
     if outcome == ApplyOutcome::NotFound {
         // Nothing in the cloud to conflict with — no row, no tombstone — so this is a create.

@@ -33,6 +33,9 @@ import {
   pendingStoragePath,
 } from '@/lib/attachments/attachmentPaths';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
+import { rebaseAttachmentPlacements } from '@/lib/attachments/attachmentPlacement';
+import type { RichNoteEdit } from '@/hooks/useRichNoteEditor';
+import type { AttachmentPlacement } from '@/types/attachment';
 import { releasePendingAttachment, stagePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
 import { revokeAttachmentPreviewUrl } from '@/lib/attachments/attachmentPreviewCache';
 import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
@@ -434,13 +437,19 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     redoConversion: () => restoreConversion(false),
     allLabels,
     setTitle: (title: string) => patch((s) => ({ ...s, title })),
-    setContent: (content: string) => {
+    setContent: (content: string, edit?: RichNoteEdit) => {
       lastContentEditRef.current = {
         text: content,
         selectionStart: content.length,
         selectionEnd: content.length,
       };
-      patch((s) => ({ ...s, content }));
+      patch((s) => ({
+        ...s,
+        content,
+        attachments: edit
+          ? rebaseAttachmentPlacements(s.attachments, { doc: edit.before, body: s.content }, { doc: edit.after, body: content }, edit.mapping)
+          : s.attachments,
+      }));
     },
     setContentSmart: (
       content: string,
@@ -594,6 +603,15 @@ export function useNoteEditor(noteId: string | 'new' | null) {
             sizeBytes: file.size,
           },
         ],
+      }));
+    },
+    setAttachmentPlacement: (attachmentId: string, placement?: AttachmentPlacement) => {
+      if (!ownerScope.current.isActive()) return;
+      patch((s) => ({
+        ...s,
+        attachments: s.attachments.map((attachment) => attachment.id === attachmentId
+          ? { ...attachment, placement }
+          : attachment),
       }));
     },
     removeAttachment: (attachmentId: string) => {

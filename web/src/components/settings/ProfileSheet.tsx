@@ -1,9 +1,6 @@
-import type { ReactNode } from 'react';
-import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { version } from '../../../package.json';
-import { BrandMark } from '@/components/brand/BrandMark';
 import { ThemePicker } from '@/components/settings/ThemePicker';
-import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import type { ViewColumns } from '@/store/uiStore';
 import type { AccentColor, ThemeBase, ThemePreference } from '@/store/settingsStore';
@@ -17,7 +14,7 @@ import {
   InfoIcon,
   LogoutIcon,
   ChevronRightIcon,
-  CloseIcon,
+  ArrowBackIcon,
 } from '@/components/icons/Icons';
 
 function SettingsSection({
@@ -29,9 +26,9 @@ function SettingsSection({
 }) {
   return (
     <section>
-      <h3 className="px-1 pb-2 text-chrome-label">
+      <h2 className="px-1 pb-2 text-chrome-label">
         {title}
-      </h3>
+      </h2>
       <div className="overflow-hidden rounded-note border border-brand-outline/40 bg-true-surface-variant/35 divide-y divide-brand-outline/35">
         {children}
       </div>
@@ -214,8 +211,14 @@ export function ProfileSheet({
   onSignOut,
   onDeleteAccount,
 }: ProfileSheetProps) {
-  const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
-  useBodyScrollLock(open);
+  const backRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const previousTitle = document.title;
+    document.title = 'Settings | Notelikeus';
+    backRef.current?.focus();
+    return () => { document.title = previousTitle; };
+  }, [open]);
 
   if (!open) return null;
 
@@ -232,29 +235,23 @@ export function ProfileSheet({
       : 'Notes stay on this device';
 
   return (
-    <div
-      ref={panelRef}
-      className="fixed inset-0 z-50 flex flex-col bg-true-surface animate-in fade-in duration-200"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Settings"
+    <main
+      className="fixed inset-0 z-30 flex flex-col bg-true-surface"
+      aria-labelledby="settings-title"
     >
-      <header className="flex shrink-0 items-center gap-3 border-b border-brand-outline/40 px-4 py-3.5 pt-safe sm:px-6 lg:px-8">
-        <BrandMark size={40} />
-        <div className="min-w-0 flex-1">
-          <p className="text-lg font-semibold tracking-tight text-brand-primary">Settings</p>
-          <p className="mt-0.5 truncate text-[13px] leading-snug tracking-tight text-brand-secondary">
-            Sync &amp; preferences for your notes
-          </p>
+      <header className="shrink-0 border-b border-brand-outline/40 pt-safe">
+        <div className="mx-auto flex w-full max-w-content items-center gap-3 px-4 py-2 sm:px-6 lg:px-8">
+          <button
+            ref={backRef}
+            type="button"
+            onClick={onClose}
+            className={`flex size-11 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 hover:text-brand-primary ${CHROME_FOCUS}`}
+            aria-label="Close settings"
+          >
+            <ArrowBackIcon size={22} />
+          </button>
+          <h1 id="settings-title" className="text-lg font-semibold tracking-tight text-brand-primary">Settings</h1>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary"
-          aria-label="Close settings"
-        >
-          <CloseIcon size={22} />
-        </button>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-safe">
@@ -383,6 +380,6 @@ export function ProfileSheet({
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

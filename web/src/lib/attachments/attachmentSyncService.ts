@@ -46,13 +46,22 @@ export function mergeAttachmentsIntoNotes(
   }
 
   return notes.map((note) => {
-    const remote = (byNoteId.get(note.id) ?? []).map((row) =>
-      attachmentFromMetadata(note, row),
-    );
+    const keepLocalPlacement = awaitingCommit.has(note.id);
+    const localById = keepLocalPlacement
+      ? new Map(note.attachments.map((attachment) => [attachment.id, attachment]))
+      : null;
+    const remote = (byNoteId.get(note.id) ?? []).map((row) => {
+      const hydrated = attachmentFromMetadata(note, row);
+      if (!localById) return hydrated;
+      const local = localById.get(row.attachmentId);
+      if (!local) return hydrated;
+      const { placement: _remotePlacement, ...rest } = hydrated;
+      return local.placement ? { ...rest, placement: local.placement } : rest;
+    });
     const pending = note.attachments.filter(
       (attachment) =>
         isPendingAttachment(attachment.storagePath) ||
-        (awaitingCommit.has(note.id) && attachment.storagePath.startsWith(ATTACHMENT_R2_PREFIX)),
+        (keepLocalPlacement && attachment.storagePath.startsWith(ATTACHMENT_R2_PREFIX)),
     );
     const remoteIds = new Set(remote.map((attachment) => attachment.id));
     const keptPending = pending.filter((attachment) => !remoteIds.has(attachment.id));

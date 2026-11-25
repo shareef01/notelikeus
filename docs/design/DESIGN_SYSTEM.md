@@ -49,9 +49,13 @@ Status is never colour alone: every status has a word and an icon (§5).
 ### 2.3 Note colours
 
 Eight pastel/dim pairs (`tokens.json → color.note`), unchanged from the shipped palette and already
-contrast-tested (`NotePaletteContrastTest`). **Rule:** on a coloured note, secondary text is the
+contrast-tested (`NotePaletteContrastTest`). **Rule:** on a tinted card, secondary text is the
 note's own text colour at 80 % opacity, never the `muted` token — `muted` on the dark blue note is
 3.0:1, the note colour at 80 % is 5.5:1.
+
+The Windows, web, and Android editors use the theme surface and text roles for writing.
+The chosen note colour appears near the title or toolbar. The library uses the full tint
+for scanning. Windows contrast themes substitute system colours for both treatments.
 
 ### 2.4 One source for every client
 

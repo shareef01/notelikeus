@@ -176,6 +176,14 @@ describe('backup v3 contract', () => {
     expect(parsed.media.get('att-cross-1')!.bytes).toEqual(sampleBytes);
   });
 
+  it('reads the text and image in a v4 bundle with optional placement metadata', async () => {
+    const parsed = await parseBackupBundle(readContractBinaryFixture('backup/v4-positioned-image.nlkbak'));
+    expect(parsed.manifest.backup.notes).toMatchObject([{ title: 'Positioned image', content: 'Before 🧭\n\nAfter' }]);
+    expect(parsed.media.get('att-cross-1')?.bytes.length).toBe(70);
+    expect(parsed.manifest.attachments[0]?.placement).toMatchObject({ offset: 10, ordinal: 0 });
+    expect(parsed.warnings).toEqual([]);
+  });
+
   it('keeps import soft caps aligned with the shared fixture and Kotlin', () => {
     const limits = readContractFixture<{
       maxJsonDepth: number;

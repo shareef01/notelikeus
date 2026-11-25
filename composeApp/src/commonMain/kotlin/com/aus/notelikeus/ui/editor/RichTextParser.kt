@@ -47,6 +47,8 @@ object RichTextParser {
    * hundred asterisks -- cannot recurse the renderer into a stack overflow.
    */
   private const val MaxNesting = 8
+  private const val WholeEditorLimit = 5_000
+  private const val EditorChunkLimit = 1_024
 
   fun parse(
       text: String,
@@ -67,17 +69,52 @@ object RichTextParser {
   }
 
   fun toTransformedText(text: String, contentColor: Color): TransformedText {
-    if (text.length > 5000) {
-        // Optimization: For very large notes, return plain text to keep typing responsive
-        return TransformedText(AnnotatedString(text), OffsetMapping.Identity)
-    }
     // Rendered once, so the text and the mapping handed to the text field are provably the same
     // walk rather than two that happen to agree.
-    val rendered = render(text)
+    val rendered = if (text.length <= WholeEditorLimit) render(text) else renderEditorChunks(text)
     return TransformedText(
         text = rendered.toAnnotatedString(contentColor = contentColor),
         offsetMapping = rendered.toOffsetMapping()
     )
+  }
+
+  private fun renderEditorChunks(source: String): Rendered {
+    val output = StringBuilder(source.length)
+    val map = IntArray(source.length + 1)
+    val spans = mutableListOf<Span>()
+    var start = 0
+    while (start < source.length) {
+      val end = editorChunkEnd(source, start)
+      val displayStart = output.length
+      if (end - start <= EditorChunkLimit) {
+        val part = render(source.substring(start, end))
+        output.append(part.text)
+        for (offset in start until end) {
+          map[offset] = displayStart + part.originalToTransformed[offset - start]
+        }
+        for (span in part.spans) {
+          spans += span.copy(start = displayStart + span.start, end = displayStart + span.end)
+        }
+      } else {
+        // An unusually long individual line stays readable and editable as source.
+        output.append(source, start, end)
+        for (offset in start until end) map[offset] = displayStart + offset - start
+        spans += Span(displayStart, output.length, bold = false, italic = false)
+      }
+      start = end
+    }
+    map[source.length] = output.length
+    return Rendered(output.toString(), map, spans)
+  }
+
+  private fun editorChunkEnd(source: String, start: Int): Int {
+    // Bound regex input without splitting a line halfway through a markup span.
+    val limit = minOf(source.length, start + EditorChunkLimit)
+    if (limit == source.length) return limit
+    val lastBreak = source.lastIndexOf('\n', limit - 1)
+    if (lastBreak >= start) return lastBreak + 1
+    val nextBreak = source.indexOf('\n', limit)
+    return if (nextBreak < 0) source.length else nextBreak + 1
   }
 
   internal fun buildOffsetMapping(source: String): OffsetMapping = render(source).toOffsetMapping()

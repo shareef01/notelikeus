@@ -480,6 +480,20 @@ pub fn parse_pull_reply(value: Value) -> Result<PullPage, TransportError> {
 impl Transport for SupabaseTransport {
     fn apply_note_change(&mut self, args: &ApplyNoteChangeArgs) -> Result<ApplyOutcome, TransportError> {
         let body = serde_json::to_value(args).map_err(|e| TransportError::Server(e.to_string()))?;
+        if let Some(placements) = &args.attachment_placements {
+            let mut with_placements = body.clone();
+            if let Some(map) = with_placements.as_object_mut() {
+                map.insert(
+                    "p_attachment_placements".into(),
+                    serde_json::to_value(placements).map_err(|e| TransportError::Server(e.to_string()))?,
+                );
+            }
+            match self.rpc("apply_note_change_with_placements", &with_placements) {
+                Ok(reply) => return parse_apply_reply(reply),
+                Err(TransportError::Server(msg)) if msg.contains("PGRST202") || msg.contains("HTTP 404") => {}
+                Err(err) => return Err(err),
+            }
+        }
         parse_apply_reply(self.rpc("apply_note_change", &body)?)
     }
 

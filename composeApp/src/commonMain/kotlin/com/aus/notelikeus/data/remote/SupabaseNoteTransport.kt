@@ -2,6 +2,7 @@ package com.aus.notelikeus.data.remote
 
 import com.aus.notelikeus.data.sync.ChecklistItemData
 import com.aus.notelikeus.data.attachments.ATTACHMENT_R2_PREFIX
+import com.aus.notelikeus.data.attachments.PlacementBody
 import com.aus.notelikeus.data.sync.CloudNoteRecord
 import com.aus.notelikeus.data.sync.CloudNoteSnapshot
 import com.aus.notelikeus.data.sync.CloudNoteTransport
@@ -238,6 +239,34 @@ class SupabaseNoteTransport internal constructor(
     override suspend fun fetchNote(uid: String, noteId: Long): CloudNoteRecord? =
         fetchNotes(uid).firstOrNull { it.noteId == noteId }
 
+    private suspend fun callApplyNoteChange(
+        note: Note,
+        baseRevision: Long?,
+        wipeGeneration: Long,
+    ): JsonObject {
+        val hasRemoteAttachments = note.attachments.any { it.storagePath.startsWith(ATTACHMENT_R2_PREFIX) }
+        if (!hasRemoteAttachments) {
+            return rpc.callRpc("apply_note_change", note.toRpcArgs(baseRevision, wipeGeneration = wipeGeneration))
+        }
+        return try {
+            rpc.callRpc(
+                "apply_note_change_with_placements",
+                note.toRpcArgs(
+                    baseRevision,
+                    includeAttachmentIds = true,
+                    includeAttachmentPlacements = true,
+                    wipeGeneration = wipeGeneration,
+                ),
+            )
+        } catch (missing: SupabaseTransportException) {
+            if (missing.statusCode == HTTP_NOT_FOUND && "PGRST202" in missing.body) {
+                rpc.callRpc("apply_note_change", note.toRpcArgs(baseRevision, wipeGeneration = wipeGeneration))
+            } else {
+                throw missing
+            }
+        }
+    }
+
     override suspend fun putNotes(uid: String, notes: List<Note>): Map<Long, CloudNoteTransport.PutResult> {
         val epoch = datasetEpoch()
         val result = mutableMapOf<Long, CloudNoteTransport.PutResult>()
@@ -245,13 +274,7 @@ class SupabaseNoteTransport internal constructor(
             val noteId = note.id ?: continue
             val baseRevision = revisionState.read(epoch, uid, noteId)
             val response = try {
-                rpc.callRpc(
-                    "apply_note_change",
-                    note.toRpcArgs(
-                        baseRevision,
-                        wipeGeneration = presentedWipeGeneration(epoch, uid),
-                    ),
-                )
+                callApplyNoteChange(note, baseRevision, presentedWipeGeneration(epoch, uid))
             } catch (failure: SupabaseTransportException) {
                 // Note id, HTTP status and the server's reply only — never note content.
                 AppLog.warn(
@@ -450,6 +473,7 @@ class SupabaseNoteTransport internal constructor(
     private fun Note.toRpcArgs(
         baseRevision: Long?,
         includeAttachmentIds: Boolean = true,
+        includeAttachmentPlacements: Boolean = false,
         wipeGeneration: Long = 0L,
     ): JsonObject = buildJsonObject {
         val noteId = id ?: return@buildJsonObject
@@ -493,6 +517,35 @@ class SupabaseNoteTransport internal constructor(
         // nothing once the account has been wiped (`NL001`), so omitting it would turn every future
         // write into a definite refusal. 0 is the honest value for an account never wiped.
         put("p_wipe_generation", JsonPrimitive(wipeGeneration))
+        if (includeAttachmentPlacements) {
+            put("p_attachment_placements", attachmentPlacementsToJsonArray())
+        }
+    }
+
+    private fun Note.attachmentPlacementsToJsonArray(): JsonArray {
+        val body = if (checklist.isEmpty()) PlacementBody(content) else return JsonArray(emptyList())
+        return buildJsonArray {
+            attachments
+                .asSequence()
+                .filter { it.storagePath.startsWith(ATTACHMENT_R2_PREFIX) && it.type == "image" }
+                .mapNotNull { attachment ->
+                    attachment.placement?.takeIf { body.matches(it) }?.let { attachment.id to it }
+                }
+                .forEach { (attachmentId, placement) ->
+                    add(
+                        buildJsonObject {
+                            put("attachmentId", JsonPrimitive(attachmentId))
+                            put("bodySha256", JsonPrimitive(placement.bodySha256))
+                            put("offset", JsonPrimitive(placement.offset))
+                            put("ordinal", JsonPrimitive(placement.ordinal))
+                        },
+                    )
+                }
+        }
+    }
+
+    private companion object {
+        const val HTTP_NOT_FOUND = 404
     }
 
     private fun labelsToJsonArray(labels: List<com.aus.notelikeus.domain.model.Label>): JsonArray =

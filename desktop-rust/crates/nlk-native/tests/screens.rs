@@ -102,9 +102,10 @@ fn the_window_renders_at_every_reviewed_size_scale_and_theme() {
     .unwrap();
 
     let dir = temp_dir("matrix");
-    let (ui, _controller) = open(&dir);
+    let (ui, controller) = open(&dir);
     ui.window().set_size(slint::LogicalSize::new(1280.0, 900.0));
-    add_note(&ui, "Weekend groceries", "Oat milk, sourdough, lemons\nSomething for Sunday lunch", Some("Yellow"), true);
+    let shopping = "## Shopping\n\n> **Check the pantry** before leaving.\n>\n> > Bring a reusable bag.\n\n- Oat milk\n\n  ```text\n  2 cartons\n    keep one chilled\n  ```\n\n- Sourdough\n- Lemons\n\n```text\n# shopping reminder\n    check quantities\n```\n\n---\n\n## Sunday lunch\n\nKeep the **shopping list** handy while planning the week.";
+    add_note(&ui, "Weekend groceries", shopping, Some("Yellow"), true);
     add_note(
         &ui,
         "Reading notes on everyday design",
@@ -127,6 +128,33 @@ fn the_window_renders_at_every_reviewed_size_scale_and_theme() {
             inside(&ui, "New note", w, h);
             inside(&ui, "Search notes", w, h);
         }
+        render(&ui, 1280, 900);
+        press(&ui, "Weekend groceries");
+        for (w, h) in [(640, 480), (1280, 720)] {
+            let frame = render(&ui, w, h);
+            inside(&ui, "Back to notes", w, h);
+            inside(&ui, "Edit note", w, h);
+            inside(&ui, "Shopping", w, h);
+            if w == 1280 {
+                inside(&ui, "Check the pantry before leaving.", w, h);
+                inside(&ui, "Bring a reusable bag.", w, h);
+                inside(&ui, "# shopping reminder\n    check quantities", w, h);
+                inside(&ui, "Divider", w, h);
+            }
+            save(&frame, &format!("document-{theme_name}-{w}x{h}"));
+        }
+        press(&ui, "Edit note");
+        assert_eq!(ui.get_editor_body(), shopping);
+        press(&ui, "Back to notes");
+
+        press(&ui, "Settings");
+        for (w, h) in [(640, 480), (1280, 720)] {
+            let frame = render(&ui, w, h);
+            inside(&ui, "Back from settings", w, h);
+            inside(&ui, "Dark", w, h);
+            save(&frame, &format!("settings-{theme_name}-{w}x{h}"));
+        }
+        press(&ui, "Back from settings");
     }
 
     // A dark contrast theme: the canvas must be the system window colour, and the controls still fit.
@@ -147,6 +175,25 @@ fn the_window_renders_at_every_reviewed_size_scale_and_theme() {
     assert_eq!((corner.r, corner.g, corner.b), (0, 0, 0), "the canvas uses the contrast theme's window colour");
     save(&frame, "windows-contrast-1280x720");
     nlk_native::controller::apply_contrast(&ui, None);
+
+    ui.set_theme_mode(1);
+    press(&ui, "New note");
+    ui.set_editor_title("Field notes".into());
+    ui.set_editor_body("First stop: the river.\n\nNext stop: the trail.".into());
+    ui.invoke_editor_edited();
+    let photo = image::RgbaImage::from_pixel(600, 300, image::Rgba([36, 112, 128, 255]));
+    let mut png = std::io::Cursor::new(Vec::new());
+    photo.write_to(&mut png, image::ImageFormat::Png).unwrap();
+    controller.add_image_bytes(png.get_ref());
+    let editing = render(&ui, 640, 480);
+    inside(&ui, "Place after cursor paragraph for picture 1", 640, 480);
+    save(&editing, "windows-inline-picture-edit-640x480");
+    press(&ui, "Place after cursor paragraph for picture 1");
+    let reading = render(&ui, 1280, 720);
+    inside(&ui, "First stop: the river.", 1280, 720);
+    inside(&ui, "Picture 1 of 1", 1280, 720);
+    inside(&ui, "Next stop: the trail.", 1280, 720);
+    save(&reading, "windows-inline-picture-read-1280x720");
 
     std::fs::remove_dir_all(dir).unwrap();
 }

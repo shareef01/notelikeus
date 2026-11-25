@@ -27,9 +27,6 @@ import { NoteCardThumbnail } from '@/components/notes/NoteCardThumbnail';
 
 export interface NoteReorderHandleProps {
   onPointerDown: PointerEventHandler<HTMLButtonElement>;
-  onPointerMove: PointerEventHandler<HTMLButtonElement>;
-  onPointerUp: PointerEventHandler<HTMLButtonElement>;
-  onPointerCancel: PointerEventHandler<HTMLButtonElement>;
   /** Arrow Up / Down move the note one place: the handle's route for keyboard users. */
   onKeyDown: KeyboardEventHandler<HTMLButtonElement>;
 }

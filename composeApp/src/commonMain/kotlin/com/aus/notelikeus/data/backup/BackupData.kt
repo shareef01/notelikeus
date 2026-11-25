@@ -93,4 +93,5 @@ data class BundleAttachmentDto(
     val mimeType: String? = null,
     val sizeBytes: Long? = null,
     val sha256: String? = null,
+    val placement: com.aus.notelikeus.domain.model.AttachmentPlacement? = null,
 )

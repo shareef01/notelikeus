@@ -2,10 +2,14 @@ package com.aus.notelikeus.ui.editor.components
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.window.DialogProperties
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import javax.imageio.ImageIO
+
+internal actual fun attachmentViewerDialogProperties(): DialogProperties =
+    DialogProperties(usePlatformDefaultWidth = false)
 
 actual fun decodeAttachmentPreview(bytes: ByteArray, maxWidthPx: Int): ImageBitmap? =
     runCatching {

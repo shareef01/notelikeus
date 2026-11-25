@@ -90,13 +90,40 @@ fn the_native_window_end_to_end() {
     search_views_and_saved_filters();
     reviewing_a_conflicted_copy();
     pictures_on_notes();
+    pictures_between_paragraphs();
     appearance_density_sort_and_sidebar_persistence();
+    failed_local_write_keeps_the_note_open_until_it_can_be_saved();
     pinned_others_sections_and_sort_orders();
     markdown_formatting_and_safe_href_validation();
     dual_content_and_checklist_preserved_across_ui_edits();
     diagnostics_dialog_and_non_leak_check();
     cloud_wipe_banner_and_modal_shortcut_gating();
     a_windows_contrast_theme_replaces_the_palette();
+}
+
+fn failed_local_write_keeps_the_note_open_until_it_can_be_saved() {
+    let dir = temp_dir("failed-draft-save");
+    let (ui, _controller) = open(&dir);
+    let state = dir.join("accounts").join(notelikeus_app::GUEST).join("state.nlkr");
+    // A directory at the destination prevents replacing it with the saved state.
+    std::fs::create_dir(&state).unwrap();
+    press(&ui, "New note");
+    ui.set_editor_title("Keep this draft".into());
+    ui.set_editor_body("These words should survive a failed write.".into());
+    ui.invoke_editor_edited();
+    press(&ui, "Back to notes");
+    assert!(ui.get_editor_open());
+    assert_eq!(ui.get_editor_title(), "Keep this draft");
+    assert!(ui.get_editor_footer().starts_with("Not saved"));
+    ui.invoke_new_note();
+    assert_eq!(ui.get_editor_title(), "Keep this draft");
+
+    std::fs::remove_dir(&state).unwrap();
+    press(&ui, "Back to notes");
+    assert!(!ui.get_editor_open());
+    let service = NotesService::open(&dir, Box::new(PlaintextKeyProtectorForTests), Box::new(SystemIds), None).unwrap();
+    assert_eq!(service.list()[0].content, "These words should survive a failed write.");
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 fn appearance_density_sort_and_sidebar_persistence() {
@@ -107,7 +134,7 @@ fn appearance_density_sort_and_sidebar_persistence() {
     press(&ui, "Dark");
     press(&ui, "Blue");
     tick(&ui, "AMOLED black");
-    press(&ui, "Done");
+    press(&ui, "Back from settings");
     assert!(!ui.get_settings_open());
     assert_eq!((ui.get_theme_mode(), ui.get_theme_accent(), ui.get_theme_amoled()), (2, 1, true));
 
@@ -730,7 +757,8 @@ fn png(width: u32, height: u32) -> Vec<u8> {
 }
 
 fn pictures_on_notes() {
-    use slint::Model;
+    use slint::platform::WindowEvent;
+    use slint::{ComponentHandle, Model};
     let dir = temp_dir("pictures");
     let (ui, controller) = open(&dir);
 
@@ -757,8 +785,28 @@ fn pictures_on_notes() {
     assert!(ui.get_viewer_open());
     assert!(ui.get_viewer_picture().ready);
     assert_eq!((ui.get_viewer_index(), ui.get_viewer_count()), (0, 2));
+    let enlarged = || ElementHandle::find_by_accessible_label(&ui, "Enlarged picture").next().unwrap();
+    let fitted = enlarged().size().height;
+    assert!(fitted > 0.0);
+    press(&ui, "Zoom in");
+    assert_eq!(ui.get_viewer_zoom_index(), 1);
+    assert!((enlarged().size().height / fitted - 1.5).abs() < 0.02);
+    let canvas = ElementHandle::find_by_accessible_label(&ui, "Picture canvas").next().unwrap();
+    let origin = canvas.absolute_position();
+    let size = canvas.size();
+    let before_pan = enlarged().absolute_position().x;
+    ui.window().dispatch_event(WindowEvent::PointerScrolled {
+        position: slint::LogicalPosition::new(origin.x + size.width / 2.0, origin.y + size.height / 2.0),
+        delta_x: -80.0,
+        delta_y: 0.0,
+    });
+    assert!(enlarged().absolute_position().x < before_pan, "the wheel pans the enlarged picture");
+    press(&ui, "Zoom out");
+    assert_eq!(ui.get_viewer_zoom_index(), 0);
+    press(&ui, "Zoom in");
     press(&ui, "Next picture");
     assert_eq!(ui.get_viewer_index(), 1);
+    assert_eq!(ui.get_viewer_zoom_index(), 0, "a different picture opens fitted");
     press(&ui, "Next picture");
     assert_eq!(ui.get_viewer_index(), 0, "round to the first");
     press(&ui, "Remove image");
@@ -781,6 +829,46 @@ fn pictures_on_notes() {
     press(&ui, "Picture 1 of 1");
     assert!(ui.get_viewer_open() && ui.get_viewer_read_only());
     assert!(!has(&ui, "Remove image"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn pictures_between_paragraphs() {
+    use slint::Model;
+    let dir = temp_dir("picture-placement");
+    let (ui, controller) = open(&dir);
+    press(&ui, "New note");
+    let first = "First 🧭";
+    let body = format!("{first}\n\nSecond");
+    type_note(&ui, "Trip pictures", &body);
+    controller.add_image_bytes(&png(300, 200));
+    controller.add_image_bytes(&png(100, 100));
+    ui.set_editor_body_sel_anchor(first.len() as i32);
+    ui.set_editor_body_sel_focus(first.len() as i32);
+    ui.set_editor_body_sel_seq(ui.get_editor_body_sel_seq() + 1);
+    press(&ui, "Place after cursor paragraph for picture 1");
+    assert!(ui.get_editor_reading());
+    assert_eq!(ui.get_editor_body(), body.as_str());
+    let y = |label| ElementHandle::find_by_accessible_label(&ui, label).next().unwrap().absolute_position().y;
+    assert!(y(first) < y("Picture 1 of 2") && y("Picture 1 of 2") < y("Second"));
+    assert_eq!(ui.get_editor_unplaced_pictures().row_count(), 1);
+    press(&ui, "Picture 2 of 2");
+    assert_eq!(ui.get_viewer_index(), 1, "the strip still uses the gallery's original picture index");
+    press(&ui, "Close picture");
+
+    press(&ui, "Edit note");
+    let revised = format!("{first} updated\n\nSecond");
+    type_note(&ui, "Trip pictures", &revised);
+    press(&ui, "Read note");
+    assert!(y("First 🧭 updated") < y("Picture 1 of 2") && y("Picture 1 of 2") < y("Second"));
+    press(&ui, "Back to notes");
+    drop(ui);
+
+    let (ui, _controller) = open(&dir);
+    press(&ui, "Trip pictures");
+    assert!(has(&ui, "Move to attachment strip"));
+    press(&ui, "Move to attachment strip");
+    assert_eq!(ui.get_editor_unplaced_pictures().row_count(), 2);
+    assert_eq!(ui.get_editor_body(), revised.as_str());
     std::fs::remove_dir_all(dir).unwrap();
 }
 

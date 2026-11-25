@@ -22,7 +22,7 @@ use notelikeus_app::clock::LocalDays;
 use notelikeus_app::query::{self, DateField, DatePreset, Filters, LabelMatch, NoteFlag, NoteScope, SMART_VIEWS};
 use notelikeus_app::{ChecklistItem, NoteView, NotesService, Scope, label_key};
 use notelikeus_core::palette;
-use slint::{Color, ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
+use slint::{Color, ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
 use crate::view;
 use crate::{
@@ -357,6 +357,17 @@ impl Controller {
         wire_ui!(on_format_bullet, |c, anchor, focus| c.format_markdown(anchor, focus, view::toggle_bullet_list));
         wire_ui!(on_open_link_dialog, |c, anchor, focus| c.open_link_dialog(anchor, focus));
         wire_ui!(on_insert_link_submitted, |c| c.insert_link_submitted());
+        ui.on_render_preview(|body, pictures| {
+            model(crate::document::blocks_with_pictures(&body, pictures.iter().collect()))
+        });
+        wire_ui!(on_read_requested, |c| {
+            if c.save_now()
+                && let Some(ui) = c.ui()
+            {
+                ui.set_editor_reading(true);
+            }
+        });
+        wire_ui!(on_open_preview_link, |c, url| c.open_preview_link(&url));
         wire!(on_open_labels, |c| c.open_labels());
         wire!(on_labels_created, |c, name| c.labels_created(&name));
         wire!(on_label_renamed, |c, old, new| c.label_renamed(&old, &new));
@@ -421,6 +432,8 @@ impl Controller {
         wire_ui!(on_resend_tick, |c| c.resend_tick());
         wire!(on_image_add_requested, |c| c.pick_image());
         wire!(on_picture_opened, |c, index| c.open_picture(index.max(0) as usize));
+        wire_ui!(on_picture_positioned, |c, id, cursor| c.set_picture_position(&id, Some(cursor)));
+        wire_ui!(on_picture_unpositioned, |c, id| c.set_picture_position(&id, None));
         wire!(on_viewer_moved, |c, step| c.move_viewer(step));
         wire!(on_picture_remove_requested, |c| c.ask_remove_picture());
         wire!(on_open_reminder, |c| c.open_reminder());
@@ -477,7 +490,9 @@ impl Controller {
 
     fn on_window_close_requested(&self) -> slint::CloseRequestResponse {
         // Persist open draft edits cleanly before closing or minimizing to tray.
-        self.save_now();
+        if !self.save_now() {
+            return slint::CloseRequestResponse::KeepWindowShown;
+        }
         if !self.tray_available.get() || self.jobs.holds_notes() || !self.svc().has_pending_reminders() {
             self.cleanup_notifications();
             let _ = slint::quit_event_loop();
@@ -515,7 +530,9 @@ impl Controller {
 
     /// Opens Settings after saving any words currently in the editor.
     pub fn open_settings(&self) {
-        self.save_now();
+        if !self.save_now() {
+            return;
+        }
         let Some(ui) = self.ui() else { return };
         ui.set_can_delete_account(self.svc().can_delete_account());
         ui.set_deleting_account(false);
@@ -631,7 +648,9 @@ impl Controller {
         if ui.get_delete_account_confirmation().as_str() != "DELETE" || !self.svc().can_delete_account() {
             return;
         }
-        self.save_now();
+        if !self.save_now() {
+            return;
+        }
         ui.set_deleting_account(true);
         self.with_notes_in_background(
             |service| service.delete_account(),
@@ -1083,6 +1102,8 @@ impl Controller {
                 ui.set_editor_color_index(0);
                 ui.set_editor_labels(model(Vec::new()));
                 ui.set_editor_pictures(model(Vec::new()));
+                ui.set_editor_unplaced_pictures(model(Vec::new()));
+                ui.set_editor_picture_body("".into());
                 ui.set_editor_conflict(false);
                 ui.set_editor_footer("Not saved yet".into());
             }
@@ -1091,6 +1112,7 @@ impl Controller {
         ui.set_options_open(false);
         ui.set_reminder_open(false);
         ui.set_link_dialog_open(false);
+        ui.set_editor_reading(note.is_some_and(|n| n.checklist.is_empty() && !n.content.trim().is_empty()));
         ui.set_editor_open(true);
     }
 
@@ -1110,7 +1132,9 @@ impl Controller {
     }
 
     pub fn new_note(&self) {
-        self.save_now();
+        if !self.save_now() {
+            return;
+        }
         let Some(ui) = self.ui() else { return };
         if self.state.borrow().filters.scope != NoteScope::Active {
             // A new note lands in Notes, so show it there.
@@ -1121,7 +1145,9 @@ impl Controller {
     }
 
     pub fn open_note(&self, id: &str) {
-        self.save_now();
+        if !self.save_now() {
+            return;
+        }
         let Some(ui) = self.ui() else { return };
         let Some(note) = self.svc().note(id) else { return };
         self.state.borrow_mut().editing = Some(Editing {
@@ -1189,6 +1215,7 @@ impl Controller {
                 }
                 ui.set_editor_saved_once(true);
                 ui.set_editor_footer(Self::saved_footer(saved.timestamp));
+                self.show_pictures(&ui, &saved);
                 self.refresh();
                 Some(saved)
             }
@@ -1200,8 +1227,21 @@ impl Controller {
         }
     }
 
-    pub fn save_now(&self) {
+    fn editor_is_dirty(&self) -> bool {
+        self.editor_dirty_hint.get() || self.state.borrow().editing.as_ref().is_some_and(|editing| editing.dirty)
+    }
+
+    /// False leaves the editor and its draft available so the operation can be retried.
+    pub fn save_now(&self) -> bool {
+        if !self.editor_is_dirty() {
+            return true;
+        }
+        if self.jobs.holds_notes() {
+            self.show_toast("Sync is finishing. Try again in a moment to save this note.", None, None);
+            return false;
+        }
         self.save_editor(false);
+        !self.editor_is_dirty()
     }
 
     pub fn open_reminder(&self) {
@@ -1419,8 +1459,9 @@ impl Controller {
     }
 
     pub fn close_editor(&self) {
-        self.save_now();
-        self.close_sheet();
+        if self.save_now() {
+            self.close_sheet();
+        }
     }
 
     /// Applies a change to the open note and shows the result in the editor and the grid.
@@ -1428,7 +1469,9 @@ impl Controller {
         &self,
         change: impl FnOnce(&mut NotesService, &str) -> Result<NoteView, String>,
     ) -> Option<NoteView> {
-        self.save_now();
+        if !self.save_now() {
+            return None;
+        }
         let ui = self.ui()?;
         let id = self.editing_id()?;
         let result = change(&mut self.svc(), &id);
@@ -1770,7 +1813,7 @@ impl Controller {
     pub fn to_checklist(&self) {
         let Some(ui) = self.ui() else { return };
         // A draft becomes a note first, so there is something to convert.
-        if self.save_editor(true).is_none() && self.editing_id().is_none() {
+        if self.save_editor(true).is_none() {
             return;
         }
         let Some(id) = self.editing_id() else { return };
@@ -1791,7 +1834,9 @@ impl Controller {
     }
 
     pub fn to_text(&self) {
-        self.save_now();
+        if !self.save_now() {
+            return;
+        }
         let Some(ui) = self.ui() else { return };
         let Some(id) = self.editing_id() else { return };
         let converted = self.svc().convert_to_text(&id);

@@ -1,6 +1,6 @@
 // The native Notelikeus window, laid out like the web app: a sidebar with Notes, Archive and Trash, a top
-// bar with search and a new-note button, a masonry grid of note cards in their colours, and the editor as a
-// floating sheet with its note options (colour, labels) and a checklist mode.
+// bar with search and a new-note button, a masonry grid of note cards in their colours, and a
+// dedicated note workspace with note options (colour, labels) and a checklist mode.
 //
 // Every interactive element carries an accessible role and label: screen readers use them, and so do the
 // headless UI tests (tests/ui.rs).
@@ -25,6 +25,21 @@ export struct Picture {
     image: image,
     ready: bool,
     problem: string,
+    aspect: float,
+    index: int,
+    inline-byte: int,
+    inline-order: int,
+}
+
+export enum DocumentKind { prose, code, divider, picture }
+
+export struct DocumentBlock {
+    text: styled-text,
+    description: string,
+    heading: int,
+    kind: DocumentKind,
+    quote-depth: int,
+    picture: Picture,
 }
 
 export struct NoteCard {
@@ -1159,8 +1174,86 @@ component Dialog inherits Rectangle {
     }
 }
 
-component EditorSheet inherits Rectangle {
+component SettingsWorkspace inherits Rectangle {
+    callback back();
+    out property <length> content-inset: max(24px, (self.width - Theme.document-width) / 2);
+    background: Theme.surface;
+    accessible-role: groupbox;
+    accessible-label: "Settings page";
+
+    VerticalLayout {
+        HorizontalLayout {
+            padding: 16px;
+            padding-left: 24px;
+            spacing: 12px;
+            IconButton {
+                icon: Icons.back;
+                label: "Back from settings";
+                clicked => { root.back(); }
+                init => { self.focus(); }
+            }
+            Text {
+                text: "Settings";
+                font-size: Type.title;
+                font-weight: 600;
+                color: Theme.on-surface;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+        }
+        Rectangle { height: 1px; background: Theme.outline; }
+        @children
+    }
+}
+
+component EditorPicture inherits FocusScope {
+    in property <Picture> picture;
+    in property <int> count;
+    callback opened();
+    accessible-role: button;
+    accessible-label: "Picture " + (root.picture.index + 1) + " of " + root.count;
+    accessible-action-default => { root.opened(); }
+    key-pressed(event) => {
+        if (event.text == Key.Space || event.text == Key.Return) {
+            root.opened();
+            return accept;
+        }
+        reject
+    }
+    Rectangle {
+        border-radius: Theme.radius-md;
+        clip: true;
+        background: Theme.surface-variant;
+        border-width: root.has-focus ? 2px : 0px;
+        border-color: Theme.accent;
+        if root.picture.ready: Image {
+            width: parent.width;
+            height: parent.height;
+            source: root.picture.image;
+            image-fit: contain;
+        }
+        if !root.picture.ready && root.picture.problem == "": Icon {
+            path: Icons.image;
+            color: Theme.muted;
+        }
+        if root.picture.problem != "": Text {
+            width: parent.width - 16px;
+            text: root.picture.problem;
+            font-size: Type.meta;
+            color: Theme.muted;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.opened(); }
+        }
+    }
+}
+
+component NoteWorkspace inherits Rectangle {
     in property <View> mode;
+    in-out property <bool> reading;
     in-out property <string> title;
     in-out property <string> body;
     in property <bool> pinned;
@@ -1177,6 +1270,9 @@ component EditorSheet inherits Rectangle {
     in property <[EditRow]> rows;
     in property <bool> conflict;
     in property <[Picture]> pictures;
+    in property <int> picture-count;
+    in property <bool> can-position-pictures;
+    in property <[DocumentBlock]> preview;
     in property <int> body-sel-anchor;
     in property <int> body-sel-focus;
     in property <int> body-sel-seq;
@@ -1184,9 +1280,13 @@ component EditorSheet inherits Rectangle {
     out property <int> body-anchor-byte: body-input.anchor-position-byte-offset;
     callback add-image();
     callback open-picture(int);
+    callback position-picture(string, int);
+    callback unposition-picture(string);
+    callback read-requested();
     callback compare();
     callback edited();
     callback close();
+    callback open-link(string);
     callback toggle-pin();
     callback archive();
     callback trash();
@@ -1205,20 +1305,16 @@ component EditorSheet inherits Rectangle {
     callback format-bullet(int, int);
     callback format-link(int, int);
     property <bool> read-only: root.mode == View.trash;
-    property <color> fg: root.tinted ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
-    property <color> fg-secondary: root.tinted ? (Theme.dark ? #f0f0f0 : #292927) : Theme.on-surface-secondary;
-    property <color> fg-muted: root.tinted ? (Theme.dark ? #e5e5e5 : #3b3b38) : Theme.muted;
-    property <color> chip-bg: root.tinted ? (Theme.dark ? #ffffff24 : #00000018) : Theme.on-surface.transparentize(0.9);
-    property <color> cb-bg: root.tinted ? (Theme.dark ? #ffffff : #151515) : Theme.on-surface;
-    property <color> cb-tick: root.tinted ? (Theme.dark ? #151515 : #ffffff) : Theme.background;
-    property <color> divider: root.tinted ? (Theme.dark ? #ffffff28 : #00000022) : Theme.outline;
+    property <color> fg: Theme.on-surface;
+    property <color> fg-secondary: Theme.on-surface-secondary;
+    property <color> fg-muted: Theme.muted;
+    property <color> chip-bg: Theme.surface-variant;
+    property <color> cb-bg: Theme.on-surface;
+    property <color> cb-tick: Theme.background;
+    property <color> divider: Theme.outline;
+    property <length> document-inset: max(24px, (self.width - Theme.document-width) / 2);
     forward-focus: body-input;
-    border-radius: Theme.radius-sheet;
-    border-width: 1px;
-    border-color: Theme.outline;
-    background: root.tinted ? (Theme.dark ? color-dark : color-light) : Theme.surface;
-    drop-shadow-blur: 32px;
-    drop-shadow-color: #00000066;
+    background: Theme.surface;
 
     changed body-sel-seq => {
         body-input.set-selection-offsets(root.body-sel-anchor, root.body-sel-focus);
@@ -1229,9 +1325,6 @@ component EditorSheet inherits Rectangle {
         title-input.focus();
     }
 
-    // Swallow clicks so they do not reach the scrim behind the sheet.
-    TouchArea { }
-
     VerticalLayout {
         // Header: what this note can do where it is.
         HorizontalLayout {
@@ -1239,11 +1332,20 @@ component EditorSheet inherits Rectangle {
             padding-left: 24px;
             padding-right: 24px;
             spacing: 4px;
-            IconButton {
+            back-to-notes := IconButton {
                 icon: Icons.back;
                 label: "Back to notes";
                 fg-color: root.fg;
                 clicked => { root.close(); }
+            }
+            if !root.is-checklist && !root.read-only && (root.body != "" || root.reading): PillButton {
+                text: root.reading ? "Edit note" : "Read note";
+                clicked => {
+                    if (root.reading) {
+                        root.reading = false;
+                        body-input.focus();
+                    } else { root.read-requested(); }
+                }
             }
             Rectangle { horizontal-stretch: 1; }
             if root.mode != View.trash: IconButton {
@@ -1295,7 +1397,10 @@ component EditorSheet inherits Rectangle {
                 clicked => { root.delete-forever(); }
             }
         }
-        Rectangle { height: 1px; background: root.divider; }
+        Rectangle {
+            height: root.tinted ? 4px : 1px;
+            background: root.tinted ? (Theme.dark ? root.color-dark : root.color-light) : root.divider;
+        }
 
         if root.read-only: Rectangle {
             height: 40px;
@@ -1336,54 +1441,12 @@ component EditorSheet inherits Rectangle {
 
         // Title, labels and body.
         VerticalLayout {
-            padding: 40px;
-            padding-top: 28px;
+            padding-left: root.document-inset;
+            padding-right: root.document-inset;
+            padding-top: 24px;
             padding-bottom: 12px;
             spacing: 14px;
             vertical-stretch: 1;
-
-            // The note's pictures, as the web's image strip: each opens in the viewer.
-            if root.pictures.length > 0: strip := Flickable {
-                height: 128px;
-                vertical-stretch: 0;
-                content-width: strip-row.preferred-width;
-                strip-row := HorizontalLayout {
-                    spacing: 10px;
-                    alignment: start;
-                    for picture[index] in root.pictures: Rectangle {
-                        width: 128px;
-                        height: 128px;
-                        border-radius: Theme.radius-md;
-                        clip: true;
-                        background: Theme.surface-variant;
-                        accessible-role: button;
-                        accessible-label: "Picture " + (index + 1) + " of " + root.pictures.length;
-                        accessible-action-default => { root.open-picture(index); }
-                        if picture.ready: Image {
-                            width: parent.width;
-                            height: parent.height;
-                            source: picture.image;
-                            image-fit: cover;
-                        }
-                        if !picture.ready && picture.problem == "": Icon {
-                            path: Icons.image;
-                            color: Theme.muted;
-                        }
-                        if picture.problem != "": Text {
-                            width: parent.width - 16px;
-                            text: picture.problem;
-                            font-size: Type.meta;
-                            color: Theme.muted;
-                            wrap: word-wrap;
-                            horizontal-alignment: center;
-                        }
-                        TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { root.open-picture(index); }
-                        }
-                    }
-                }
-            }
 
             Rectangle {
                 height: max(title-input.preferred-height, 40px);
@@ -1398,7 +1461,7 @@ component EditorSheet inherits Rectangle {
                 title-input := TextInput {
                     y: 0;
                     text <=> root.title;
-                    read-only: root.read-only;
+                    read-only: root.read-only || root.reading;
                     font-size: Type.editor-title;
                     font-weight: 600;
                     letter-spacing: -0.6px;
@@ -1409,7 +1472,7 @@ component EditorSheet inherits Rectangle {
                     accessible-label: "Title";
                     edited => { root.edited(); }
                     key-pressed(event) => {
-                        if (event.text == Key.Return) {
+                        if (event.text == Key.Return && !root.reading && !root.read-only) {
                             body-input.focus();
                             return accept;
                         }
@@ -1425,7 +1488,7 @@ component EditorSheet inherits Rectangle {
             }
 
             // Text mode: Markdown formatting controls, checklist switch, and picture attachment.
-            if !root.is-checklist && !root.read-only: HorizontalLayout {
+            if !root.is-checklist && !root.read-only && !root.reading: HorizontalLayout {
                 alignment: start;
                 Rectangle {
                     height: 40px;
@@ -1507,11 +1570,84 @@ component EditorSheet inherits Rectangle {
                 }
             }
 
-            // Always in the tree (focus and the title's Enter reach it); collapsed in checklist mode.
+            if root.reading && !root.is-checklist: preview-scroll := ScrollView {
+                vertical-stretch: 1;
+                content-width: self.visible-width;
+                content-height: preview-column.preferred-height;
+                preview-column := VerticalLayout {
+                    width: preview-scroll.visible-width;
+                    spacing: 16px;
+                    padding-bottom: 16px;
+                    for block in root.preview: HorizontalLayout {
+                        spacing: 10px;
+                        for level in block.quote-depth: Rectangle {
+                            width: 3px;
+                            background: Theme.muted;
+                            vertical-stretch: 1;
+                        }
+                        VerticalLayout {
+                            if block.kind == DocumentKind.divider: Rectangle {
+                                height: 1px;
+                                background: Theme.outline;
+                                accessible-role: text;
+                                accessible-label: block.description;
+                            }
+                            if block.kind == DocumentKind.picture: HorizontalLayout {
+                                alignment: start;
+                                VerticalLayout {
+                                    alignment: start;
+                                    spacing: 4px;
+                                    EditorPicture {
+                                        picture: block.picture;
+                                        count: root.picture-count;
+                                        width: min(preview-column.width, min(540px, max(100px, 280px * block.picture.aspect)));
+                                        height: min(280px, self.width / max(0.01, block.picture.aspect));
+                                        opened => { root.open-picture(block.picture.index); }
+                                    }
+                                    if root.can-position-pictures && !root.read-only: HorizontalLayout {
+                                        alignment: start;
+                                        PillButton {
+                                            text: "Move to attachment strip";
+                                            clicked => {
+                                                root.unposition-picture(block.picture.id);
+                                                back-to-notes.focus();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if block.kind == DocumentKind.prose || block.kind == DocumentKind.code: Rectangle {
+                                background: block.kind == DocumentKind.code ? Theme.surface-variant : transparent;
+                                border-color: Theme.outline;
+                                border-width: block.kind == DocumentKind.code ? 1px : 0px;
+                                border-radius: Theme.radius-sm;
+                                VerticalLayout {
+                                    padding: block.kind == DocumentKind.code ? 12px : 0px;
+                                    StyledText {
+                                        text: block.text;
+                                        accessible-role: text;
+                                        accessible-label: block.description;
+                                        default-color: block.kind == DocumentKind.code ? Theme.on-surface : root.fg;
+                                        default-font-family: block.kind == DocumentKind.code ? "Consolas" : "Inter";
+                                        default-font-size: block.heading == 0 ? Type.editor-body
+                                            : block.heading == 1 ? Type.heading-large
+                                            : block.heading == 2 ? Type.heading-medium : Type.title;
+                                        link-color: Theme.accent;
+                                        selectable: true;
+                                        link-clicked(url) => { root.open-link(url); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Keep the input mounted when reading so its selection survives a mode change.
             body-scroll := Flickable {
-                vertical-stretch: root.is-checklist ? 0 : 1;
-                max-height: root.is-checklist ? 0px : 100000px;
-                visible: !root.is-checklist;
+                vertical-stretch: root.is-checklist || root.reading ? 0 : 1;
+                max-height: root.is-checklist || root.reading ? 0px : 100000px;
+                visible: !root.is-checklist && !root.reading;
                 content-height: max(self.height, body-input.preferred-height + 24px);
                 if body-input.text == "": Text {
                     x: 0;
@@ -1634,12 +1770,44 @@ component EditorSheet inherits Rectangle {
                     }
                 }
             }
+            // Attachments follow the body and open in the full-window viewer.
+            if root.pictures.length > 0: strip := Flickable {
+                property <bool> position-actions: !root.reading && !root.is-checklist && !root.read-only
+                    && root.can-position-pictures && root.body != "";
+                property <length> picture-height: position-actions ? min(112px, root.height / 5)
+                    : min(136px, root.height / 4);
+                height: picture-height + (position-actions ? 40px : 0px);
+                vertical-stretch: 0;
+                content-width: strip-row.preferred-width;
+                strip-row := HorizontalLayout {
+                    spacing: 10px;
+                    alignment: start;
+                    for picture in root.pictures: VerticalLayout {
+                        min-width: min(320px, max(48px, strip.picture-height * picture.aspect));
+                        spacing: 4px;
+                        EditorPicture {
+                            height: strip.picture-height;
+                            picture: picture;
+                            count: root.picture-count;
+                            opened => { root.open-picture(picture.index); }
+                        }
+                        if strip.position-actions: PillButton {
+                            text: "Place after cursor paragraph";
+                            label: self.text + " for picture " + (picture.index + 1);
+                            clicked => {
+                                root.position-picture(picture.id, body-input.cursor-position-byte-offset);
+                                if (root.reading) { back-to-notes.focus(); }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Rectangle { height: 1px; background: root.divider; }
         HorizontalLayout {
             padding: 16px;
-            padding-left: 40px;
+            padding-left: root.document-inset;
             Text {
                 text: root.footer;
                 font-size: Type.body-small;
@@ -1721,9 +1889,14 @@ export component AppWindow inherits Window {
 
     // The open note's pictures, and the viewer.
     in property <[Picture]> editor-pictures;
+    in property <[Picture]> editor-unplaced-pictures;
+    in property <string> editor-picture-body;
     in-out property <bool> viewer-open;
     in property <Picture> viewer-picture;
     in property <int> viewer-index;
+    in-out property <int> viewer-zoom-index;
+    property <[float]> viewer-zoom-levels: [1, 1.5, 2, 3, 4];
+    property <float> viewer-zoom: root.viewer-zoom-levels[root.viewer-zoom-index];
     in property <int> viewer-count;
     in property <bool> viewer-read-only;
 
@@ -1755,6 +1928,7 @@ export component AppWindow inherits Window {
 
     // The editor.
     in-out property <bool> editor-open;
+    in-out property <bool> editor-reading;
     in property <View> editor-mode;
     in-out property <string> editor-title;
     in-out property <string> editor-body;
@@ -1864,6 +2038,9 @@ export component AppWindow inherits Window {
     callback review-keep-both();
     callback image-add-requested();
     callback picture-opened(int);
+    callback picture-positioned(string, int);
+    callback picture-unpositioned(string);
+    callback read-requested();
     callback viewer-moved(int);
     callback picture-remove-requested();
     callback open-reminder();
@@ -1880,6 +2057,8 @@ export component AppWindow inherits Window {
     callback open-note(string);
     callback editor-edited();
     callback close-editor();
+    pure callback render-preview(string, [Picture]) -> [DocumentBlock];
+    callback open-preview-link(string);
     callback toggle-pin();
     callback archive-toggled();
     callback trash-note();
@@ -1924,7 +2103,12 @@ export component AppWindow inherits Window {
     changed options-open => { if (!self.options-open) { keys.focus(); } }
     changed labels-open => { if (!self.labels-open) { keys.focus(); } }
     changed filters-open => { if (!self.filters-open) { keys.focus(); } }
-    changed viewer-open => { if (!self.viewer-open) { keys.focus(); } }
+    changed viewer-open => {
+        if (!self.viewer-open) {
+            self.viewer-zoom-index = 0;
+            keys.focus();
+        }
+    }
     changed confirm-title => { if (self.confirm-title == "") { keys.focus(); } }
 
     public function focus-search() {
@@ -1945,6 +2129,26 @@ export component AppWindow inherits Window {
             if (!root.any-modal-open && event.modifiers.control && (event.text == "k" || event.text == "K" || event.text == "f" || event.text == "F")) {
                 search.focus-search();
                 return accept;
+            }
+            if (root.viewer-open && root.confirm-title == ""
+                && (event.text == Key.LeftArrow || event.text == Key.RightArrow)) {
+                root.viewer-moved(event.text == Key.LeftArrow ? -1 : 1);
+                return accept;
+            }
+            if (root.viewer-open && root.viewer-picture.ready && root.confirm-title == ""
+                && !event.modifiers.control && !event.modifiers.alt && !event.modifiers.meta) {
+                if (event.text == "+" || event.text == "=") {
+                    root.viewer-zoom-index = min(4, root.viewer-zoom-index + 1);
+                    return accept;
+                }
+                if (event.text == "-") {
+                    root.viewer-zoom-index = max(0, root.viewer-zoom-index - 1);
+                    return accept;
+                }
+                if (event.text == "0") {
+                    root.viewer-zoom-index = 0;
+                    return accept;
+                }
             }
             if (event.text == Key.Escape) {
                 if (root.confirm-title != "") {
@@ -1985,6 +2189,7 @@ export component AppWindow inherits Window {
         }
 
         HorizontalLayout {
+            visible: !root.editor-open && !root.settings-open;
             Sidebar {
                 view: root.view;
                 library-current: root.library-current;
@@ -2432,61 +2637,65 @@ export component AppWindow inherits Window {
 
         // --- Overlays in strict bottom-to-top Z-order ---
 
-        // 1. Editor sheet
-        if root.editor-open: Rectangle {
-            background: Theme.scrim;
-            TouchArea { clicked => { root.close-editor(); } }
-            sheet := EditorSheet {
-                x: (parent.width - self.width) / 2;
-                y: 40px;
-                width: min(960px, parent.width - 64px);
-                height: parent.height - 80px;
-                mode: root.editor-mode;
-                title <=> root.editor-title;
-                body <=> root.editor-body;
-                pinned: root.editor-pinned;
-                reminder-set: root.editor-reminder-set;
-                footer: root.editor-footer;
-                can-act: root.editor-saved-once;
-                has-color: root.editor-has-color;
-                color-light: root.editor-color-light;
-                color-dark: root.editor-color-dark;
-                labels: root.editor-labels;
-                is-checklist: root.editor-is-checklist;
-                rows: root.editor-rows;
-                conflict: root.editor-conflict;
-                pictures: root.editor-pictures;
-                body-sel-anchor: root.editor-body-sel-anchor;
-                body-sel-focus: root.editor-body-sel-focus;
-                body-sel-seq: root.editor-body-sel-seq;
-                add-image => { root.image-add-requested(); }
-                open-picture(index) => { root.picture-opened(index); }
-                compare => { root.review-opened(); }
-                edited => { root.editor-edited(); }
-                close => { root.close-editor(); }
-                toggle-pin => { root.toggle-pin(); }
-                archive => { root.archive-toggled(); }
-                trash => { root.trash-note(); }
-                restore => { root.restore-note(); }
-                delete-forever => { root.delete-forever(); }
-                open-options => { root.open-options(); }
-                open-reminder => { root.open-reminder(); }
-                item-edited(position, text) => { root.item-edited(position, text); }
-                item-toggled(position) => { root.item-toggled(position); }
-                item-removed(position) => { root.item-removed(position); }
-                item-added => { root.item-added(); }
-                to-checklist => { root.to-checklist(); }
-                to-text => { root.to-text(); }
-                format-bold(anchor, focus) => { root.format-bold(anchor, focus); }
-                format-italic(anchor, focus) => { root.format-italic(anchor, focus); }
-                format-bullet(anchor, focus) => { root.format-bullet(anchor, focus); }
-                format-link(anchor, focus) => { root.open-link-dialog(anchor, focus); }
-                init => {
-                    if (root.editor-title == "" && root.editor-mode != View.trash) {
-                        self.focus-title();
-                    } else {
-                        self.focus();
-                    }
+        // 1. Note workspace
+        if root.editor-open: NoteWorkspace {
+            mode: root.editor-mode;
+            reading <=> root.editor-reading;
+            preview: root.editor-reading && !root.editor-is-checklist ? root.render-preview(
+                root.editor-body, root.editor-picture-body == root.editor-body ? root.editor-pictures : []) : [];
+            title <=> root.editor-title;
+            body <=> root.editor-body;
+            pinned: root.editor-pinned;
+            reminder-set: root.editor-reminder-set;
+            footer: root.editor-footer;
+            can-act: root.editor-saved-once;
+            has-color: root.editor-has-color;
+            color-light: root.editor-color-light;
+            color-dark: root.editor-color-dark;
+            labels: root.editor-labels;
+            is-checklist: root.editor-is-checklist;
+            rows: root.editor-rows;
+            conflict: root.editor-conflict;
+            pictures: root.editor-reading && !root.editor-is-checklist && root.editor-picture-body == root.editor-body
+                ? root.editor-unplaced-pictures : root.editor-pictures;
+            picture-count: root.editor-pictures.length;
+            can-position-pictures: true;
+            body-sel-anchor: root.editor-body-sel-anchor;
+            body-sel-focus: root.editor-body-sel-focus;
+            body-sel-seq: root.editor-body-sel-seq;
+            add-image => { root.image-add-requested(); }
+            open-picture(index) => { root.picture-opened(index); }
+            position-picture(id, cursor) => { root.picture-positioned(id, cursor); }
+            unposition-picture(id) => { root.picture-unpositioned(id); }
+            read-requested => { root.read-requested(); }
+            compare => { root.review-opened(); }
+            edited => { root.editor-edited(); }
+            close => { root.close-editor(); }
+            open-link(url) => { root.open-preview-link(url); }
+            toggle-pin => { root.toggle-pin(); }
+            archive => { root.archive-toggled(); }
+            trash => { root.trash-note(); }
+            restore => { root.restore-note(); }
+            delete-forever => { root.delete-forever(); }
+            open-options => { root.open-options(); }
+            open-reminder => { root.open-reminder(); }
+            item-edited(position, text) => { root.item-edited(position, text); }
+            item-toggled(position) => { root.item-toggled(position); }
+            item-removed(position) => { root.item-removed(position); }
+            item-added => { root.item-added(); }
+            to-checklist => { root.to-checklist(); }
+            to-text => { root.to-text(); }
+            format-bold(anchor, focus) => { root.format-bold(anchor, focus); }
+            format-italic(anchor, focus) => { root.format-italic(anchor, focus); }
+            format-bullet(anchor, focus) => { root.format-bullet(anchor, focus); }
+            format-link(anchor, focus) => { root.open-link-dialog(anchor, focus); }
+            init => {
+                if (root.editor-reading) {
+                    keys.focus();
+                } else if (root.editor-title == "" && root.editor-mode != View.trash) {
+                    self.focus-title();
+                } else {
+                    self.focus();
                 }
             }
         }
@@ -3026,19 +3235,19 @@ export component AppWindow inherits Window {
             }
         }
 
-        // 4. Settings (below sign-in, review, diagnostics, about and delete-account)
-        if root.settings-open: Dialog {
-            title: "Settings";
-            card-width: 580px;
-            init => { theme-system.focus-option(); }
+        // 4. Settings workspace (below its modal workflows)
+        if root.settings-open: settings-page := SettingsWorkspace {
+            back => { root.settings-open = false; }
             settings-scroll := ScrollView {
                 vertical-stretch: 1;
-                height: min(520px, max(220px, root.height - 200px));
                 content-width: self.visible-width;
                 content-height: settings-content.preferred-height;
                 settings-content := VerticalLayout {
                     width: settings-scroll.visible-width;
-                    padding-right: 12px;
+                    padding-left: settings-page.content-inset;
+                    padding-right: settings-page.content-inset;
+                    padding-top: 24px;
+                    padding-bottom: 24px;
                     spacing: 14px;
                     SectionLabel { text: "APPEARANCE"; }
                     Text {
@@ -3232,10 +3441,6 @@ export component AppWindow inherits Window {
                         PillButton { text: "About"; label: "Open about dialog"; clicked => { root.about-open = true; } }
                     }
                 }
-            }
-            HorizontalLayout {
-                alignment: end;
-                PillButton { text: "Done"; strong: true; clicked => { root.settings-open = false; } }
             }
         }
 
@@ -3569,13 +3774,56 @@ export component AppWindow inherits Window {
             accessible-role: groupbox;
             accessible-label: "Picture " + (root.viewer-index + 1) + " of " + root.viewer-count;
             TouchArea { clicked => { root.viewer-open = false; } }
-            if root.viewer-picture.ready: Image {
+            if root.viewer-picture.ready: canvas-keys := FocusScope {
                 x: 72px;
                 y: 72px;
                 width: parent.width - 144px;
                 height: parent.height - 144px;
-                source: root.viewer-picture.image;
-                image-fit: contain;
+                focus-on-tab-navigation: root.viewer-zoom-index > 0;
+                focus-on-click: root.viewer-zoom-index > 0;
+                accessible-role: groupbox;
+                accessible-label: "Picture canvas";
+                key-pressed(event) => {
+                    if (root.viewer-zoom-index == 0) { return reject; }
+                    if (event.text == Key.LeftArrow || event.text == Key.RightArrow) {
+                        canvas.content-x = clamp(canvas.content-x + (event.text == Key.LeftArrow ? 48px : -48px),
+                            canvas.visible-width - canvas.content-width, 0px);
+                        return accept;
+                    }
+                    if (event.text == Key.UpArrow || event.text == Key.DownArrow) {
+                        canvas.content-y = clamp(canvas.content-y + (event.text == Key.UpArrow ? 48px : -48px),
+                            canvas.visible-height - canvas.content-height, 0px);
+                        return accept;
+                    }
+                    return reject;
+                }
+                canvas := ScrollView {
+                    property <float> aspect: max(0.0001, root.viewer-picture.aspect);
+                    // Reserve room for the scroll view's own chrome as well as the image gutter.
+                    property <length> fit-height: min(self.height - 32px, (self.width - 32px) / self.aspect);
+                    property <float> zoom: root.viewer-zoom;
+                    content-width: max(self.visible-width, picture.width + 16px);
+                    content-height: max(self.visible-height, picture.height + 16px);
+                    mouse-drag-pan-enabled: root.viewer-zoom-index > 0;
+                    changed zoom => {
+                        self.content-x = (self.visible-width - self.content-width) / 2;
+                        self.content-y = (self.visible-height - self.content-height) / 2;
+                    }
+                    picture := Image {
+                        width: canvas.fit-height * canvas.aspect * canvas.zoom;
+                        height: canvas.fit-height * canvas.zoom;
+                        x: (canvas.content-width - self.width) / 2;
+                        y: (canvas.content-height - self.height) / 2;
+                        source: root.viewer-picture.image;
+                        image-fit: contain;
+                        accessible-label: "Enlarged picture";
+                    }
+                }
+                if canvas-keys.has-focus: Rectangle {
+                    border-width: 2px;
+                    border-color: #ffffff;
+                    background: transparent;
+                }
             }
             if !root.viewer-picture.ready: Rectangle {
                 width: min(420px, parent.width - 96px);
@@ -3607,6 +3855,24 @@ export component AppWindow inherits Window {
                     color: #f5f5f5;
                     horizontal-stretch: 1;
                 }
+                PillButton {
+                    text: "−";
+                    label: "Zoom out";
+                    enabled: root.viewer-picture.ready && root.viewer-zoom-index > 0;
+                    clicked => { root.viewer-zoom-index -= 1; }
+                }
+                PillButton {
+                    text: root.viewer-zoom-index > 0 ? round(root.viewer-zoom * 100) + "%" : "Fit";
+                    label: root.viewer-zoom-index > 0 ? "Fit picture to viewer, " + self.text + " of fit" : "Fit picture to viewer";
+                    enabled: root.viewer-picture.ready && root.viewer-zoom-index > 0;
+                    clicked => { root.viewer-zoom-index = 0; }
+                }
+                PillButton {
+                    text: "+";
+                    label: "Zoom in";
+                    enabled: root.viewer-picture.ready && root.viewer-zoom-index < 4;
+                    clicked => { root.viewer-zoom-index += 1; }
+                }
                 if !root.viewer-read-only: PillButton {
                     y: (parent.height - self.height) / 2;
                     text: "Remove image";
@@ -3620,11 +3886,12 @@ export component AppWindow inherits Window {
                     height: 40px;
                     border-radius: 20px;
                     background: #ffffff1f;
-                    IconButton {
+                    viewer-close := IconButton {
                         icon: Icons.close;
                         label: "Close picture";
                         fg-color: #ffffff;
                         clicked => { root.viewer-open = false; }
+                        init => { self.focus(); }
                     }
                 }
             }

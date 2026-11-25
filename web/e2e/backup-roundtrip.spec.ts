@@ -72,13 +72,13 @@ async function importFile(page: Page, path: string): Promise<string | null> {
 const newGuest = (browser: import('@playwright/test').Browser) =>
   browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, acceptDownloads: true });
 
-test('both export controls produce the format they promise', async ({ browser }) => {
+test('both export controls produce the format they promise', async ({ browser }, info) => {
   const context = await newGuest(browser);
   const page = await guestWithPinnedNote(context);
   await openSettings(page);
 
   // JSON, per "Download notes as JSON, without images".
-  const json = await exportVia(page, /^Export notes only/, '/tmp/e2e-notes-only.json');
+  const json = await exportVia(page, /^Export notes only/, info.outputPath('notes-only.json'));
   const text = json.toString('utf8');
   expect(text.startsWith('{'), 'the notes-only export should be JSON').toBe(true);
   const parsed = JSON.parse(text);
@@ -87,17 +87,18 @@ test('both export controls produce the format they promise', async ({ browser })
   expect(parsed.notes[0].title).toBe('BACKUP note');
 
   // The bundle, per "Download notes and images as one .nlkbak file".
-  const bundle = await exportVia(page, /^Export complete backup/, '/tmp/e2e-complete.nlkbak');
+  const bundle = await exportVia(page, /^Export complete backup/, info.outputPath('complete.nlkbak'));
   expect(bundle.subarray(0, 2).toString('latin1'), 'the bundle should be a zip').toBe('PK');
   await context.close();
 });
 
-test('a JSON export imports back into a fresh session with its fields intact', async ({ browser }) => {
+test('a JSON export imports back into a fresh session with its fields intact', async ({ browser }, info) => {
+  const backupPath = info.outputPath('roundtrip.json');
   // Export from one guest.
   const source = await newGuest(browser);
   const exporter = await guestWithPinnedNote(source);
   await openSettings(exporter);
-  await exportVia(exporter, /^Export notes only/, '/tmp/e2e-roundtrip.json');
+  await exportVia(exporter, /^Export notes only/, backupPath);
   await source.close();
 
   // Import into a different one, so nothing can be satisfied by in-memory state.
@@ -109,18 +110,13 @@ test('a JSON export imports back into a fresh session with its fields intact', a
   await page.waitForTimeout(1_500);
   await openSettings(page);
 
-  const copy = await importFile(page, '/tmp/e2e-roundtrip.json');
+  const copy = await importFile(page, backupPath);
   expect(copy, 'the import should explain itself').toContain('1 note');
   expect(copy).toContain('another copy');
 
-  // Confirm, then look for the note.
-  await page.getByRole('button', { name: /^(Import|Add)/ }).last().click();
-  await page.waitForTimeout(2_000);
-  const restored = await page.evaluate(() => ({
-    title: /BACKUP note/.test(document.body.innerText),
-    pinned: /\bpinned\b/i.test(document.body.innerText),
-  }));
-  expect(restored.title, 'the title should survive the round trip').toBe(true);
-  expect(restored.pinned, 'the pinned marker should survive the round trip').toBe(true);
+  await page.getByRole('dialog').getByRole('button', { name: 'Import', exact: true }).click();
+  await expect(page.getByRole('main', { name: 'Settings' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'BACKUP note', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pinned', exact: true })).toBeVisible();
   await target.close();
 });

@@ -285,7 +285,7 @@
     <string name="diagnostics_unavailable">Diagnostics could not be collected.</string>
     <string name="privacy_policy_title">Privacy policy</string>
     <string name="app_version">Version %1$s</string>
-    <string name="privacy_policy_body">Notelikeus is offline-first. Notes stay on this device unless you sign in.\n\nWhen you enable cloud sync, note text is stored in Supabase (PostgreSQL) under your account. Attachments may be stored in Cloudflare R2. Synced notes are not end-to-end encrypted.\n\nOn Android, the local notes database uses SQLCipher (Keystore-backed). Attachment image files and staged pending bytes on Android are sealed with AES-GCM under a separate Keystore key. On Windows Desktop, the notes database uses SQLCipher under a DPAPI-sealed passphrase, and attachment files are sealed with AES-GCM under a separate DPAPI-protected key. On Web, note titles, bodies, and checklists in IndexedDB, and staged pending attachment blobs, are sealed with AES-GCM under non-extractable WebCrypto keys (profile-at-rest only; not an XSS control).\n\nSigning in is optional. It uses your email address: a one-time code is emailed to you, and the address identifies your account. Before any code is emailed, a Cloudflare Turnstile security check runs; Cloudflare processes browser or device information, such as your IP address, to tell people apart from automated abuse. The app does not include analytics or advertising SDKs.
+    <string name="privacy_policy_body">Notelikeus is offline-first. Notes stay on this device unless you sign in.\n\nWhen you enable cloud sync, note text is stored in Supabase (PostgreSQL) under your account. Attachments may be stored in Cloudflare R2. Synced notes are not end-to-end encrypted.\n\nOn Android, the local notes database uses SQLCipher (Keystore-backed). Attachment image files and staged pending bytes on Android are sealed with AES-GCM under a separate Keystore key. The Rust Windows app seals notes, attachments and sign-in sessions with AES-GCM using a key protected by Windows DPAPI. The legacy Kotlin Windows app uses SQLCipher for notes and AES-GCM for attachments, with keys protected by DPAPI. On Rust Windows, signing out returns to guest notes. The signed-out account’s notes and attachments stay encrypted on the device and become available when that account signs in again. On Web, note titles, bodies, and checklists in IndexedDB, and staged pending attachment blobs, are sealed with AES-GCM under non-extractable WebCrypto keys (profile-at-rest only; not an XSS control).\n\nSigning in is optional. It uses your email address: a one-time code is emailed to you, and the address identifies your account. Before any code is emailed, a Cloudflare Turnstile security check runs; Cloudflare processes browser or device information, such as your IP address, to tell people apart from automated abuse. The app does not include analytics or advertising SDKs.
 
 Sync diagnostics shows counts and version numbers only — never note text, tokens or your account id — and is never sent anywhere. Copying it is up to you.</string>
 
@@ -487,7 +487,18 @@ Sync diagnostics shows counts and version numbers only — never note text, toke
     <string name="format_link">Link</string>
     <string name="format_image">Add image</string>
     <string name="cd_attachment">Attachment image</string>
+    <string name="cd_open_attachment">Open image</string>
+    <string name="attachment_place_after_cursor">Place after cursor paragraph</string>
+    <string name="attachment_return_to_strip">Move to attachment strip</string>
+    <string name="editor_read_note">Read note</string>
+    <string name="editor_edit_note">Edit note</string>
+    <string name="image_viewer_fit">Fit</string>
+    <string name="image_viewer_fit_label">Fit image to viewer</string>
+    <string name="image_viewer_fit_label_at_zoom">Fit image to viewer, %1$s of fit</string>
+    <string name="image_viewer_zoom_in">Zoom in</string>
+    <string name="image_viewer_zoom_out">Zoom out</string>
     <string name="cd_remove_attachment">Remove attachment</string>
+    <string name="remove_attachment_message">This removes the image from this note.</string>
     <string name="image_load_failed">Image failed to load</string>
     <string name="link_dialog_title">Add link</string>
     <string name="link_url_hint">https://example.com</string>

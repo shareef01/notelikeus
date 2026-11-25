@@ -4,8 +4,11 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useToastStore } from '@/store/toastStore';
 import { EditorState, Plugin } from '@tiptap/pm/state';
+import type { Node } from '@tiptap/pm/model';
+import { Mapping } from '@tiptap/pm/transform';
 import { MAX_NOTE_CONTENT_CHARS } from '@/lib/backup/constants';
 import { parseNoteDocument, serializeNoteDocument } from '@/lib/text/richNoteDocument';
+import { inlineAttachmentWidgets } from '@/hooks/useInlineAttachmentWidgets';
 
 const lengthLimit = Extension.create({
   name: 'noteLengthLimit',
@@ -18,7 +21,13 @@ const lengthLimit = Extension.create({
   },
 });
 
-export function useRichNoteEditor(content: string, onChange: (text: string) => void, boundary?: {undo: () => boolean; redo: () => boolean}) {
+export interface RichNoteEdit {
+  before: Node;
+  after: Node;
+  mapping: Mapping;
+}
+
+export function useRichNoteEditor(content: string, onChange: (text: string, edit: RichNoteEdit) => void, boundary?: {undo: () => boolean; redo: () => boolean}) {
   const boundaryRef = useRef(boundary);
   boundaryRef.current = boundary;
   const lastContent = useRef(content);
@@ -37,7 +46,7 @@ export function useRichNoteEditor(content: string, onChange: (text: string) => v
       horizontalRule: false, orderedList: false, strike: false, underline: false,
       trailingNode: false,
       link: { openOnClick: false, autolink: false, isAllowedUri: url => /^(https?:|mailto:)/i.test(url) },
-    }), Placeholder.configure({ placeholder: 'Start writing…' }), lengthLimit],
+    }), Placeholder.configure({ placeholder: 'Start writing…' }), lengthLimit, inlineAttachmentWidgets],
     content: parseNoteDocument(content),
     shouldRerenderOnTransaction: false,
     editorProps: {
@@ -46,11 +55,13 @@ export function useRichNoteEditor(content: string, onChange: (text: string) => v
       scrollMargin: { top: 64, bottom: 96, left: 8, right: 8 },
       attributes: { role: 'textbox', 'aria-label': 'Note body', 'aria-multiline': 'true', spellcheck: 'true', class: 'rich-note-body', placeholder: 'Start writing…' },
     },
-    onUpdate: ({ editor: current }) => {
+    onUpdate: ({ editor: current, transaction, appendedTransactions }) => {
       const next = serializeNoteDocument(current.getJSON());
       if (next === lastContent.current) return;
       lastContent.current = next;
-      changeRef.current(next);
+      const mapping = new Mapping();
+      for (const applied of [transaction, ...appendedTransactions]) mapping.appendMapping(applied.mapping);
+      changeRef.current(next, { before: transaction.before, after: current.state.doc, mapping });
     },
   });
   useEffect(() => {

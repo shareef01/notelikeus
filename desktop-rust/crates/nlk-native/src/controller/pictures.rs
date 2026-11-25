@@ -8,7 +8,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 use notelikeus_app::{ImageView, NoteView};
-use notelikeus_core::attachments::{MAX_ATTACHMENT_BYTES, can_preview};
+use notelikeus_core::attachments::{MAX_ATTACHMENT_BYTES, PlacementBody, can_preview};
 use slint::{ComponentHandle, Image, Rgba8Pixel, SharedPixelBuffer, SharedString};
 
 use super::{Confirm, Controller, model};
@@ -51,7 +51,9 @@ fn picture(id: &str, pic: Option<&Pic>) -> Picture {
         }
         Some(Pic::Loading) | None => (Image::default(), false, SharedString::new()),
     };
-    Picture { id: id.into(), image, ready, problem }
+    let size = image.size();
+    let aspect = if ready { size.width as f32 / size.height.max(1) as f32 } else { 1.0 };
+    Picture { id: id.into(), image, ready, problem, aspect, ..Default::default() }
 }
 
 fn unshowable(mime_type: &str) -> String {
@@ -120,7 +122,78 @@ impl Controller {
     }
 
     pub(super) fn show_pictures(&self, ui: &crate::AppWindow, note: &NoteView) {
-        ui.set_editor_pictures(model(note.images.iter().map(|image| self.picture(&note.id, image)).collect()));
+        let mut pictures: Vec<_> = note
+            .images
+            .iter()
+            .enumerate()
+            .map(|(index, image)| Picture { index: index as i32, ..self.picture(&note.id, image) })
+            .collect();
+        if note.checklist.is_empty() && note.images.iter().any(|image| image.placement.is_some()) {
+            let body = PlacementBody::new(&note.content);
+            let offsets: HashMap<_, _> = crate::document::picture_offsets(&note.content, &body)
+                .into_iter()
+                .map(|(byte, scalar)| (scalar, byte))
+                .collect();
+            let mut ordered: Vec<_> = note
+                .images
+                .iter()
+                .enumerate()
+                .filter_map(|(index, image)| {
+                    let placement = image.placement.as_ref().filter(|placement| body.matches(placement))?;
+                    Some((*offsets.get(&placement.offset)?, placement.ordinal, &image.id, index))
+                })
+                .collect();
+            ordered.sort_unstable();
+            for (order, (byte, _, _, index)) in ordered.into_iter().enumerate() {
+                pictures[index].inline_byte = byte as i32;
+                pictures[index].inline_order = order as i32;
+            }
+        }
+        ui.set_editor_picture_body(note.content.as_str().into());
+        ui.set_editor_unplaced_pictures(model(
+            pictures.iter().filter(|picture| picture.inline_byte == 0).cloned().collect(),
+        ));
+        ui.set_editor_pictures(model(pictures));
+    }
+
+    pub(super) fn set_picture_position(&self, picture_id: &str, cursor: Option<i32>) {
+        let Some(ui) = self.ui() else { return };
+        if self.jobs.holds_notes() {
+            return self.show_toast("Sync is finishing. Try again in a moment.", None, None);
+        }
+        if !self.save_now() {
+            return;
+        }
+        let Some(id) = self.editing_id() else { return };
+        let offset = if let Some(cursor) = cursor {
+            let text = ui.get_editor_body();
+            let cursor = cursor.max(0) as usize;
+            let body = PlacementBody::new(&text);
+            let boundary = crate::document::picture_offsets(&text, &body)
+                .into_iter()
+                .find(|&(byte, _)| byte > cursor || byte == text.len());
+            let Some((_, offset)) = boundary else {
+                return self.show_toast("Put the cursor in a text block to place the picture.", None, None);
+            };
+            Some(offset)
+        } else {
+            None
+        };
+        let result = self.svc().set_image_placement(&id, picture_id, offset);
+        match result {
+            Ok(note) => {
+                self.show_pictures(&ui, &note);
+                if offset.is_some() {
+                    ui.set_editor_reading(true);
+                }
+                self.show_toast(
+                    if offset.is_some() { "Picture placed in note" } else { "Picture moved to attachment strip" },
+                    None,
+                    None,
+                );
+            }
+            Err(message) => self.show_toast(&message, None, None),
+        }
     }
 
     /// The editor's Add image: the Windows file picker, then [`Controller::add_image_bytes`].
@@ -149,7 +222,7 @@ impl Controller {
     /// Adds a picture to the open note (a draft is saved first, so it has somewhere to go).
     pub fn add_image_bytes(&self, bytes: &[u8]) {
         let Some(ui) = self.ui() else { return };
-        if self.save_editor(true).is_none() && self.editing_id().is_none() {
+        if self.save_editor(true).is_none() {
             return;
         }
         let Some(id) = self.editing_id() else { return };
@@ -187,6 +260,7 @@ impl Controller {
         let Some(ui) = self.ui() else { return };
         let Some((note_id, images, index)) = self.pictures.viewer.borrow().clone() else { return };
         let Some(image) = images.get(index).cloned() else { return };
+        ui.set_viewer_zoom_index(0);
         ui.set_viewer_index(index as i32);
         ui.set_viewer_count(images.len() as i32);
         ui.set_viewer_read_only(ui.get_editor_mode() == crate::View::Trash);

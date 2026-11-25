@@ -9,6 +9,13 @@ export interface Attachment {
   type: string;
   mimeType?: string;
   sizeBytes?: number;
+  placement?: AttachmentPlacement;
+}
+
+export interface AttachmentPlacement {
+  bodySha256: string;
+  offset: number;
+  ordinal: number;
 }
 
 export interface AttachmentCloudMap {

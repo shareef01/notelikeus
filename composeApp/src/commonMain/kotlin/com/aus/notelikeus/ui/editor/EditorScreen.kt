@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
 import org.jetbrains.compose.resources.stringResource
@@ -39,6 +40,7 @@ import notelikeus.composeapp.generated.resources.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,6 +48,7 @@ import androidx.compose.ui.graphics.toArgb
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.data.attachments.positionedAttachments
 import com.aus.notelikeus.ui.main.UndoAction
 import com.aus.notelikeus.util.AppLog
 import kotlinx.coroutines.CancellationException
@@ -54,6 +57,7 @@ import com.aus.notelikeus.ui.editor.components.AttachmentImageStrip
 import com.aus.notelikeus.ui.editor.components.ChecklistUI
 import com.aus.notelikeus.ui.editor.components.EditorBottomBar
 import com.aus.notelikeus.ui.editor.components.EditorBottomSheet
+import com.aus.notelikeus.ui.editor.components.PositionedNoteBody
 import com.aus.notelikeus.ui.editor.components.RichTextToolbar
 import com.aus.notelikeus.ui.editor.rememberAttachmentImagePicker
 import com.aus.notelikeus.ui.theme.getContentColor
@@ -111,16 +115,37 @@ fun EditorScreen(
     }
     val isDarkPalette = isNoteColorDarkTheme()
     val displayColorArgb = noteColorForTheme(state.color, isDarkPalette)
-    val noteColor = if (displayColorArgb == 0) {
+    val noteAccent = Color(displayColorArgb.toLong() and 0xffffffffL)
+    val tintWholeEditor = AppConfig.isDesktop && displayColorArgb != 0
+    val noteColor = if (tintWholeEditor) {
+        noteAccent
+    } else {
         MaterialTheme.colorScheme.surface
-    } else {
-        Color(displayColorArgb.toLong() and 0xffffffffL)
     }
-    val contentColor = if (displayColorArgb == 0) {
-        MaterialTheme.colorScheme.onSurface
-    } else {
+    val contentColor = if (tintWholeEditor) {
         noteColor.getContentColor(fallback = MaterialTheme.colorScheme.onSurface)
+    } else {
+        MaterialTheme.colorScheme.onSurface
     }
+    val bodyTransformation = remember(contentColor) {
+        if (AppConfig.isDesktop) VisualTransformation.None else MarkdownVisualTransformation(contentColor)
+    }
+    val positioned = remember(state.content, state.attachments, state.checklist.isEmpty()) {
+        if (AppConfig.isDesktop || state.checklist.isNotEmpty()) emptyList()
+        else positionedAttachments(state.content, state.attachments)
+    }
+    var readingMode by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    var revealImageId by remember { mutableStateOf<String?>(null) }
+    val readingBody = !AppConfig.isDesktop && state.checklist.isEmpty() && (readingMode ?: positioned.isNotEmpty())
+    val canPlaceAttachments = !AppConfig.isDesktop && !state.isTrashed && state.checklist.isEmpty()
+    val visibleStrip = remember(state.attachments, positioned, readingBody) {
+        if (!readingBody || positioned.isEmpty()) state.attachments else {
+            val inlineIds = positioned.mapTo(mutableSetOf()) { it.second.id }
+            state.attachments.filterNot { it.id in inlineIds }
+        }
+    }
+    val compactBody = !AppConfig.isDesktop &&
+        (state.attachments.isNotEmpty() || WindowInsets.ime.getBottom(LocalDensity.current) > 0)
     // Saveable, so rotating the phone does not close a dialog the user is half way through:
     // the activity is recreated on a configuration change and plain remember starts over (U-23).
     var showBottomSheet by rememberSaveable { mutableStateOf(false) }
@@ -131,6 +156,16 @@ fun EditorScreen(
     val bodyLabel = stringResource(Res.string.note_hint)
     val selectionKeeper = remember { BlurSelectionKeeper() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val editorScroll = rememberScrollState()
+
+    fun readNote(imageId: String? = null) {
+        keyboardController?.hide()
+        focusManager.clearFocus()
+        revealImageId = imageId
+        readingMode = true
+        if (imageId == null) scope.launch { editorScroll.scrollTo(0) }
+    }
 
     // Leaving the editor pops this destination, which clears the ViewModel and cancels the scope
     // saveNote() would have launched the write into. Await the local write first so navigating
@@ -154,8 +189,8 @@ fun EditorScreen(
     PlatformBackHandler { saveThenLeave() }
 
     val isNewTextNote = state.isNoteLoaded && state.id == null && state.checklist.isEmpty()
-    LaunchedEffect(state.id, isNewTextNote, focusNewNoteBody) {
-        if (focusNewNoteBody && isNewTextNote) {
+    LaunchedEffect(state.id, isNewTextNote, focusNewNoteBody, readingBody) {
+        if (focusNewNoteBody && isNewTextNote && !readingBody) {
             // Wait a frame so the body FocusRequester is attached.
             kotlinx.coroutines.delay(48)
             bodyFocusRequester.requestFocus()
@@ -280,8 +315,9 @@ fun EditorScreen(
     }
 
     // Distinct from a failed save: the note is stored, only the upload is outstanding.
-    LaunchedEffect(state.attachmentSyncPending) {
-        if (!state.attachmentSyncPending) return@LaunchedEffect
+    val attachmentWillSync = state.attachmentSyncPending && (AppConfig.isDesktop || !state.isGuest)
+    LaunchedEffect(attachmentWillSync) {
+        if (!attachmentWillSync) return@LaunchedEffect
         snackbarHostState.showSnackbar(attachmentSyncPendingMsg)
     }
 
@@ -303,7 +339,8 @@ fun EditorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                .then(if (AppConfig.isDesktop) Modifier else Modifier.imePadding()),
             containerColor = Color.Transparent,
             contentColor = contentColor,
             snackbarHost = { AppSnackbar(hostState = snackbarHostState) },
@@ -420,12 +457,14 @@ fun EditorScreen(
                     .padding(padding)
                     // A tap detector rather than clickable: the background tap only forwards focus to
                     // the body, so it should not be a semantic click target or a tab stop.
-                    .pointerInput(Unit) {
-                        detectTapGestures {
-                            bodyFocusRequester.requestFocus()
-                            keyboardController?.show()
+                    .then(if (!readingBody && state.checklist.isEmpty()) {
+                        Modifier.pointerInput(Unit) {
+                            detectTapGestures {
+                                bodyFocusRequester.requestFocus()
+                                keyboardController?.show()
+                            }
                         }
-                    }
+                    } else Modifier)
             ) {
                 Column(
                     // Order matters here, and it used to be wrong: `fillMaxSize()` ran before
@@ -437,7 +476,7 @@ fun EditorScreen(
                         .fillMaxHeight()
                         .widthIn(max = EditorContentMaxWidth)
                         .align(Alignment.TopCenter)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(editorScroll)
                         .padding(
                             horizontal = EditorHorizontalPadding,
                             vertical = EditorVerticalPadding
@@ -466,8 +505,12 @@ fun EditorScreen(
 
                     // Divider between title and body, matching the web editor's hairline.
                     HorizontalDivider(
-                        thickness = Spacing.hairline,
-                        color = contentColor.copy(alpha = NoteEmphasis.Decorative)
+                        thickness = if (!AppConfig.isDesktop && displayColorArgb != 0) Spacing.xs else Spacing.hairline,
+                        color = if (!AppConfig.isDesktop && displayColorArgb != 0) {
+                            noteAccent
+                        } else {
+                            contentColor.copy(alpha = NoteEmphasis.Decorative)
+                        }
                     )
 
                     if (state.labels.isNotEmpty()) {
@@ -497,13 +540,31 @@ fun EditorScreen(
                     }
 
                     Spacer(modifier = Modifier.height(Size.iconSmall))
-                    AttachmentImageStrip(
+                    if (AppConfig.isDesktop) AttachmentImageStrip(
                         attachments = state.attachments,
                         contentColor = contentColor,
                         loadPreviewBytes = { attachment -> viewModel.loadAttachmentPreview(attachment) },
                         onRemove = { viewModel.removeAttachment(it) },
                     )
-                    if (state.checklist.isEmpty()) {
+                    val canToggleRead = !AppConfig.isDesktop && state.checklist.isEmpty() && state.content.isNotBlank()
+                    if (canToggleRead && (state.attachments.isNotEmpty() || readingBody)) {
+                        OutlinedButton(onClick = {
+                            if (readingBody) {
+                                readingMode = false
+                                revealImageId = null
+                                scope.launch { editorScroll.scrollTo(0) }
+                            } else readNote()
+                        }) {
+                            val toggleRes = if (readingBody) {
+                                Res.string.editor_edit_note
+                            } else {
+                                Res.string.editor_read_note
+                            }
+                            Text(stringResource(toggleRes))
+                        }
+                        Spacer(Modifier.height(Spacing.sm))
+                    }
+                    if (state.checklist.isEmpty() && !readingBody) {
                         RichTextToolbar(
                             onBoldClick = { viewModel.applyBoldToSelection() },
                             onItalicClick = { viewModel.applyItalicToSelection() },
@@ -531,6 +592,20 @@ fun EditorScreen(
                             onRemove = { viewModel.removeChecklistItem(it) },
                             contentColor = contentColor
                         )
+                    } else if (readingBody) {
+                        PositionedNoteBody(
+                            body = state.content,
+                            positioned = positioned,
+                            contentColor = contentColor,
+                            loadPreviewBytes = viewModel::loadAttachmentPreview,
+                            onRemove = viewModel::removeAttachment,
+                            onUnplace = if (canPlaceAttachments) {
+                                { viewModel.setAttachmentPlacement(it.id, place = false) }
+                            } else {
+                                null
+                            },
+                            revealImageId = revealImageId,
+                        )
                     } else {
                         BasicTextField(
                             value = state.contentValue,
@@ -541,7 +616,7 @@ fun EditorScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = EditorBodyMinHeight)
+                                .heightIn(min = if (compactBody) Spacing.xxl else EditorBodyMinHeight)
                                 .semantics { contentDescription = bodyLabel }
                                 .focusRequester(bodyFocusRequester)
                                 .onFocusChanged { focus ->
@@ -553,6 +628,7 @@ fun EditorScreen(
                                     onItalic = { viewModel.applyItalicToSelection() },
                                 ),
                             textStyle = AppType.editorBody.copy(color = contentColor),
+                            visualTransformation = bodyTransformation,
                             cursorBrush = SolidColor(contentColor),
                             decorationBox = { innerTextField ->
                                 if (state.content.isEmpty()) {
@@ -565,6 +641,30 @@ fun EditorScreen(
                                 }
                                 innerTextField()
                             }
+                        )
+                    }
+                    if (!AppConfig.isDesktop && visibleStrip.isNotEmpty()) {
+                        val canPlace = canPlaceAttachments && !readingBody && state.content.isNotBlank()
+                        AttachmentImageStrip(
+                            attachments = visibleStrip,
+                            contentColor = contentColor,
+                            loadPreviewBytes = viewModel::loadAttachmentPreview,
+                            onRemove = viewModel::removeAttachment,
+                            modifier = Modifier.padding(top = Spacing.lg),
+                            actionText = if (canPlace) {
+                                stringResource(Res.string.attachment_place_after_cursor)
+                            } else {
+                                null
+                            },
+                            onAction = if (canPlace) {
+                                { attachment ->
+                                    if (viewModel.setAttachmentPlacement(attachment.id, place = true)) {
+                                        readNote(attachment.id)
+                                    }
+                                }
+                            } else {
+                                null
+                            },
                         )
                     }
                     Spacer(modifier = Modifier.height(80.dp)) // Leave space for bottom bars

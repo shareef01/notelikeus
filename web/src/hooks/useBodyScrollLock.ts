@@ -1,5 +1,8 @@
 import { useEffect } from 'react';
 
+let lockCount = 0;
+let restoreOverflow: (() => void) | undefined;
+
 /**
  * Prevents the page behind an overlay from scrolling while `locked`, restoring the previous values.
  *
@@ -16,14 +19,22 @@ import { useEffect } from 'react';
 export function useBodyScrollLock(locked: boolean) {
   useEffect(() => {
     if (!locked) return;
-    const root = document.documentElement;
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousRootOverflow = root.style.overflow;
-    document.body.style.overflow = 'hidden';
-    root.style.overflow = 'hidden';
+    if (lockCount++ === 0) {
+      const root = document.documentElement;
+      const previousBodyOverflow = document.body.style.overflow;
+      const previousRootOverflow = root.style.overflow;
+      document.body.style.overflow = 'hidden';
+      root.style.overflow = 'hidden';
+      restoreOverflow = () => {
+        document.body.style.overflow = previousBodyOverflow;
+        root.style.overflow = previousRootOverflow;
+      };
+    }
     return () => {
-      document.body.style.overflow = previousBodyOverflow;
-      root.style.overflow = previousRootOverflow;
+      if (--lockCount === 0) {
+        restoreOverflow?.();
+        restoreOverflow = undefined;
+      }
     };
   }, [locked]);
 }

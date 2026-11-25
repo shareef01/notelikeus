@@ -7,6 +7,7 @@ import {
   isPendingAttachment,
   pendingStoragePath,
 } from '@/lib/attachments/attachmentPaths';
+import { matchesPlacementBody, placementBody } from '@/lib/attachments/attachmentPlacement';
 import {
   getPendingAttachmentBlob,
   releasePendingAttachment,
@@ -36,6 +37,7 @@ export async function withPendingAttachments(
   ownerId?: string,
 ): Promise<Note> {
   const attachments: Attachment[] = [];
+  const body = copy.checklist.length === 0 ? placementBody(copy.content) : null;
   try {
     for (const attachment of source.attachments) {
       if (!isPendingAttachment(attachment.storagePath)) continue;
@@ -45,7 +47,15 @@ export async function withPendingAttachments(
       if (!(await storePendingAttachment(id, pending.blob, pending.mimeType, copy.id, ownerId))) {
         throw new Error(`Could not stage image ${attachment.id} for its conflicted copy`);
       }
-      attachments.push({ ...attachment, id, noteId: copy.localId, storagePath: pendingStoragePath(id) });
+      const { placement, ...rest } = attachment;
+      const keptPlacement = body && placement && matchesPlacementBody(placement, body) ? placement : undefined;
+      attachments.push({
+        ...rest,
+        id,
+        noteId: copy.localId,
+        storagePath: pendingStoragePath(id),
+        ...(keptPlacement ? { placement: keptPlacement } : {}),
+      });
     }
   } catch (error) {
     await releaseCopyAttachments({ ...copy, attachments }, ownerId);

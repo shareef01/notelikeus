@@ -61,7 +61,7 @@ describe('ProfileSheet layout', () => {
     return props;
   }
 
-  const headings = () => [...document.querySelectorAll('h3')].map((h) => h.textContent);
+  const headings = () => [...container.querySelectorAll('main h2')].map((h) => h.textContent);
   const chip = (group: string, label: string) =>
     [...document.querySelectorAll(`[role="group"][aria-label="${group}"] button`)].find((b) => b.textContent === label) as HTMLButtonElement;
 

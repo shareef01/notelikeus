@@ -76,8 +76,8 @@
       <ul>
         <li><strong>Offline-first by default:</strong> On Android, Windows, and Web, notes are stored <strong>locally on your device</strong>. You can use the full application without creating an account or providing personal details.</li>
         <li><strong>Optional Cloud Sync:</strong> When you sign in and enable cloud sync, note text, checklists, and metadata are synchronized to <strong>Supabase (PostgreSQL)</strong> under your authenticated identity. Attachment files may be stored in <strong>Cloudflare R2</strong>.</li>
-        <li><strong>Local Data Isolation:</strong> Signing out clears local cached notes from the active session so a subsequent user cannot inherit your data.</li>
-        <li><strong>Encryption:</strong> Android local databases are encrypted at rest with <strong>SQLCipher</strong> backed by Android Keystore. Attachment image files and staged pending bytes on Android are encrypted with <strong>AES-GCM</strong> under a dedicated Android Keystore key. On Windows Desktop, the notes database is encrypted at rest with <strong>SQLCipher</strong> under a <strong>DPAPI</strong>-sealed passphrase; attachment files are sealed with <strong>AES-GCM</strong> under a separate DPAPI-protected key. On Web, note titles, bodies, and checklists in IndexedDB, and staged pending attachment blobs, are sealed with <strong>AES-GCM</strong> under non-extractable WebCrypto keys (profile-at-rest only; not an XSS mitigation).</li>
+        <li><strong>Local Data Isolation:</strong> Signing out removes the account’s notes from the active session. On Rust Windows, signing out returns to guest notes. The signed-out account’s notes and attachments stay encrypted on the device and become available when that account signs in again.</li>
+        <li><strong>Encryption:</strong> Android local databases are encrypted at rest with <strong>SQLCipher</strong> backed by Android Keystore. Attachment image files and staged pending bytes on Android are encrypted with <strong>AES-GCM</strong> under a dedicated Android Keystore key. The Rust Windows app seals notes, attachments and sign-in sessions with AES-GCM using a key protected by Windows DPAPI. The legacy Kotlin Windows app uses SQLCipher for notes and AES-GCM for attachments, with keys protected by DPAPI. On Web, note titles, bodies, and checklists in IndexedDB, and staged pending attachment blobs, are sealed with <strong>AES-GCM</strong> under non-extractable WebCrypto keys (profile-at-rest only; not an XSS mitigation).</li>
         <li>Synced cloud notes are <strong>not end-to-end encrypted</strong> by the app; they rely on TLS plus Supabase Auth, row-level security, authorized RPCs, and Worker JWT checks for attachments.</li>
         <li>The app does <strong>not</strong> include third-party tracking, analytics, or advertising SDKs.</li>
       </ul>
@@ -86,7 +86,7 @@
       <p><strong>Android &amp; Windows Desktop</strong> may store:</p>
       <ul>
         <li>Note titles, body text, colors, checklists, labels, and reminder timestamps</li>
-        <li>A local database (encrypted at rest with SQLCipher on Android and Windows Desktop)</li>
+        <li>Encrypted local storage</li>
         <li>Local app preferences (theme, view mode, app lock status)</li>
       </ul>
       <p>
@@ -100,14 +100,14 @@
       <ul>
         <li>Note content is stored in <strong>Supabase</strong> under your account</li>
         <li>Attachment binaries, when used, are stored in <strong>Cloudflare R2</strong> behind an authenticated Worker</li>
-        <li>Signing out <strong>clears locally cached notes on this device</strong> so the next account cannot inherit them; cloud data remains until you delete it (in-app “Sign out and delete cloud data”)</li>
+        <li>Signing out ends access to the account’s notes from the active session. On Rust Windows, signing out returns to guest notes. The signed-out account’s notes and attachments stay encrypted on the device and become available when that account signs in again. Cloud data remains until you delete it.</li>
         <li><strong>Deleting your account:</strong> Settings → Delete account, on Android, Windows and the web, takes effect immediately and cannot be undone. Your notes are removed from Supabase at once; your images are then removed from Cloudflare R2 and your account and email address from Supabase Auth, normally within seconds and otherwise retried hourly. The device you delete from removes its copy straight away, including edits not yet uploaded, and other signed-in devices remove theirs the next time they sync; a device whose session has already expired stops syncing and removes its copy when anyone next signs in on it or when the app is uninstalled. For up to two hours the server keeps your account’s random internal id, with no email or note content, so a device still signed in can be told the account is gone. Supabase and Cloudflare may hold data in their own routine backups until those expire. Backup files you exported are not affected.</li>
       </ul>
 
       <h2>Security</h2>
       <ul>
         <li><strong>Android:</strong> Notes are stored in a <strong>SQLCipher-encrypted</strong> Room database. Attachment bytes under the app’s attachments directory (and pending staging) are sealed with AES-GCM under Android Keystore. An optional app-wide lock uses the device’s biometric APIs to gate opening the app.</li>
-        <li><strong>Windows Desktop:</strong> The notes database is encrypted at rest with SQLCipher under a DPAPI-sealed passphrase (bound to the Windows user). Attachment bytes under <code>~/.notelikeus/</code> are sealed with AES-GCM under a separate DPAPI-protected key. The Supabase session token file is also DPAPI-sealed. Key loss (e.g. profile rebuild without a cloud account) makes the local database unrecoverable — signed-in users re-sync from the cloud; guests should keep a JSON / <code>.nlkbak</code> export.</li>
+        <li><strong>Windows Desktop:</strong> The Rust Windows app seals notes, attachments and sign-in sessions with AES-GCM using a key protected by Windows DPAPI. The legacy Kotlin Windows app uses SQLCipher for notes and AES-GCM for attachments, with keys protected by DPAPI. An exported backup can recover local-only notes if the Windows profile key is lost.</li>
         <li><strong>Web:</strong> Note titles, bodies, and checklists in IndexedDB, and staged pending attachment blobs, are sealed with AES-GCM under non-extractable WebCrypto keys (profile-at-rest only; not an XSS control). Other IndexedDB metadata remains readable at the profile boundary.</li>
         <li><strong>Cloud:</strong> PostgreSQL row-level security and authorized RPCs restrict read and write operations to the authenticated owner.</li>
       </ul>
@@ -138,12 +138,12 @@
       </p>
       <ul>
         <li><strong>JSON</strong> — note titles, bodies, checklists, labels, colours and reminder times. No images.</li>
-        <li><strong><code>.nlkbak</code></strong> — a plain ZIP holding the same JSON document plus the attachment image bytes stored on that device (Android, Windows Desktop, and Web). Rename it to <code>.zip</code> and you can open it and see exactly what it contains.</li>
+        <li><strong><code>.nlkbak</code></strong> — a plain ZIP holding the same JSON document plus the attachment image bytes included in the export (Android, Windows Desktop, and Web). Rename it to <code>.zip</code> and you can open it and see exactly what it contains.</li>
       </ul>
       <p>
         Neither format contains sign-in tokens, session data, encryption keys, sync cursors, or your
-        account identifier. An export never contacts the network — images that exist only in the cloud
-        are left out and reported as skipped.
+        account identifier. Device-only exports use local data. A complete backup can download images
+        stored only in the cloud where supported. The app reports any images it cannot include.
       </p>
 
       <h2>Links in notes</h2>

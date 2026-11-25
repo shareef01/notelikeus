@@ -177,6 +177,27 @@ describe('web RPC arguments match a deployed signature', () => {
     expectResolvable('apply_note_change');
   });
 
+  it('apply_note_change_with_placements', async () => {
+    await applyNoteChange(
+      USER,
+      {
+        ...note(),
+        attachments: [
+          {
+            id: 'att-1',
+            noteId: 42,
+            storagePath: 'r2:owners/u/notes/42/att-1',
+            type: 'image',
+            mimeType: 'image/png',
+            sizeBytes: 3,
+          },
+        ],
+      },
+      null,
+    );
+    expectResolvable('apply_note_change_with_placements');
+  });
+
   it('restore_note', async () => {
     await restoreCloudNote(USER, note());
     expectResolvable('restore_note');
