@@ -230,6 +230,39 @@ component SettingsCard inherits Rectangle {
     }
 }
 
+/// A single keybinding row in Settings: action description on the left, keycap badge on the right.
+component ShortcutRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> keys;
+    spacing: 12px;
+    Text {
+        text: root.label;
+        font-size: Type.body-small;
+        color: Theme.on-surface-secondary;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+    }
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        width: cap.preferred-width + 14px;
+        height: 22px;
+        border-radius: 6px;
+        background: Theme.on-surface.transparentize(0.94);
+        border-width: 1px;
+        border-color: Theme.outline.transparentize(0.45);
+        cap := Text {
+            width: parent.width;
+            height: parent.height;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            text: root.keys;
+            font-size: Type.meta;
+            font-weight: 600;
+            color: Theme.on-surface;
+        }
+    }
+}
+
 /// One row of filter chips (rows are wrapped in Rust: Slint has no wrapping layout).
 component ChipRow inherits HorizontalLayout {
     in property <[Choice]> items;
@@ -1845,7 +1878,7 @@ component NoteWorkspace inherits Rectangle {
                 list := VerticalLayout {
                     width: list-scroll.width;
                     alignment: start;
-                    spacing: 6px;
+                    spacing: 8px;
                     for row in root.rows: HorizontalLayout {
                         spacing: 12px;
                         CheckBox {
@@ -1896,7 +1929,8 @@ component NoteWorkspace inherits Rectangle {
                         }
                         if !root.read-only: IconButton {
                             size: 28px;
-                            fg-color: root.fg;
+                            radius: 7px;
+                            fg-color: root.fg-muted;
                             icon: Icons.close;
                             label: row.text != "" ? "Remove " + row.text : "Remove empty item";
                             clicked => { root.item-removed(row.position); }
@@ -2907,7 +2941,7 @@ export component AppWindow inherits Window {
                     border-radius: 18px;
                     background: swatch.none ? transparent : (Theme.dark ? swatch.dark : swatch.light);
                     border-width: index == root.editor-color-index ? 2px : 1px;
-                    border-color: index == root.editor-color-index ? Theme.on-surface : Theme.outline;
+                    border-color: index == root.editor-color-index ? Theme.on-surface : (swatch-touch.has-hover ? Theme.on-surface-secondary : Theme.outline);
                     accessible-role: radio-button;
                     accessible-checkable: true;
                     accessible-checked: index == root.editor-color-index;
@@ -2928,13 +2962,13 @@ export component AppWindow inherits Window {
                         path: Icons.check;
                         color: Theme.on-surface;
                     }
-                    TouchArea {
+                    swatch-touch := TouchArea {
                         mouse-cursor: pointer;
                         clicked => { root.color-picked(index, Theme.dark); }
                     }
                 }
             }
-            Rectangle { height: 1px; background: Theme.outline; }
+            Rectangle { height: 1px; background: Theme.outline.transparentize(0.45); }
             SectionLabel { text: "LABELS"; }
             if root.label-choices.length == 0: Text {
                 text: "No labels yet. Add one below.";
@@ -2948,22 +2982,32 @@ export component AppWindow inherits Window {
                 content-height: label-list.preferred-height;
                 label-list := VerticalLayout {
                     width: options-labels.visible-width;
-                    spacing: 4px;
-                    for choice in root.label-choices: HorizontalLayout {
-                        spacing: 12px;
-                        height: 36px;
-                        CheckBox {
-                            y: (parent.height - self.height) / 2;
-                            checked: choice.on;
-                            label: choice.name;
-                            toggled => { root.label-toggled(choice.name); }
+                    spacing: 2px;
+                    for choice in root.label-choices: Rectangle {
+                        height: 38px;
+                        border-radius: 8px;
+                        background: label-row-touch.has-hover ? Theme.hover : transparent;
+                        label-row-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.label-toggled(choice.name); }
                         }
-                        Text {
-                            text: choice.name;
-                            vertical-alignment: center;
-                            font-size: Type.body-large;
-                            color: Theme.on-surface;
-                            horizontal-stretch: 1;
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            padding-right: 8px;
+                            spacing: 12px;
+                            CheckBox {
+                                y: (parent.height - self.height) / 2;
+                                checked: choice.on;
+                                label: choice.name;
+                                toggled => { root.label-toggled(choice.name); }
+                            }
+                            Text {
+                                text: choice.name;
+                                vertical-alignment: center;
+                                font-size: Type.body;
+                                color: Theme.on-surface;
+                                horizontal-stretch: 1;
+                            }
                         }
                     }
                 }
@@ -3531,27 +3575,36 @@ export component AppWindow inherits Window {
                         }
 
                         Rectangle { height: 1px; background: Theme.outline.transparentize(0.45); }
-                        HorizontalLayout {
-                            spacing: 10px;
-                            alignment: start;
-                            CheckBox {
-                                y: (parent.height - self.height) / 2;
-                                checked: root.theme-amoled;
-                                label: "AMOLED black";
-                                toggled => { root.amoled-toggled(); }
+                        Rectangle {
+                            border-radius: 10px;
+                            background: amoled-touch.has-hover ? Theme.hover : transparent;
+                            amoled-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.amoled-toggled(); }
                             }
-                            VerticalLayout {
-                                spacing: 2px;
-                                Text {
-                                    text: "AMOLED black";
-                                    font-size: Type.body;
-                                    font-weight: 500;
-                                    color: Theme.on-surface;
+                            HorizontalLayout {
+                                padding: 6px;
+                                spacing: 10px;
+                                alignment: start;
+                                CheckBox {
+                                    y: (parent.height - self.height) / 2;
+                                    checked: root.theme-amoled;
+                                    label: "AMOLED black";
+                                    toggled => { root.amoled-toggled(); }
                                 }
-                                Text {
-                                    text: "Pure black surfaces in dark mode.";
-                                    font-size: Type.meta;
-                                    color: Theme.muted;
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Text {
+                                        text: "AMOLED black";
+                                        font-size: Type.body;
+                                        font-weight: 500;
+                                        color: Theme.on-surface;
+                                    }
+                                    Text {
+                                        text: "Pure black surfaces in dark mode.";
+                                        font-size: Type.meta;
+                                        color: Theme.muted;
+                                    }
                                 }
                             }
                         }
@@ -3589,18 +3642,43 @@ export component AppWindow inherits Window {
                             }
                         }
                         if root.account-mode == 2: VerticalLayout {
-                            spacing: 8px;
-                            Text {
-                                text: root.account-email;
-                                font-size: Type.body;
-                                font-weight: 600;
-                                color: Theme.on-surface;
-                            }
-                            Text {
-                                text: root.account-status;
-                                font-size: Type.body-small;
-                                color: root.account-problem ? Theme.danger : Theme.on-surface-secondary;
-                                wrap: word-wrap;
+                            spacing: 12px;
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Rectangle {
+                                    y: (parent.height - self.height) / 2;
+                                    width: 36px;
+                                    height: 36px;
+                                    border-radius: 18px;
+                                    background: Theme.accent.transparentize(0.84);
+                                    Text {
+                                        width: parent.width;
+                                        height: parent.height;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                        text: root.account-initial;
+                                        font-size: Type.body;
+                                        font-weight: 700;
+                                        color: Theme.accent;
+                                    }
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text {
+                                        text: root.account-email;
+                                        font-size: Type.body;
+                                        font-weight: 600;
+                                        color: Theme.on-surface;
+                                    }
+                                    Text {
+                                        text: root.account-status;
+                                        font-size: Type.body-small;
+                                        color: root.account-problem ? Theme.danger : Theme.on-surface-secondary;
+                                        wrap: word-wrap;
+                                    }
+                                }
                             }
                             HorizontalLayout {
                                 alignment: start;
@@ -3608,6 +3686,7 @@ export component AppWindow inherits Window {
                                 PillButton { text: root.syncing ? "Syncing…" : "Sync now"; enabled: !root.syncing; clicked => { root.sync-requested(); } }
                                 PillButton { text: "Sign out"; clicked => { root.sign-out-requested(); } }
                             }
+                            Rectangle { height: 1px; background: Theme.outline.transparentize(0.45); }
                             HorizontalLayout {
                                 alignment: start;
                                 spacing: 8px;
@@ -3630,6 +3709,19 @@ export component AppWindow inherits Window {
                             font-size: Type.meta;
                             color: Theme.muted;
                             wrap: word-wrap;
+                        }
+                    }
+
+                    SettingsCard {
+                        SectionLabel { text: "KEYBOARD SHORTCUTS"; }
+                        VerticalLayout {
+                            spacing: 8px;
+                            ShortcutRow { label: "New note"; keys: "Ctrl N"; }
+                            ShortcutRow { label: "Search notes"; keys: "Ctrl K"; }
+                            ShortcutRow { label: "Open settings"; keys: "Ctrl ,"; }
+                            ShortcutRow { label: "Bold / Italic / Insert link"; keys: "Ctrl B / I / L"; }
+                            ShortcutRow { label: "Toggle read mode"; keys: "Ctrl E"; }
+                            ShortcutRow { label: "Save and close note"; keys: "Ctrl Enter"; }
                         }
                     }
 
@@ -4173,9 +4265,12 @@ export component AppWindow inherits Window {
             x: (parent.width - self.width) / 2;
             y: parent.height - self.height - (root.editor-open ? 64px : 32px);
             width: toast-row.preferred-width;
-            height: 48px;
-            border-radius: Theme.radius-md;
+            height: 44px;
+            border-radius: 12px;
             background: Theme.on-surface;
+            drop-shadow-blur: 18px;
+            drop-shadow-offset-y: 4px;
+            drop-shadow-color: #00000048;
             accessible-role: text;
             accessible-label: root.toast-text;
             toast-row := HorizontalLayout {
