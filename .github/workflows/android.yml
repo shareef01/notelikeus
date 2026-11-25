@@ -68,6 +68,16 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
 
+      # Robolectric fetches android-all-instrumented SDK jars directly from Maven Central into
+      # ~/.m2/repository outside Gradle's cache. Caching them avoids HTTP 429 rate-limit failures
+      # on shared runners.
+      - name: Cache Robolectric SDK jars
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: robolectric-${{ runner.os }}-
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
@@ -303,6 +313,16 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
 
+      # Robolectric fetches android-all-instrumented SDK jars directly from Maven Central into
+      # ~/.m2/repository outside Gradle's cache. Caching them avoids HTTP 429 rate-limit failures
+      # on shared runners.
+      - name: Cache Robolectric SDK jars
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: robolectric-${{ runner.os }}-
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
@@ -419,6 +439,16 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
+
+      # Robolectric fetches android-all-instrumented SDK jars directly from Maven Central into
+      # ~/.m2/repository outside Gradle's cache. Caching them avoids HTTP 429 rate-limit failures
+      # on shared runners.
+      - name: Cache Robolectric SDK jars
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: robolectric-${{ runner.os }}-
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
