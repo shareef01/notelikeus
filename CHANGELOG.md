@@ -4,6 +4,22 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Place images between paragraphs** on the web, Windows and Android. Position a picture at your cursor between text blocks, move it back to the attachment strip without deleting it, carry positions through v4 image backups, and sync them across signed-in devices.
+- **Full-size image viewer with zoom and pan** on the web, Windows and Android. Pictures open fitted to the screen with 150%–400% zoom, keyboard (`+`, `-`, `0`, arrow keys) or pinch/drag panning, and previous/next navigation.
+- **Full-window note workspace and Settings pages** across platforms: Windows opens notes in a focused 720px reading workspace with rich Markdown rendering (headings, code blocks, nested quotes, dividers, task lists) and a dedicated Settings view; Android opens Settings as an in-app page with system Back; the web exposes `/settings` with browser history.
+
+### Changed
+- **Neutral writing surfaces for coloured notes.** Active editors on Android, Windows and the web use the theme's writing surface with a note-colour accent so long notes keep uniform contrast, while library cards keep their tinted surfaces for scanning.
+- **Smooth scrolling for very large libraries on the web.** Grid, Compact and List boards above 1,500 notes virtualize off-screen sections while preserving drag-and-drop and keyboard focus.
+- **Updated privacy policy wording** to describe the native Rust Windows client's DPAPI-protected local storage separately from the legacy Kotlin desktop app, and to clarify complete image backups.
+
+### Fixed
+- **Unsaved drafts are never discarded when a local write fails** on Windows or when switching editor layouts/notes on the web.
+- **Android note images keep their full frame and orientation** instead of cropping to a fixed height, with bounded preview decoding (1280px longest edge) and EXIF rotation handling.
+- **Android system bar icons follow the selected in-app theme** (including dark Settings) and boot reminder scheduling no longer fails on cold launch.
+- **Windows initial window fits the monitor work area at 200% display scaling.**
+
 ## [2.7.0] — 2026-11-17
 
 ### Added
