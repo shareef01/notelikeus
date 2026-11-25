@@ -1019,6 +1019,7 @@ component Sidebar inherits Rectangle {
 component SearchField inherits Rectangle {
     in-out property <string> text;
     in property <string> placeholder: "Search your notes";
+    in property <bool> compact: false;
     callback edited(string);
     forward-focus: input;
     height: 48px;
@@ -1033,6 +1034,10 @@ component SearchField inherits Rectangle {
     }
 
     HorizontalLayout {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
         padding-left: 16px;
         padding-right: 12px;
         spacing: 10px;
@@ -1049,7 +1054,8 @@ component SearchField inherits Rectangle {
                 x: 0;
                 width: parent.width;
                 height: parent.height;
-                text: root.placeholder;
+                text: root.compact ? "Search" : root.placeholder;
+                overflow: elide;
                 font-size: Type.body-large;
                 color: Theme.on-surface-secondary;
                 vertical-alignment: center;
@@ -1077,7 +1083,7 @@ component SearchField inherits Rectangle {
                 input.focus();
             }
         }
-        if input.text == "": Rectangle {
+        if input.text == "" && !root.compact: Rectangle {
             y: (parent.height - self.height) / 2;
             width: hint.preferred-width + 14px;
             height: 22px;
@@ -2228,6 +2234,7 @@ export component AppWindow inherits Window {
                     spacing: 12px;
                     search := SearchField {
                         horizontal-stretch: 1;
+                        compact: root.width < 820px;
                         placeholder: root.view == View.archive ? "Search archive"
                             : root.view == View.trash ? "Search trash"
                             : "Search your notes";
@@ -2325,53 +2332,55 @@ export component AppWindow inherits Window {
                 // In a Flickable so the row scrolls sideways when the notes area is narrower than it, as on
                 // Android, instead of forcing its width onto the window: at the 640px minimum the row used to
                 // push the account button, card timestamps and the New note button past the edge (tests/screens.rs).
-                Flickable {
-                    height: filter-row.preferred-height;
-                    content-width: max(self.width, filter-row.preferred-width);
-                    content-height: self.height;
-                    filter-row := HorizontalLayout {
-                        padding-left: 24px;
-                        padding-right: 24px;
-                        padding-bottom: 14px;
-                        spacing: 8px;
-                        alignment: start;
-                        PillButton {
-                            y: (parent.height - self.height) / 2;
-                            text: root.filter-count > 0 ? "Filters · " + root.filter-count : "Filters";
-                            label: "Filters";
-                            icon: Icons.filter;
-                            clicked => { root.filters-open = true; }
-                        }
-                        if root.filters-active: PillButton {
-                            y: (parent.height - self.height) / 2;
-                            text: "Clear filters";
-                            clicked => { root.filters-cleared(); }
-                        }
-                        Rectangle {
-                            y: (parent.height - self.height) / 2;
-                            width: 1px;
-                            height: 20px;
-                            background: Theme.outline;
-                        }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            FilterChip {
+                VerticalLayout {
+                    padding-bottom: 12px;
+                    Flickable {
+                        height: filter-row.preferred-height;
+                        content-width: max(self.width, filter-row.preferred-width);
+                        content-height: self.height;
+                        filter-row := HorizontalLayout {
+                            padding-left: 24px;
+                            padding-right: 24px;
+                            spacing: 8px;
+                            alignment: start;
+                            PillButton {
                                 y: (parent.height - self.height) / 2;
-                                text: "Manual";
-                                on: root.sort-order == 0;
-                                clicked => { root.sort-picked(0); }
+                                text: root.filter-count > 0 ? "Filters · " + root.filter-count : "Filters";
+                                label: "Filters";
+                                icon: Icons.filter;
+                                clicked => { root.filters-open = true; }
                             }
-                            FilterChip {
+                            if root.filters-active: PillButton {
                                 y: (parent.height - self.height) / 2;
-                                text: "Newest";
-                                on: root.sort-order == 1;
-                                clicked => { root.sort-picked(1); }
+                                text: "Clear filters";
+                                clicked => { root.filters-cleared(); }
                             }
-                            FilterChip {
+                            Rectangle {
                                 y: (parent.height - self.height) / 2;
-                                text: "Oldest";
-                                on: root.sort-order == 2;
-                                clicked => { root.sort-picked(2); }
+                                width: 1px;
+                                height: 20px;
+                                background: Theme.outline;
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                FilterChip {
+                                    y: (parent.height - self.height) / 2;
+                                    text: "Manual";
+                                    on: root.sort-order == 0;
+                                    clicked => { root.sort-picked(0); }
+                                }
+                                FilterChip {
+                                    y: (parent.height - self.height) / 2;
+                                    text: "Newest";
+                                    on: root.sort-order == 1;
+                                    clicked => { root.sort-picked(1); }
+                                }
+                                FilterChip {
+                                    y: (parent.height - self.height) / 2;
+                                    text: "Oldest";
+                                    on: root.sort-order == 2;
+                                    clicked => { root.sort-picked(2); }
+                                }
                             }
                         }
                     }
@@ -2473,7 +2482,7 @@ export component AppWindow inherits Window {
                             padding-left: 24px;
                             padding-right: 24px;
                             padding-top: 8px;
-                            padding-bottom: 24px;
+                            padding-bottom: 88px;
                             spacing: 16px;
                             alignment: start;
 
@@ -3962,7 +3971,7 @@ export component AppWindow inherits Window {
         // 8. Toast above everything
         if root.toast-text != "": Rectangle {
             x: (parent.width - self.width) / 2;
-            y: parent.height - self.height - 32px;
+            y: parent.height - self.height - (root.editor-open ? 64px : 32px);
             width: toast-row.preferred-width;
             height: 48px;
             border-radius: Theme.radius-md;
@@ -3971,7 +3980,7 @@ export component AppWindow inherits Window {
             accessible-label: root.toast-text;
             toast-row := HorizontalLayout {
                 padding-left: 18px;
-                padding-right: 8px;
+                padding-right: root.toast-action == "" ? 18px : 8px;
                 spacing: 12px;
                 Text {
                     text: root.toast-text;
