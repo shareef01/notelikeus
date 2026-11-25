@@ -4,6 +4,8 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.8.0] — 2026-11-25
+
 ### Added
 - **Place images between paragraphs** on the web, Windows and Android. Position a picture at your cursor between text blocks, move it back to the attachment strip without deleting it, carry positions through v4 image backups, and sync them across signed-in devices.
 - **Full-size image viewer with zoom and pan** on the web, Windows and Android. Pictures open fitted to the screen with 150%–400% zoom, keyboard (`+`, `-`, `0`, arrow keys) or pinch/drag panning, and previous/next navigation.
