@@ -196,8 +196,12 @@ test('a guest image follows its paragraph through edits, reload and removal from
   await expect(inline.getByRole('button', { name: 'Open image' })).toBeVisible();
 
   await body.locator(':scope > p').last().click({ position: { x: 2, y: 8 } });
-  await expect.poll(() => page.evaluate(() => window.getSelection()?.anchorNode?.textContent)).toBe('Second');
   await page.keyboard.press('Home');
+  await expect.poll(() => page.evaluate(() => {
+    const sel = window.getSelection();
+    return sel?.anchorNode?.textContent === 'Second' && sel.anchorOffset === 0;
+  })).toBe(true);
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await page.keyboard.press('Backspace');
   await expect(body.locator(':scope > p')).toHaveCount(1);
   await expect(inline).toHaveCount(0);
