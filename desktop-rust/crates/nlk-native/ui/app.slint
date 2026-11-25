@@ -1986,10 +1986,10 @@ export component AppWindow inherits Window {
     // How many card columns fit; Rust lays the cards out into that many.
     out property <int> column-count: root.view-density == 1
         ? 1
-        : max(1, min(4, floor((scroll.visible-width - 48px + Theme.note-gap) / (root.min-card-w + Theme.note-gap))));
+        : max(1, min(root.view-density == 2 ? 5 : 4, floor((scroll.visible-width - 48px + Theme.note-gap) / (root.min-card-w + Theme.note-gap))));
     // Every column the same width, whatever its cards say.
     property <length> column-width: root.view-density == 1
-        ? min(760px, max(200px, scroll.visible-width - 48px))
+        ? min(960px, max(200px, scroll.visible-width - 48px))
         : (scroll.visible-width - 48px - (root.column-count - 1) * Theme.note-gap) / root.column-count;
 
     callback columns-changed(int);
@@ -2220,7 +2220,7 @@ export component AppWindow inherits Window {
             VerticalLayout {
                 horizontal-stretch: 1;
 
-                // Top bar matching Kotlin Windows KMP MainTopAppBar.kt: search pill + account avatar button.
+                // Top bar: search pill + view-density segmented toggle + account avatar button.
                 HorizontalLayout {
                     padding: 24px;
                     padding-top: 14px;
@@ -2233,6 +2233,43 @@ export component AppWindow inherits Window {
                             : "Search your notes";
                         text <=> root.query;
                         edited(text) => { root.query-edited(text); }
+                    }
+                    Rectangle {
+                        y: (parent.height - self.height) / 2;
+                        height: 38px;
+                        width: density-seg.preferred-width;
+                        border-radius: 19px;
+                        background: Theme.surface-variant.transparentize(0.3);
+                        border-width: 1px;
+                        border-color: Theme.outline;
+                        density-seg := HorizontalLayout {
+                            padding: 3px;
+                            spacing: 2px;
+                            IconButton {
+                                size: 32px;
+                                icon: Icons.list-view;
+                                label: "List view";
+                                filled: root.view-density == 1;
+                                fg-color: root.view-density == 1 ? Theme.background : Theme.on-surface-secondary;
+                                clicked => { root.density-picked(1); }
+                            }
+                            IconButton {
+                                size: 32px;
+                                icon: Icons.grid-view;
+                                label: "Grid view";
+                                filled: root.view-density == 0;
+                                fg-color: root.view-density == 0 ? Theme.background : Theme.on-surface-secondary;
+                                clicked => { root.density-picked(0); }
+                            }
+                            IconButton {
+                                size: 32px;
+                                icon: Icons.compact-view;
+                                label: "Compact view";
+                                filled: root.view-density == 2;
+                                fg-color: root.view-density == 2 ? Theme.background : Theme.on-surface-secondary;
+                                clicked => { root.density-picked(2); }
+                            }
+                        }
                     }
                     Rectangle {
                         y: (parent.height - self.height) / 2;
@@ -2310,6 +2347,12 @@ export component AppWindow inherits Window {
                             text: "Clear filters";
                             clicked => { root.filters-cleared(); }
                         }
+                        Rectangle {
+                            y: (parent.height - self.height) / 2;
+                            width: 1px;
+                            height: 20px;
+                            background: Theme.outline;
+                        }
                         HorizontalLayout {
                             spacing: 6px;
                             FilterChip {
@@ -2329,43 +2372,6 @@ export component AppWindow inherits Window {
                                 text: "Oldest";
                                 on: root.sort-order == 2;
                                 clicked => { root.sort-picked(2); }
-                            }
-                        }
-                        Rectangle {
-                            y: (parent.height - self.height) / 2;
-                            height: 36px;
-                            width: density-seg.preferred-width;
-                            border-radius: 18px;
-                            background: Theme.surface-variant.transparentize(0.3);
-                            border-width: 1px;
-                            border-color: Theme.outline;
-                            density-seg := HorizontalLayout {
-                                padding: 3px;
-                                spacing: 2px;
-                                IconButton {
-                                    size: 30px;
-                                    icon: Icons.list-view;
-                                    label: "List view";
-                                    filled: root.view-density == 1;
-                                    fg-color: root.view-density == 1 ? Theme.background : Theme.on-surface-secondary;
-                                    clicked => { root.density-picked(1); }
-                                }
-                                IconButton {
-                                    size: 30px;
-                                    icon: Icons.grid-view;
-                                    label: "Grid view";
-                                    filled: root.view-density == 0;
-                                    fg-color: root.view-density == 0 ? Theme.background : Theme.on-surface-secondary;
-                                    clicked => { root.density-picked(0); }
-                                }
-                                IconButton {
-                                    size: 30px;
-                                    icon: Icons.compact-view;
-                                    label: "Compact view";
-                                    filled: root.view-density == 2;
-                                    fg-color: root.view-density == 2 ? Theme.background : Theme.on-surface-secondary;
-                                    clicked => { root.density-picked(2); }
-                                }
                             }
                         }
                     }
@@ -2474,9 +2480,9 @@ export component AppWindow inherits Window {
                             if root.has-pinned-section: VerticalLayout {
                                 spacing: 10px;
                                 HorizontalLayout {
-                                    alignment: root.view-density == 1 ? center : start;
+                                    alignment: start;
                                     Rectangle {
-                                        width: root.view-density == 1 ? root.column-width : 120px;
+                                        width: 120px;
                                         height: pinned-section-hdr.preferred-height;
                                         pinned-section-hdr := SectionLabel {
                                             x: 0;
@@ -2485,7 +2491,7 @@ export component AppWindow inherits Window {
                                     }
                                 }
                                 HorizontalLayout {
-                                    alignment: root.view-density == 1 ? center : start;
+                                    alignment: start;
                                     spacing: Theme.note-gap;
                                     for column in root.pinned-columns: VerticalLayout {
                                         alignment: start;
@@ -2501,9 +2507,9 @@ export component AppWindow inherits Window {
                             }
 
                             if root.has-pinned-section && root.has-other-section: HorizontalLayout {
-                                alignment: root.view-density == 1 ? center : start;
+                                alignment: start;
                                 Rectangle {
-                                    width: root.view-density == 1 ? root.column-width : 120px;
+                                    width: 120px;
                                     height: other-section-hdr.preferred-height;
                                     other-section-hdr := SectionLabel {
                                         x: 0;
@@ -2513,7 +2519,7 @@ export component AppWindow inherits Window {
                             }
 
                             if root.has-other-section: HorizontalLayout {
-                                alignment: root.view-density == 1 ? center : start;
+                                alignment: start;
                                 spacing: Theme.note-gap;
                                 for column in root.columns: VerticalLayout {
                                     alignment: start;
