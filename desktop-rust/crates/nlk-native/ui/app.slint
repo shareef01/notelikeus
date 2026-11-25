@@ -602,7 +602,9 @@ component Card inherits FocusScope {
         clip: true;
 
         card-layout := VerticalLayout {
-            padding-bottom: root.compact ? 14px : 20px;
+            property <bool> has-body: card.preview != "" || card.checklist.length > 0 || card.more-items > 0
+                || card.labels.length > 0 || card.more-labels > 0 || card.reminder != "";
+            padding-bottom: root.compact ? (has-body ? 14px : 10px) : (has-body ? 20px : 14px);
             padding-top: card.has-cover ? 0px : (root.compact ? 14px : 20px);
             spacing: root.compact ? 6px : 10px;
             // The note's first picture leads the card edge-to-edge across the top, as on Kotlin and the web.
@@ -644,11 +646,18 @@ component Card inherits FocusScope {
                         color: #ffffff;
                     }
                 }
+                Rectangle {
+                    x: 0;
+                    y: parent.height - 1px;
+                    width: parent.width;
+                    height: 1px;
+                    background: Theme.outline.transparentize(0.6);
+                }
             }
             HorizontalLayout {
                 padding-left: root.compact ? 14px : 20px;
                 padding-right: root.compact ? 14px : 20px;
-                padding-top: card.has-cover ? (root.compact ? 10px : 14px) : 0px;
+                padding-top: card.has-cover ? (card.title == "" ? (root.compact ? 8px : 10px) : (root.compact ? 10px : 14px)) : 0px;
                 spacing: 8px;
                 if card.title != "": Text {
                     text: card.title;
@@ -691,7 +700,7 @@ component Card inherits FocusScope {
                     }
                 }
             }
-            VerticalLayout {
+            if card-layout.has-body: VerticalLayout {
                 padding-left: root.compact ? 14px : 20px;
                 padding-right: root.compact ? 14px : 20px;
                 spacing: root.compact ? 6px : 10px;
@@ -1013,58 +1022,70 @@ component Sidebar inherits Rectangle {
                     clicked => { root.sign-in(); }
                 }
             }
-            if !root.collapsed && root.account-mode == 2: VerticalLayout {
-                padding-left: 4px;
-                padding-right: 4px;
-                spacing: 8px;
-                HorizontalLayout {
+            if !root.collapsed && root.account-mode == 2: Rectangle {
+                border-radius: 12px;
+                background: Theme.on-surface.transparentize(0.96);
+                border-width: 1px;
+                border-color: Theme.outline.transparentize(0.55);
+                VerticalLayout {
+                    padding: 10px;
                     spacing: 10px;
-                    Rectangle {
-                        y: (parent.height - self.height) / 2;
-                        width: 34px;
-                        height: 34px;
-                        border-radius: 17px;
-                        background: Theme.surface-variant;
-                        Text {
-                            text: root.account-initial;
-                            font-size: Type.body;
-                            font-weight: 700;
-                            color: Theme.on-surface;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Rectangle {
+                            y: (parent.height - self.height) / 2;
+                            width: 30px;
+                            height: 30px;
+                            border-radius: 15px;
+                            background: Theme.accent.transparentize(0.84);
+                            Text {
+                                width: parent.width;
+                                height: parent.height;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                text: root.account-initial;
+                                font-size: Type.body-small;
+                                font-weight: 700;
+                                color: Theme.accent;
+                            }
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            spacing: 1px;
+                            Text {
+                                text: root.account-email;
+                                font-size: Type.body-small;
+                                font-weight: 600;
+                                color: Theme.on-surface;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: root.account-status;
+                                font-size: Type.meta;
+                                color: root.account-problem ? Theme.danger : Theme.muted;
+                                wrap: word-wrap;
+                                accessible-role: text;
+                                accessible-label: "Sync status: " + root.account-status;
+                            }
                         }
                     }
-                    VerticalLayout {
-                        horizontal-stretch: 1;
-                        alignment: center;
-                        spacing: 2px;
-                        Text {
-                            text: root.account-email;
-                            font-size: Type.body-small;
-                            font-weight: 600;
-                            color: Theme.on-surface;
-                            overflow: elide;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        PillButton {
+                            horizontal-stretch: 1;
+                            height: 30px;
+                            text: root.syncing ? "Syncing…" : "Sync now";
+                            label: "Sync now";
+                            enabled: !root.syncing;
+                            clicked => { root.sync(); }
                         }
-                        Text {
-                            text: root.account-status;
-                            font-size: Type.meta;
-                            color: root.account-problem ? Theme.danger : Theme.muted;
-                            wrap: word-wrap;
-                            accessible-role: text;
-                            accessible-label: "Sync status: " + root.account-status;
+                        PillButton {
+                            horizontal-stretch: 1;
+                            height: 30px;
+                            text: "Sign out";
+                            clicked => { root.sign-out(); }
                         }
-                    }
-                }
-                HorizontalLayout {
-                    spacing: 8px;
-                    alignment: start;
-                    PillButton {
-                        text: root.syncing ? "Syncing…" : "Sync now";
-                        label: "Sync now";
-                        enabled: !root.syncing;
-                        clicked => { root.sync(); }
-                    }
-                    PillButton {
-                        text: "Sign out";
-                        clicked => { root.sign-out(); }
                     }
                 }
             }
@@ -1177,10 +1198,10 @@ component Field inherits Rectangle {
     callback edited();
     forward-focus: input;
     height: 40px;
-    border-radius: Theme.radius-sm;
+    border-radius: 10px;
     background: Theme.surface-variant;
-    border-width: 1px;
-    border-color: input.has-focus ? Theme.muted : Theme.outline;
+    border-width: input.has-focus ? 1.5px : 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.outline.transparentize(0.25);
     public function focus-field() { input.focus(); }
     HorizontalLayout {
         padding-left: 12px;
@@ -1224,7 +1245,7 @@ component Dialog inherits Rectangle {
         border-radius: Theme.radius-sheet;
         background: Theme.surface;
         border-width: 1px;
-        border-color: Theme.outline;
+        border-color: Theme.outline.transparentize(0.25);
         drop-shadow-blur: 32px;
         drop-shadow-color: #00000066;
         accessible-role: groupbox;
@@ -1795,6 +1816,14 @@ component NoteWorkspace inherits Rectangle {
                                 root.format-italic(self.anchor-position-byte-offset, self.cursor-position-byte-offset);
                                 return accept;
                             }
+                            if (event.text == "l" || event.text == "L") {
+                                root.format-link(self.anchor-position-byte-offset, self.cursor-position-byte-offset);
+                                return accept;
+                            }
+                            if (event.text == Key.Return) {
+                                root.close();
+                                return accept;
+                            }
                         }
                         reject
                     }
@@ -2249,6 +2278,22 @@ export component AppWindow inherits Window {
             }
             if (!root.any-modal-open && event.modifiers.control && (event.text == "k" || event.text == "K" || event.text == "f" || event.text == "F")) {
                 search.focus-search();
+                return accept;
+            }
+            if (!root.any-modal-open && event.modifiers.control && event.text == ",") {
+                root.settings-requested();
+                return accept;
+            }
+            if (root.editor-open && !root.options-open && !root.reminder-open && !root.link-dialog-open
+                && !root.viewer-open && !root.review-open && root.confirm-title == ""
+                && event.modifiers.control && (event.text == "e" || event.text == "E")
+                && !root.editor-is-checklist && root.editor-mode != View.trash
+                && (root.editor-body != "" || root.editor-reading)) {
+                if (root.editor-reading) {
+                    root.editor-reading = false;
+                } else {
+                    root.read-requested();
+                }
                 return accept;
             }
             if (root.viewer-open && root.confirm-title == ""
@@ -2762,10 +2807,11 @@ export component AppWindow inherits Window {
                             height: 100%;
                             border-radius: 16px;
                             background: fab-touch.has-hover ? Theme.on-surface.transparentize(0.08) : Theme.on-surface;
-                            border-width: fab-wrap.has-focus ? 2px : 0px;
-                            border-color: Theme.accent;
-                            drop-shadow-blur: 18px;
-                            drop-shadow-color: #00000055;
+                            border-width: fab-wrap.has-focus ? 2px : (Theme.dark ? 0px : 1px);
+                            border-color: fab-wrap.has-focus ? Theme.accent : Theme.outline.transparentize(0.5);
+                            drop-shadow-blur: fab-touch.has-hover ? 22px : 14px;
+                            drop-shadow-offset-y: fab-touch.has-hover ? 4px : 2px;
+                            drop-shadow-color: #00000048;
                             Icon {
                                 width: 24px;
                                 height: 24px;
@@ -4011,23 +4057,36 @@ export component AppWindow inherits Window {
                     color: #f5f5f5;
                     horizontal-stretch: 1;
                 }
-                PillButton {
-                    text: "−";
-                    label: "Zoom out";
-                    enabled: root.viewer-picture.ready && root.viewer-zoom-index > 0;
-                    clicked => { root.viewer-zoom-index -= 1; }
-                }
-                PillButton {
-                    text: root.viewer-zoom-index > 0 ? round(root.viewer-zoom * 100) + "%" : "Fit";
-                    label: root.viewer-zoom-index > 0 ? "Fit picture to viewer, " + self.text + " of fit" : "Fit picture to viewer";
-                    enabled: root.viewer-picture.ready && root.viewer-zoom-index > 0;
-                    clicked => { root.viewer-zoom-index = 0; }
-                }
-                PillButton {
-                    text: "+";
-                    label: "Zoom in";
-                    enabled: root.viewer-picture.ready && root.viewer-zoom-index < 4;
-                    clicked => { root.viewer-zoom-index += 1; }
+                Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    height: 44px;
+                    width: zoom-bar.preferred-width;
+                    border-radius: 22px;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.outline.transparentize(0.35);
+                    zoom-bar := HorizontalLayout {
+                        padding: 4px;
+                        spacing: 4px;
+                        PillButton {
+                            text: "−";
+                            label: "Zoom out";
+                            enabled: root.viewer-picture.ready && root.viewer-zoom-index > 0;
+                            clicked => { root.viewer-zoom-index -= 1; }
+                        }
+                        PillButton {
+                            text: root.viewer-zoom-index > 0 ? round(root.viewer-zoom * 100) + "%" : "Fit";
+                            label: root.viewer-zoom-index > 0 ? "Fit picture to viewer, " + self.text + " of fit" : "Fit picture to viewer";
+                            enabled: root.viewer-picture.ready && root.viewer-zoom-index > 0;
+                            clicked => { root.viewer-zoom-index = 0; }
+                        }
+                        PillButton {
+                            text: "+";
+                            label: "Zoom in";
+                            enabled: root.viewer-picture.ready && root.viewer-zoom-index < 4;
+                            clicked => { root.viewer-zoom-index += 1; }
+                        }
+                    }
                 }
                 if !root.viewer-read-only: PillButton {
                     y: (parent.height - self.height) / 2;
