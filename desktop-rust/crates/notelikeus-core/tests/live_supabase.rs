@@ -255,3 +255,105 @@ fn signing_in_with_an_emailed_code() {
     device.sync();
     assert!(device.state.pending.is_empty());
 }
+
+#[test]
+fn positioned_image_syncs_across_devices_and_survives_legacy_client_edits() {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use notelikeus_core::attachments::{Attachment, Location, PlacementBody, merge_listing};
+    use notelikeus_core::model::ApplyNoteChangeArgs;
+    use serde_json::json;
+
+    let live = live_or_skip!();
+    let session = account(&live, "nlk-rust-place");
+    let mut device_a = Device::new(&live, &session, 5_000_000);
+    let mut device_b = Device::new(&live, &session, 6_000_000);
+
+    let body_text = "Before 🧭\n\nAfter";
+    let note_id = device_a.create("Positioned note", body_text);
+    device_a.sync();
+
+    // Register a provisional upload row for this note as the attachments Worker does.
+    let att_id = "att-live-place-1";
+    let object_key = format!("owners/{}/notes/{note_id}/{att_id}", session.user_id);
+    let agent = ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(15)).build();
+    let finalize = agent
+        .post(&format!("{}/rest/v1/rpc/finalize_note_attachment_put", live.url))
+        .set("apikey", &live.key)
+        .set("Authorization", &format!("Bearer {}", session.access_token))
+        .set("Content-Type", "application/json")
+        .send_json(json!({
+            "p_note_id": note_id,
+            "p_attachment_id": att_id,
+            "p_object_key": object_key,
+            "p_mime_type": "image/png",
+            "p_size_bytes": 3,
+            "p_provisional": true,
+            "p_attachment_type": "image"
+        }))
+        .unwrap();
+    assert_eq!(finalize.status(), 200);
+
+    let placement = PlacementBody::new(body_text).at(10, 0).unwrap();
+    device_a.state.attachments.insert(
+        note_id.clone(),
+        vec![Attachment {
+            id: att_id.into(),
+            mime_type: "image/png".into(),
+            size_bytes: 3,
+            location: Location::Uploaded { object_key: object_key.clone() },
+            placement: Some(placement.clone()),
+        }],
+    );
+    let now = device_a.clock.now_millis() + 1_000;
+    sync::edit_note(&mut device_a.state, &note_id, now, |_| {}).unwrap();
+    device_a.sync();
+
+    // Device B syncs and hydrates the committed attachment + placement.
+    device_b.sync();
+    let remote = device_b.transport.list_user_attachments().unwrap();
+    assert_eq!(remote.len(), 1);
+    assert_eq!(remote[0].placement, Some(placement.clone()));
+    let live_ids: BTreeSet<String> = device_b.state.notes.keys().cloned().collect();
+    device_b.state.attachments =
+        merge_listing(&device_b.state.attachments, &remote, &BTreeMap::new(), &BTreeSet::new(), &live_ids);
+    assert_eq!(device_b.state.attachments[&note_id][0].placement, Some(placement.clone()));
+
+    // Legacy client (16-arg apply_note_change without placements) edits only the title: placement stays valid.
+    let mut legacy_note = device_b.state.notes[&note_id].clone();
+    legacy_note.title = "Retitled by legacy client".into();
+    legacy_note.timestamp += 1_000;
+    let base_rev = device_b.state.revisions.get(&note_id).copied();
+    let legacy_args = ApplyNoteChangeArgs::new(&legacy_note, base_rev, vec![att_id.into()], 0);
+    let outcome = device_b.transport.apply_note_change(&legacy_args).unwrap();
+    let next_rev = match outcome {
+        sync::ApplyOutcome::Applied { revision, .. } => revision,
+        other => panic!("expected Applied from legacy metadata edit, got {other:?}"),
+    };
+    let after_retitle = device_b.transport.list_user_attachments().unwrap();
+    assert_eq!(after_retitle[0].placement, Some(placement.clone()));
+    assert!(PlacementBody::new(&legacy_note.content).matches(after_retitle[0].placement.as_ref().unwrap()));
+
+    // Legacy client edits the body: image stays visible, and stale digest falls back to the strip.
+    legacy_note.content = "Body changed by legacy client".into();
+    legacy_note.timestamp += 1_000;
+    let legacy_body_args = ApplyNoteChangeArgs::new(&legacy_note, Some(next_rev), vec![att_id.into()], 0);
+    device_b.transport.apply_note_change(&legacy_body_args).unwrap();
+    let after_body = device_b.transport.list_user_attachments().unwrap();
+    assert_eq!(after_body.len(), 1);
+    assert!(!PlacementBody::new(&legacy_note.content).matches(after_body[0].placement.as_ref().unwrap()));
+
+    // Device A pulls, clears the placement, and pushes `[]`: Device B sees placement cleared.
+    device_a.sync();
+    device_a.state.attachments.get_mut(&note_id).unwrap()[0].placement = None;
+    let now2 = device_a.clock.now_millis() + 2_000;
+    sync::edit_note(&mut device_a.state, &note_id, now2, |_| {}).unwrap();
+    device_a.sync();
+    let after_clear = device_b.transport.list_user_attachments().unwrap();
+    assert_eq!(after_clear[0].placement, None);
+    device_b.sync();
+    let live_ids_b: BTreeSet<String> = device_b.state.notes.keys().cloned().collect();
+    device_b.state.attachments =
+        merge_listing(&device_b.state.attachments, &after_clear, &BTreeMap::new(), &BTreeSet::new(), &live_ids_b);
+    assert_eq!(device_b.state.attachments[&note_id][0].placement, None);
+}
