@@ -201,6 +201,7 @@ pub fn apply_contrast(ui: &AppWindow, colors: Option<crate::contrast::SystemColo
     let Some(c) = colors else {
         if theme.get_high_contrast() {
             theme.set_high_contrast(false);
+            crate::sync_window_chrome(ui);
         }
         return;
     };
@@ -224,6 +225,7 @@ pub fn apply_contrast(ui: &AppWindow, colors: Option<crate::contrast::SystemColo
     }
     if !theme.get_high_contrast() {
         theme.set_high_contrast(true);
+        crate::sync_window_chrome(ui);
     }
 }
 
@@ -544,6 +546,7 @@ impl Controller {
         let mode = mode.clamp(crate::settings::THEME_SYSTEM, crate::settings::THEME_DARK);
         let Some(ui) = self.ui() else { return };
         ui.set_theme_mode(mode);
+        crate::sync_window_chrome(&ui);
         self.settings.borrow_mut().theme_mode = mode;
         self.save_current_settings();
     }
@@ -552,6 +555,7 @@ impl Controller {
         let accent = accent.clamp(crate::settings::ACCENT_NEUTRAL, crate::settings::ACCENT_GREEN);
         let Some(ui) = self.ui() else { return };
         ui.set_theme_accent(accent);
+        crate::sync_window_chrome(&ui);
         self.settings.borrow_mut().accent = accent;
         self.save_current_settings();
     }
@@ -560,6 +564,7 @@ impl Controller {
         let Some(ui) = self.ui() else { return };
         let next = !self.settings.borrow().amoled;
         ui.set_theme_amoled(next);
+        crate::sync_window_chrome(&ui);
         self.settings.borrow_mut().amoled = next;
         self.save_current_settings();
     }
