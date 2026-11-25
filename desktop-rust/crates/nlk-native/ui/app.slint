@@ -537,10 +537,10 @@ component Card inherits FocusScope {
         border-width: root.has-focus ? 2px : 1px;
         // A coloured card's hover edge was white at 20% in both themes, which vanishes on a light
         // pastel; a dark edge in light, a light edge in dark, so hover reads on every note colour.
-        border-color: root.has-focus ? Theme.accent : (root.tinted ? (touch.has-hover ? (Theme.dark ? #ffffff40 : #00000033) : transparent) : (touch.has-hover ? Theme.muted : Theme.outline));
+        border-color: root.has-focus ? Theme.accent : (root.tinted ? (touch.has-hover ? (Theme.dark ? #ffffff40 : #00000033) : (Theme.dark ? #ffffff14 : #00000012)) : (touch.has-hover ? Theme.muted : Theme.outline));
         background: root.tinted ? (Theme.dark ? card.color-dark : card.color-light) : Theme.surface;
         // The restrained 3dp hover lift of the design system, not an 18px glow.
-        drop-shadow-blur: touch.has-hover ? 8px : 0px;
+        drop-shadow-blur: touch.has-hover ? 10px : 0px;
         drop-shadow-offset-y: touch.has-hover ? 2px : 0px;
         drop-shadow-color: touch.has-hover ? #00000024 : transparent;
         clip: true;
@@ -604,28 +604,27 @@ component Card inherits FocusScope {
                     horizontal-stretch: 1;
                 }
                 if card.title == "": Rectangle { horizontal-stretch: 1; }
-                VerticalLayout {
-                    alignment: start;
-                    spacing: 2px;
-                    HorizontalLayout {
-                        alignment: end;
-                        spacing: 4px;
-                        if card.pinned: Icon {
-                            width: 14px;
-                            height: 14px;
-                            path: Icons.pin;
-                            color: root.fg-muted;
-                            accessible-role: image;
-                            accessible-label: "Pinned";
-                        }
-                        if card.reminder != "": Icon {
-                            width: 14px;
-                            height: 14px;
-                            path: Icons.notification;
-                            color: card.reminder-overdue ? Theme.danger : root.fg-muted;
-                            accessible-role: image;
-                            accessible-label: card.reminder-overdue ? "Overdue reminder" : "Reminder";
-                        }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 5px;
+                    padding-top: 3px;
+                    if card.pinned: Icon {
+                        y: 1px;
+                        width: 13px;
+                        height: 13px;
+                        path: Icons.pin;
+                        color: root.fg-muted;
+                        accessible-role: image;
+                        accessible-label: "Pinned";
+                    }
+                    if card.reminder != "": Icon {
+                        y: 1px;
+                        width: 13px;
+                        height: 13px;
+                        path: Icons.notification;
+                        color: card.reminder-overdue ? Theme.danger : root.fg-muted;
+                        accessible-role: image;
+                        accessible-label: card.reminder-overdue ? "Overdue reminder" : "Reminder";
                     }
                     Text {
                         text: card.time;
@@ -860,11 +859,9 @@ component Sidebar inherits Rectangle {
             spacing: 10px;
             Rectangle { height: 1px; background: Theme.outline.transparentize(0.5); }
             Rectangle {
-                height: 44px;
+                height: 40px;
                 border-radius: 12px;
-                background: collapse-touch.has-hover ? Theme.on-surface.transparentize(0.90) : Theme.on-surface.transparentize(0.94);
-                border-width: 1px;
-                border-color: Theme.on-surface-secondary.transparentize(0.75);
+                background: collapse-touch.has-hover ? Theme.hover : transparent;
                 accessible-role: button;
                 accessible-label: root.collapsed ? "Expand sidebar" : "Collapse sidebar";
                 accessible-action-default => { root.toggle-collapsed(); }
@@ -875,17 +872,17 @@ component Sidebar inherits Rectangle {
                     alignment: root.collapsed ? center : start;
                     Icon {
                         y: (parent.height - self.height) / 2;
-                        width: 20px;
-                        height: 20px;
+                        width: 18px;
+                        height: 18px;
                         path: root.collapsed ? Icons.chevron-right : Icons.chevron-left;
-                        color: Theme.on-surface.transparentize(0.15);
+                        color: Theme.on-surface-secondary;
                     }
                     if !root.collapsed: Text {
                         text: "Collapse";
                         vertical-alignment: center;
                         font-size: Type.body;
                         font-weight: 500;
-                        color: Theme.on-surface.transparentize(0.15);
+                        color: Theme.on-surface-secondary;
                     }
                 }
                 collapse-touch := TouchArea {
@@ -1019,6 +1016,7 @@ component Sidebar inherits Rectangle {
 component SearchField inherits Rectangle {
     in-out property <string> text;
     in property <string> placeholder: "Search your notes";
+    in property <bool> compact: false;
     callback edited(string);
     forward-focus: input;
     height: 48px;
@@ -1033,6 +1031,10 @@ component SearchField inherits Rectangle {
     }
 
     HorizontalLayout {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
         padding-left: 16px;
         padding-right: 12px;
         spacing: 10px;
@@ -1049,7 +1051,8 @@ component SearchField inherits Rectangle {
                 x: 0;
                 width: parent.width;
                 height: parent.height;
-                text: root.placeholder;
+                text: root.compact ? "Search" : root.placeholder;
+                overflow: elide;
                 font-size: Type.body-large;
                 color: Theme.on-surface-secondary;
                 vertical-alignment: center;
@@ -1077,7 +1080,7 @@ component SearchField inherits Rectangle {
                 input.focus();
             }
         }
-        if input.text == "": Rectangle {
+        if input.text == "" && !root.compact: Rectangle {
             y: (parent.height - self.height) / 2;
             width: hint.preferred-width + 14px;
             height: 22px;
@@ -1224,8 +1227,8 @@ component EditorPicture inherits FocusScope {
         border-radius: Theme.radius-md;
         clip: true;
         background: Theme.surface-variant;
-        border-width: root.has-focus ? 2px : 0px;
-        border-color: Theme.accent;
+        border-width: root.has-focus ? 2px : 1px;
+        border-color: root.has-focus ? Theme.accent : Theme.outline.transparentize(0.5);
         if root.picture.ready: Image {
             width: parent.width;
             height: parent.height;
@@ -1331,7 +1334,7 @@ component NoteWorkspace inherits Rectangle {
             padding: 16px;
             padding-left: 24px;
             padding-right: 24px;
-            spacing: 4px;
+            spacing: 8px;
             back-to-notes := IconButton {
                 icon: Icons.back;
                 label: "Back to notes";
@@ -1582,7 +1585,8 @@ component NoteWorkspace inherits Rectangle {
                         spacing: 10px;
                         for level in block.quote-depth: Rectangle {
                             width: 3px;
-                            background: Theme.muted;
+                            border-radius: 1.5px;
+                            background: Theme.muted.transparentize(0.35);
                             vertical-stretch: 1;
                         }
                         VerticalLayout {
@@ -1776,16 +1780,17 @@ component NoteWorkspace inherits Rectangle {
                     && root.can-position-pictures && root.body != "";
                 property <length> picture-height: position-actions ? min(112px, root.height / 5)
                     : min(136px, root.height / 4);
-                height: picture-height + (position-actions ? 40px : 0px);
+                height: picture-height + (position-actions ? 44px : 0px);
                 vertical-stretch: 0;
                 content-width: strip-row.preferred-width;
                 strip-row := HorizontalLayout {
                     spacing: 10px;
                     alignment: start;
                     for picture in root.pictures: VerticalLayout {
-                        min-width: min(320px, max(48px, strip.picture-height * picture.aspect));
-                        spacing: 4px;
+                        alignment: start;
+                        spacing: 6px;
                         EditorPicture {
+                            width: min(320px, max(48px, strip.picture-height * picture.aspect));
                             height: strip.picture-height;
                             picture: picture;
                             count: root.picture-count;
@@ -2228,6 +2233,7 @@ export component AppWindow inherits Window {
                     spacing: 12px;
                     search := SearchField {
                         horizontal-stretch: 1;
+                        compact: root.width < 820px;
                         placeholder: root.view == View.archive ? "Search archive"
                             : root.view == View.trash ? "Search trash"
                             : "Search your notes";
@@ -2325,53 +2331,55 @@ export component AppWindow inherits Window {
                 // In a Flickable so the row scrolls sideways when the notes area is narrower than it, as on
                 // Android, instead of forcing its width onto the window: at the 640px minimum the row used to
                 // push the account button, card timestamps and the New note button past the edge (tests/screens.rs).
-                Flickable {
-                    height: filter-row.preferred-height;
-                    content-width: max(self.width, filter-row.preferred-width);
-                    content-height: self.height;
-                    filter-row := HorizontalLayout {
-                        padding-left: 24px;
-                        padding-right: 24px;
-                        padding-bottom: 14px;
-                        spacing: 8px;
-                        alignment: start;
-                        PillButton {
-                            y: (parent.height - self.height) / 2;
-                            text: root.filter-count > 0 ? "Filters · " + root.filter-count : "Filters";
-                            label: "Filters";
-                            icon: Icons.filter;
-                            clicked => { root.filters-open = true; }
-                        }
-                        if root.filters-active: PillButton {
-                            y: (parent.height - self.height) / 2;
-                            text: "Clear filters";
-                            clicked => { root.filters-cleared(); }
-                        }
-                        Rectangle {
-                            y: (parent.height - self.height) / 2;
-                            width: 1px;
-                            height: 20px;
-                            background: Theme.outline;
-                        }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            FilterChip {
+                VerticalLayout {
+                    padding-bottom: 12px;
+                    Flickable {
+                        height: filter-row.preferred-height;
+                        content-width: max(self.width, filter-row.preferred-width);
+                        content-height: self.height;
+                        filter-row := HorizontalLayout {
+                            padding-left: 24px;
+                            padding-right: 24px;
+                            spacing: 8px;
+                            alignment: start;
+                            PillButton {
                                 y: (parent.height - self.height) / 2;
-                                text: "Manual";
-                                on: root.sort-order == 0;
-                                clicked => { root.sort-picked(0); }
+                                text: root.filter-count > 0 ? "Filters · " + root.filter-count : "Filters";
+                                label: "Filters";
+                                icon: Icons.filter;
+                                clicked => { root.filters-open = true; }
                             }
-                            FilterChip {
+                            if root.filters-active: PillButton {
                                 y: (parent.height - self.height) / 2;
-                                text: "Newest";
-                                on: root.sort-order == 1;
-                                clicked => { root.sort-picked(1); }
+                                text: "Clear filters";
+                                clicked => { root.filters-cleared(); }
                             }
-                            FilterChip {
+                            Rectangle {
                                 y: (parent.height - self.height) / 2;
-                                text: "Oldest";
-                                on: root.sort-order == 2;
-                                clicked => { root.sort-picked(2); }
+                                width: 1px;
+                                height: 20px;
+                                background: Theme.outline;
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                FilterChip {
+                                    y: (parent.height - self.height) / 2;
+                                    text: "Manual";
+                                    on: root.sort-order == 0;
+                                    clicked => { root.sort-picked(0); }
+                                }
+                                FilterChip {
+                                    y: (parent.height - self.height) / 2;
+                                    text: "Newest";
+                                    on: root.sort-order == 1;
+                                    clicked => { root.sort-picked(1); }
+                                }
+                                FilterChip {
+                                    y: (parent.height - self.height) / 2;
+                                    text: "Oldest";
+                                    on: root.sort-order == 2;
+                                    clicked => { root.sort-picked(2); }
+                                }
                             }
                         }
                     }
@@ -2473,7 +2481,7 @@ export component AppWindow inherits Window {
                             padding-left: 24px;
                             padding-right: 24px;
                             padding-top: 8px;
-                            padding-bottom: 24px;
+                            padding-bottom: 88px;
                             spacing: 16px;
                             alignment: start;
 
@@ -3431,7 +3439,7 @@ export component AppWindow inherits Window {
                             }
                         }
                     }
-                    Text {
+                    if root.account-mode == 2: Text {
                         text: "Account deletion permanently removes the online account, its notes, and pictures.";
                         font-size: Type.meta;
                         color: Theme.muted;
@@ -3962,7 +3970,7 @@ export component AppWindow inherits Window {
         // 8. Toast above everything
         if root.toast-text != "": Rectangle {
             x: (parent.width - self.width) / 2;
-            y: parent.height - self.height - 32px;
+            y: parent.height - self.height - (root.editor-open ? 64px : 32px);
             width: toast-row.preferred-width;
             height: 48px;
             border-radius: Theme.radius-md;
@@ -3971,7 +3979,7 @@ export component AppWindow inherits Window {
             accessible-label: root.toast-text;
             toast-row := HorizontalLayout {
                 padding-left: 18px;
-                padding-right: 8px;
+                padding-right: root.toast-action == "" ? 18px : 8px;
                 spacing: 12px;
                 Text {
                     text: root.toast-text;

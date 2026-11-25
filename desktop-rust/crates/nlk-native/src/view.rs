@@ -12,10 +12,26 @@ const PREVIEW_MAX_CHARS: usize = 360;
 const CARD_TITLE_MAX_CHARS: usize = 120;
 const MAX_MARKDOWN_NESTING: usize = 8;
 
-/// Strips the supported Markdown subset (`**bold**`, `__bold__`, `_italic_`, `[label](url)`) so card
-/// previews read as clean plain text matching the Kotlin and Web card renderers.
+/// Strips the supported Markdown subset (`**bold**`, `__bold__`, `_italic_`, `[label](url)`,
+/// leading `# ` headings, and `> ` blockquotes) so card previews read as clean plain text.
 pub fn strip_markdown(input: &str) -> String {
-    strip_nested(input, 0)
+    let cleaned = input.lines().map(strip_block_prefixes).collect::<Vec<_>>().join("\n");
+    strip_nested(&cleaned, 0)
+}
+
+fn strip_block_prefixes(line: &str) -> &str {
+    let mut rest = line.trim_start_matches([' ', '\t']);
+    while let Some(after_quote) = rest.strip_prefix('>') {
+        rest = after_quote.trim_start_matches([' ', '\t']);
+    }
+    let hashes = rest.bytes().take_while(|&b| b == b'#').count();
+    if (1..=6).contains(&hashes) && rest.as_bytes().get(hashes) == Some(&b' ') {
+        return rest[hashes + 1..].trim_start_matches(' ');
+    }
+    if rest != line.trim_start_matches([' ', '\t']) {
+        return rest;
+    }
+    line
 }
 
 fn strip_nested(input: &str, depth: usize) -> String {
@@ -519,6 +535,7 @@ mod tests {
         assert_eq!(strip_markdown("See [Notelikeus](https://example.com) now"), "See Notelikeus now");
         assert_eq!(strip_markdown("**_nested_** item"), "nested item");
         assert_eq!(strip_markdown("• **milk**\n• eggs"), "• milk\n• eggs");
+        assert_eq!(strip_markdown("## Shopping\n> > Bring a **bag**."), "Shopping\nBring a bag.");
         assert_eq!(preview("**Hello** [world](https://example.com)"), "Hello world");
     }
 
