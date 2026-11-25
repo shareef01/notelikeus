@@ -68,6 +68,7 @@ fn main() {
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(ui) = weak_ui.upgrade() {
                         fit_initial_window_to_work_area(ui.window());
+                        nlk_native::sync_window_chrome(&ui);
                     }
                 });
             }
