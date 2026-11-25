@@ -174,6 +174,62 @@ component FilterChip inherits FocusScope {
     }
 }
 
+/// A single segment inside a unified segmented control (e.g. Manual | Newest | Oldest).
+component SegmentTab inherits FocusScope {
+    in property <string> text;
+    in property <bool> on;
+    callback clicked();
+    height: 26px;
+    width: seg-label.preferred-width + 22px;
+    accessible-role: radio-button;
+    accessible-checkable: true;
+    accessible-checked: root.on;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    key-pressed(event) => {
+        if (event.text == Key.Space || event.text == Key.Return) {
+            root.clicked();
+            return accept;
+        }
+        reject
+    }
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 7px;
+        background: root.on ? Theme.on-surface : (touch.has-hover ? Theme.hover : transparent);
+        border-width: root.has-focus ? 2px : 0px;
+        border-color: Theme.accent;
+        seg-label := Text {
+            width: parent.width;
+            height: parent.height;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            text: root.text;
+            font-size: Type.body-small;
+            font-weight: root.on ? 600 : 500;
+            color: root.on ? Theme.background : Theme.on-surface-secondary;
+        }
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.focus(); root.clicked(); }
+        }
+    }
+}
+
+/// A rounded Fluent-style section card for Settings.
+component SettingsCard inherits Rectangle {
+    border-radius: 14px;
+    background: Theme.dark ? Theme.surface-variant.transparentize(0.55) : Theme.background;
+    border-width: 1px;
+    border-color: Theme.outline.transparentize(0.45);
+    VerticalLayout {
+        padding: 18px;
+        spacing: 12px;
+        @children
+    }
+}
+
 /// One row of filter chips (rows are wrapped in Rust: Slint has no wrapping layout).
 component ChipRow inherits HorizontalLayout {
     in property <[Choice]> items;
@@ -402,8 +458,8 @@ component NavItem inherits FocusScope {
     in property <bool> selected;
     in property <bool> compact: false;
     callback clicked();
-    height: 44px;
-    preferred-width: root.compact ? 44px : nav-row.preferred-width;
+    height: 40px;
+    preferred-width: root.compact ? 40px : nav-row.preferred-width;
     accessible-role: button;
     accessible-label: label;
     accessible-action-default => { root.clicked(); }
@@ -418,17 +474,17 @@ component NavItem inherits FocusScope {
     Rectangle {
         width: 100%;
         height: 100%;
-        border-radius: Theme.radius-md;
+        border-radius: 10px;
         background: root.selected ? Theme.accent.transparentize(0.88) : (touch.has-hover ? Theme.hover : transparent);
         border-width: root.has-focus ? 2px : 0;
         border-color: Theme.accent;
 
-        // Selection bar matching Kotlin SideDrawerNavItem (inside the row, 2px wide, 28px tall).
+        // Selection bar matching Kotlin SideDrawerNavItem (inside the row, 3px wide, 20px tall).
         if root.selected && !root.compact: Rectangle {
-            x: 8px;
+            x: 7px;
             y: (parent.height - self.height) / 2;
             width: 3px;
-            height: 24px;
+            height: 20px;
             border-radius: 2px;
             background: Theme.accent;
         }
@@ -721,6 +777,15 @@ component Sidebar inherits Rectangle {
     callback open-settings();
     width: root.collapsed ? 72px : Theme.sidebar-width;
     background: Theme.surface;
+
+    // Subtle right divider separating the sidebar surface from the main canvas.
+    Rectangle {
+        x: parent.width - 1px;
+        y: 0;
+        width: 1px;
+        height: parent.height;
+        background: Theme.outline.transparentize(0.45);
+    }
 
     VerticalLayout {
         padding-top: 20px;
@@ -1019,11 +1084,11 @@ component SearchField inherits Rectangle {
     in property <bool> compact: false;
     callback edited(string);
     forward-focus: input;
-    height: 48px;
-    border-radius: self.height / 2;
-    background: Theme.surface-variant.transparentize(0.28);
-    border-width: 1px;
-    border-color: input.has-focus ? Theme.accent.transparentize(0.55) : Theme.outline.transparentize(0.35);
+    height: 40px;
+    border-radius: 12px;
+    background: Theme.dark ? Theme.surface-variant.transparentize(0.25) : Theme.surface;
+    border-width: input.has-focus ? 1.5px : 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.outline.transparentize(0.28);
 
     public function focus-search() {
         input.focus();
@@ -1035,15 +1100,15 @@ component SearchField inherits Rectangle {
         y: 0;
         width: parent.width;
         height: parent.height;
-        padding-left: 16px;
-        padding-right: 12px;
+        padding-left: 14px;
+        padding-right: 10px;
         spacing: 10px;
         Icon {
             y: (parent.height - self.height) / 2;
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
             path: Icons.search;
-            color: input.has-focus ? Theme.on-surface-secondary : Theme.muted;
+            color: input.has-focus ? Theme.on-surface : Theme.muted;
         }
         Rectangle {
             horizontal-stretch: 1;
@@ -1053,13 +1118,13 @@ component SearchField inherits Rectangle {
                 height: parent.height;
                 text: root.compact ? "Search" : root.placeholder;
                 overflow: elide;
-                font-size: Type.body-large;
+                font-size: Type.body;
                 color: Theme.on-surface-secondary;
                 vertical-alignment: center;
             }
             input := TextInput {
                 text <=> root.text;
-                font-size: Type.body-large;
+                font-size: Type.body;
                 color: Theme.on-surface;
                 vertical-alignment: center;
                 single-line: true;
@@ -1070,7 +1135,8 @@ component SearchField inherits Rectangle {
         }
         if input.text != "": IconButton {
             y: (parent.height - self.height) / 2;
-            size: 28px;
+            size: 26px;
+            radius: 7px;
             icon: Icons.close;
             label: "Clear search";
             fg-color: Theme.muted;
@@ -1084,10 +1150,10 @@ component SearchField inherits Rectangle {
             y: (parent.height - self.height) / 2;
             width: hint.preferred-width + 14px;
             height: 22px;
-            border-radius: 5px;
+            border-radius: 6px;
             background: Theme.on-surface.transparentize(0.94);
             border-width: 1px;
-            border-color: Theme.outline.transparentize(0.5);
+            border-color: Theme.outline.transparentize(0.45);
             hint := Text {
                 width: parent.width;
                 height: parent.height;
@@ -1186,10 +1252,13 @@ component SettingsWorkspace inherits Rectangle {
 
     VerticalLayout {
         HorizontalLayout {
-            padding: 16px;
+            padding: 12px;
             padding-left: 24px;
-            spacing: 12px;
+            padding-right: 24px;
+            spacing: 10px;
             IconButton {
+                size: 36px;
+                radius: 8px;
                 icon: Icons.back;
                 label: "Back from settings";
                 clicked => { root.back(); }
@@ -1204,7 +1273,7 @@ component SettingsWorkspace inherits Rectangle {
                 horizontal-stretch: 1;
             }
         }
-        Rectangle { height: 1px; background: Theme.outline; }
+        Rectangle { height: 1px; background: Theme.outline.transparentize(0.45); }
         @children
     }
 }
@@ -1331,17 +1400,23 @@ component NoteWorkspace inherits Rectangle {
     VerticalLayout {
         // Header: what this note can do where it is.
         HorizontalLayout {
-            padding: 16px;
+            padding-top: 12px;
+            padding-bottom: 12px;
             padding-left: 24px;
             padding-right: 24px;
-            spacing: 8px;
+            spacing: 6px;
             back-to-notes := IconButton {
+                y: (parent.height - self.height) / 2;
+                size: 36px;
+                radius: 8px;
                 icon: Icons.back;
                 label: "Back to notes";
                 fg-color: root.fg;
                 clicked => { root.close(); }
             }
             if !root.is-checklist && !root.read-only && (root.body != "" || root.reading): PillButton {
+                y: (parent.height - self.height) / 2;
+                height: 34px;
                 text: root.reading ? "Edit note" : "Read note";
                 clicked => {
                     if (root.reading) {
@@ -1352,48 +1427,78 @@ component NoteWorkspace inherits Rectangle {
             }
             Rectangle { horizontal-stretch: 1; }
             if root.mode != View.trash: IconButton {
+                y: (parent.height - self.height) / 2;
+                size: 36px;
+                radius: 8px;
                 icon: Icons.image;
                 label: "Add image";
                 fg-color: root.fg;
                 clicked => { root.add-image(); }
             }
             if root.can-act && root.mode == View.notes: IconButton {
+                y: (parent.height - self.height) / 2;
+                size: 36px;
+                radius: 8px;
                 icon: Icons.notification;
                 label: root.reminder-set ? "Change reminder" : "Set reminder";
                 fg-color: root.fg;
                 clicked => { root.open-reminder(); }
             }
             if root.can-act && root.mode != View.trash: IconButton {
+                y: (parent.height - self.height) / 2;
+                size: 36px;
+                radius: 8px;
                 icon: Icons.palette;
                 label: "Note options";
                 fg-color: root.fg;
                 clicked => { root.open-options(); }
             }
             if root.can-act && root.mode == View.notes: IconButton {
+                y: (parent.height - self.height) / 2;
+                size: 36px;
+                radius: 8px;
                 icon: root.pinned ? Icons.pin-off : Icons.pin;
                 label: root.pinned ? "Unpin" : "Pin";
                 fg-color: root.fg;
                 clicked => { root.toggle-pin(); }
             }
+            if root.can-act && root.mode != View.trash: Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: 1px;
+                height: 18px;
+                background: root.divider.transparentize(0.35);
+            }
             if root.can-act && root.mode != View.trash: IconButton {
+                y: (parent.height - self.height) / 2;
+                size: 36px;
+                radius: 8px;
                 icon: root.mode == View.archive ? Icons.unarchive : Icons.archive;
                 label: root.mode == View.archive ? "Unarchive note" : "Archive note";
                 fg-color: root.fg;
                 clicked => { root.archive(); }
             }
             if root.can-act && root.mode != View.trash: IconButton {
+                y: (parent.height - self.height) / 2;
+                size: 36px;
+                radius: 8px;
                 icon: Icons.trash;
                 label: "Move to trash";
                 fg-color: root.fg;
                 clicked => { root.trash(); }
             }
             if root.mode == View.trash: IconButton {
+                y: (parent.height - self.height) / 2;
+                size: 36px;
+                radius: 8px;
                 icon: Icons.restore;
                 label: "Restore";
                 fg-color: root.fg;
                 clicked => { root.restore(); }
             }
             if root.mode == View.trash: IconButton {
+                y: (parent.height - self.height) / 2;
+                size: 36px;
+                radius: 8px;
                 icon: Icons.delete-forever;
                 label: "Delete forever";
                 fg-color: root.fg;
@@ -1494,17 +1599,21 @@ component NoteWorkspace inherits Rectangle {
             if !root.is-checklist && !root.read-only && !root.reading: HorizontalLayout {
                 alignment: start;
                 Rectangle {
-                    height: 40px;
+                    height: 38px;
                     width: tools.preferred-width;
-                    border-radius: Theme.radius-md;
-                    background: root.tinted ? root.chip-bg : Theme.on-surface.transparentize(0.94);
+                    border-radius: 10px;
+                    background: Theme.dark ? Theme.surface-variant : Theme.surface;
                     border-width: 1px;
-                    border-color: root.divider;
+                    border-color: root.divider.transparentize(0.25);
+                    drop-shadow-blur: 8px;
+                    drop-shadow-offset-y: 1px;
+                    drop-shadow-color: #00000014;
                     tools := HorizontalLayout {
-                        padding: 4px;
+                        padding: 3px;
                         spacing: 2px;
                         IconButton {
-                            size: 32px;
+                            size: 30px;
+                            radius: 7px;
                             focus-on-click: false;
                             fg-color: root.fg;
                             icon: Icons.bold;
@@ -1514,7 +1623,8 @@ component NoteWorkspace inherits Rectangle {
                             }
                         }
                         IconButton {
-                            size: 32px;
+                            size: 30px;
+                            radius: 7px;
                             focus-on-click: false;
                             fg-color: root.fg;
                             icon: Icons.italic;
@@ -1524,7 +1634,8 @@ component NoteWorkspace inherits Rectangle {
                             }
                         }
                         IconButton {
-                            size: 32px;
+                            size: 30px;
+                            radius: 7px;
                             focus-on-click: false;
                             fg-color: root.fg;
                             icon: Icons.link;
@@ -1536,11 +1647,12 @@ component NoteWorkspace inherits Rectangle {
                         Rectangle {
                             y: (parent.height - self.height) / 2;
                             width: 1px;
-                            height: 18px;
-                            background: root.divider;
+                            height: 16px;
+                            background: root.divider.transparentize(0.25);
                         }
                         IconButton {
-                            size: 32px;
+                            size: 30px;
+                            radius: 7px;
                             focus-on-click: false;
                             fg-color: root.fg;
                             icon: Icons.bullet-list;
@@ -1550,7 +1662,8 @@ component NoteWorkspace inherits Rectangle {
                             }
                         }
                         IconButton {
-                            size: 32px;
+                            size: 30px;
+                            radius: 7px;
                             fg-color: root.fg;
                             icon: Icons.checklist;
                             label: "Make a checklist";
@@ -1559,11 +1672,12 @@ component NoteWorkspace inherits Rectangle {
                         Rectangle {
                             y: (parent.height - self.height) / 2;
                             width: 1px;
-                            height: 18px;
-                            background: root.divider;
+                            height: 16px;
+                            background: root.divider.transparentize(0.25);
                         }
                         IconButton {
-                            size: 32px;
+                            size: 30px;
+                            radius: 7px;
                             fg-color: root.fg;
                             icon: Icons.image;
                             label: "Add image from toolbar";
@@ -1809,15 +1923,17 @@ component NoteWorkspace inherits Rectangle {
             }
         }
 
-        Rectangle { height: 1px; background: root.divider; }
+        Rectangle { height: 1px; background: root.divider.transparentize(0.45); }
         HorizontalLayout {
-            padding: 16px;
+            padding-top: 11px;
+            padding-bottom: 11px;
             padding-left: root.document-inset;
+            padding-right: root.document-inset;
             Text {
                 text: root.footer;
-                font-size: Type.body-small;
-                font-weight: 600;
-                color: root.fg-secondary;
+                font-size: Type.meta;
+                font-weight: 500;
+                color: root.fg-muted;
                 accessible-role: text;
                 accessible-label: "Save status";
             }
@@ -2225,12 +2341,13 @@ export component AppWindow inherits Window {
             VerticalLayout {
                 horizontal-stretch: 1;
 
-                // Top bar: search pill + view-density segmented toggle + account avatar button.
+                // Modern unified top command bar: 40px Search + 40px Segmented View Toggle + 40px Account button.
                 HorizontalLayout {
-                    padding: 24px;
+                    padding-left: 24px;
+                    padding-right: 24px;
                     padding-top: 14px;
                     padding-bottom: 10px;
-                    spacing: 12px;
+                    spacing: 10px;
                     search := SearchField {
                         horizontal-stretch: 1;
                         compact: root.width < 820px;
@@ -2242,17 +2359,18 @@ export component AppWindow inherits Window {
                     }
                     Rectangle {
                         y: (parent.height - self.height) / 2;
-                        height: 38px;
+                        height: 40px;
                         width: density-seg.preferred-width;
-                        border-radius: 19px;
-                        background: Theme.surface-variant.transparentize(0.3);
+                        border-radius: 12px;
+                        background: Theme.dark ? Theme.surface-variant.transparentize(0.25) : Theme.surface;
                         border-width: 1px;
-                        border-color: Theme.outline;
+                        border-color: Theme.outline.transparentize(0.28);
                         density-seg := HorizontalLayout {
-                            padding: 3px;
+                            padding: 4px;
                             spacing: 2px;
                             IconButton {
                                 size: 32px;
+                                radius: 8px;
                                 icon: Icons.list-view;
                                 label: "List view";
                                 filled: root.view-density == 1;
@@ -2261,6 +2379,7 @@ export component AppWindow inherits Window {
                             }
                             IconButton {
                                 size: 32px;
+                                radius: 8px;
                                 icon: Icons.grid-view;
                                 label: "Grid view";
                                 filled: root.view-density == 0;
@@ -2269,6 +2388,7 @@ export component AppWindow inherits Window {
                             }
                             IconButton {
                                 size: 32px;
+                                radius: 8px;
                                 icon: Icons.compact-view;
                                 label: "Compact view";
                                 filled: root.view-density == 2;
@@ -2279,12 +2399,12 @@ export component AppWindow inherits Window {
                     }
                     Rectangle {
                         y: (parent.height - self.height) / 2;
-                        width: 44px;
-                        height: 44px;
-                        border-radius: 22px;
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 20px;
                         background: avatar-touch.has-hover ? Theme.hover : Theme.surface;
                         border-width: 1px;
-                        border-color: Theme.outline;
+                        border-color: Theme.outline.transparentize(0.28);
                         accessible-role: button;
                         accessible-label: root.account-mode == 1 ? "Sign in to sync" : "Open account and settings";
                         accessible-action-default => {
@@ -2294,9 +2414,9 @@ export component AppWindow inherits Window {
                         Rectangle {
                             x: (parent.width - self.width) / 2;
                             y: (parent.height - self.height) / 2;
-                            width: 30px;
-                            height: 30px;
-                            border-radius: 15px;
+                            width: 28px;
+                            height: 28px;
+                            border-radius: 14px;
                             background: Theme.on-surface.transparentize(0.86);
                             if root.account-mode == 2 && root.account-initial != "": Text {
                                 width: parent.width;
@@ -2311,8 +2431,8 @@ export component AppWindow inherits Window {
                             if root.account-mode != 2 || root.account-initial == "": Icon {
                                 x: (parent.width - self.width) / 2;
                                 y: (parent.height - self.height) / 2;
-                                width: 18px;
-                                height: 18px;
+                                width: 16px;
+                                height: 16px;
                                 path: Icons.person;
                                 color: Theme.on-surface;
                             }
@@ -2327,10 +2447,9 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // Filter, sort and view-density sub-bar matching Kotlin FilterSummaryRow.kt.
+                // Modern filter & segmented sort strip.
                 // In a Flickable so the row scrolls sideways when the notes area is narrower than it, as on
-                // Android, instead of forcing its width onto the window: at the 640px minimum the row used to
-                // push the account button, card timestamps and the New note button past the edge (tests/screens.rs).
+                // Android, instead of forcing its width onto the window.
                 VerticalLayout {
                     padding-bottom: 12px;
                     Flickable {
@@ -2340,10 +2459,12 @@ export component AppWindow inherits Window {
                         filter-row := HorizontalLayout {
                             padding-left: 24px;
                             padding-right: 24px;
-                            spacing: 8px;
+                            spacing: 10px;
                             alignment: start;
                             PillButton {
                                 y: (parent.height - self.height) / 2;
+                                height: 32px;
+                                strong: root.filter-count > 0;
                                 text: root.filter-count > 0 ? "Filters · " + root.filter-count : "Filters";
                                 label: "Filters";
                                 icon: Icons.filter;
@@ -2351,38 +2472,50 @@ export component AppWindow inherits Window {
                             }
                             if root.filters-active: PillButton {
                                 y: (parent.height - self.height) / 2;
+                                height: 32px;
                                 text: "Clear filters";
                                 clicked => { root.filters-cleared(); }
                             }
                             Rectangle {
                                 y: (parent.height - self.height) / 2;
                                 width: 1px;
-                                height: 20px;
-                                background: Theme.outline;
+                                height: 18px;
+                                background: Theme.outline.transparentize(0.35);
                             }
-                            HorizontalLayout {
-                                spacing: 6px;
-                                FilterChip {
-                                    y: (parent.height - self.height) / 2;
-                                    text: "Manual";
-                                    on: root.sort-order == 0;
-                                    clicked => { root.sort-picked(0); }
-                                }
-                                FilterChip {
-                                    y: (parent.height - self.height) / 2;
-                                    text: "Newest";
-                                    on: root.sort-order == 1;
-                                    clicked => { root.sort-picked(1); }
-                                }
-                                FilterChip {
-                                    y: (parent.height - self.height) / 2;
-                                    text: "Oldest";
-                                    on: root.sort-order == 2;
-                                    clicked => { root.sort-picked(2); }
+                            Rectangle {
+                                y: (parent.height - self.height) / 2;
+                                height: 32px;
+                                width: sort-seg.preferred-width;
+                                border-radius: 10px;
+                                background: Theme.dark ? Theme.surface-variant.transparentize(0.35) : Theme.surface;
+                                border-width: 1px;
+                                border-color: Theme.outline.transparentize(0.35);
+                                sort-seg := HorizontalLayout {
+                                    padding: 3px;
+                                    spacing: 2px;
+                                    SegmentTab {
+                                        text: "Manual";
+                                        on: root.sort-order == 0;
+                                        clicked => { root.sort-picked(0); }
+                                    }
+                                    SegmentTab {
+                                        text: "Newest";
+                                        on: root.sort-order == 1;
+                                        clicked => { root.sort-picked(1); }
+                                    }
+                                    SegmentTab {
+                                        text: "Oldest";
+                                        on: root.sort-order == 2;
+                                        clicked => { root.sort-picked(2); }
+                                    }
                                 }
                             }
                         }
                     }
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Theme.outline.transparentize(0.55);
                 }
 
                 // What the search could not use, and near matches, said rather than left to look like a match.
@@ -3261,198 +3394,207 @@ export component AppWindow inherits Window {
                     padding-left: settings-page.content-inset;
                     padding-right: settings-page.content-inset;
                     padding-top: 24px;
-                    padding-bottom: 24px;
-                    spacing: 14px;
-                    SectionLabel { text: "APPEARANCE"; }
-                    Text {
-                        text: "Theme";
-                        font-size: Type.body;
-                        color: Theme.on-surface;
-                    }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        alignment: start;
-                        accessible-role: radio-group;
-                        accessible-label: "Theme";
-                        theme-system := ThemeOption {
-                            text: "System"; option-index: 0; selected: root.theme-mode == 0;
-                            clicked => { root.theme-picked(0); }
-                            move-option(index) => {
-                                root.theme-picked(index);
-                                if (index == 0) { theme-system.focus-option(); }
-                                else if (index == 1) { theme-light.focus-option(); }
-                                else { theme-dark.focus-option(); }
+                    padding-bottom: 32px;
+                    spacing: 16px;
+                    SettingsCard {
+                        SectionLabel { text: "APPEARANCE"; }
+                        Text {
+                            text: "Theme";
+                            font-size: Type.body;
+                            font-weight: 500;
+                            color: Theme.on-surface;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            accessible-role: radio-group;
+                            accessible-label: "Theme";
+                            theme-system := ThemeOption {
+                                text: "System"; option-index: 0; selected: root.theme-mode == 0;
+                                clicked => { root.theme-picked(0); }
+                                move-option(index) => {
+                                    root.theme-picked(index);
+                                    if (index == 0) { theme-system.focus-option(); }
+                                    else if (index == 1) { theme-light.focus-option(); }
+                                    else { theme-dark.focus-option(); }
+                                }
+                            }
+                            theme-light := ThemeOption {
+                                text: "Light"; option-index: 1; selected: root.theme-mode == 1;
+                                clicked => { root.theme-picked(1); }
+                                move-option(index) => {
+                                    root.theme-picked(index);
+                                    if (index == 0) { theme-system.focus-option(); }
+                                    else if (index == 1) { theme-light.focus-option(); }
+                                    else { theme-dark.focus-option(); }
+                                }
+                            }
+                            theme-dark := ThemeOption {
+                                text: "Dark"; option-index: 2; selected: root.theme-mode == 2;
+                                clicked => { root.theme-picked(2); }
+                                move-option(index) => {
+                                    root.theme-picked(index);
+                                    if (index == 0) { theme-system.focus-option(); }
+                                    else if (index == 1) { theme-light.focus-option(); }
+                                    else { theme-dark.focus-option(); }
+                                }
                             }
                         }
-                        theme-light := ThemeOption {
-                            text: "Light"; option-index: 1; selected: root.theme-mode == 1;
-                            clicked => { root.theme-picked(1); }
-                            move-option(index) => {
-                                root.theme-picked(index);
-                                if (index == 0) { theme-system.focus-option(); }
-                                else if (index == 1) { theme-light.focus-option(); }
-                                else { theme-dark.focus-option(); }
+
+                        Text {
+                            text: "Accent";
+                            font-size: Type.body;
+                            font-weight: 500;
+                            color: Theme.on-surface;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            accessible-role: radio-group;
+                            accessible-label: "Accent";
+                            accent-neutral := ThemeOption {
+                                text: "Neutral"; option-index: 0; selected: root.theme-accent == 0;
+                                clicked => { root.accent-picked(0); }
+                                move-option(index) => {
+                                    root.accent-picked(index);
+                                    if (index == 0) { accent-neutral.focus-option(); }
+                                    else if (index == 1) { accent-blue.focus-option(); }
+                                    else { accent-green.focus-option(); }
+                                }
+                            }
+                            accent-blue := ThemeOption {
+                                text: "Blue"; option-index: 1; selected: root.theme-accent == 1;
+                                clicked => { root.accent-picked(1); }
+                                move-option(index) => {
+                                    root.accent-picked(index);
+                                    if (index == 0) { accent-neutral.focus-option(); }
+                                    else if (index == 1) { accent-blue.focus-option(); }
+                                    else { accent-green.focus-option(); }
+                                }
+                            }
+                            accent-green := ThemeOption {
+                                text: "Green"; option-index: 2; selected: root.theme-accent == 2;
+                                clicked => { root.accent-picked(2); }
+                                move-option(index) => {
+                                    root.accent-picked(index);
+                                    if (index == 0) { accent-neutral.focus-option(); }
+                                    else if (index == 1) { accent-blue.focus-option(); }
+                                    else { accent-green.focus-option(); }
+                                }
                             }
                         }
-                        theme-dark := ThemeOption {
-                            text: "Dark"; option-index: 2; selected: root.theme-mode == 2;
-                            clicked => { root.theme-picked(2); }
-                            move-option(index) => {
-                                root.theme-picked(index);
-                                if (index == 0) { theme-system.focus-option(); }
-                                else if (index == 1) { theme-light.focus-option(); }
-                                else { theme-dark.focus-option(); }
+
+                        Rectangle { height: 1px; background: Theme.outline.transparentize(0.45); }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
+                            CheckBox {
+                                y: (parent.height - self.height) / 2;
+                                checked: root.theme-amoled;
+                                label: "AMOLED black";
+                                toggled => { root.amoled-toggled(); }
+                            }
+                            VerticalLayout {
+                                spacing: 2px;
+                                Text {
+                                    text: "AMOLED black";
+                                    font-size: Type.body;
+                                    font-weight: 500;
+                                    color: Theme.on-surface;
+                                }
+                                Text {
+                                    text: "Pure black surfaces in dark mode.";
+                                    font-size: Type.meta;
+                                    color: Theme.muted;
+                                }
                             }
                         }
                     }
 
-                    Text {
-                        text: "Accent";
-                        font-size: Type.body;
-                        color: Theme.on-surface;
-                    }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        alignment: start;
-                        accessible-role: radio-group;
-                        accessible-label: "Accent";
-                        accent-neutral := ThemeOption {
-                            text: "Neutral"; option-index: 0; selected: root.theme-accent == 0;
-                            clicked => { root.accent-picked(0); }
-                            move-option(index) => {
-                                root.accent-picked(index);
-                                if (index == 0) { accent-neutral.focus-option(); }
-                                else if (index == 1) { accent-blue.focus-option(); }
-                                else { accent-green.focus-option(); }
-                            }
-                        }
-                        accent-blue := ThemeOption {
-                            text: "Blue"; option-index: 1; selected: root.theme-accent == 1;
-                            clicked => { root.accent-picked(1); }
-                            move-option(index) => {
-                                root.accent-picked(index);
-                                if (index == 0) { accent-neutral.focus-option(); }
-                                else if (index == 1) { accent-blue.focus-option(); }
-                                else { accent-green.focus-option(); }
-                            }
-                        }
-                        accent-green := ThemeOption {
-                            text: "Green"; option-index: 2; selected: root.theme-accent == 2;
-                            clicked => { root.accent-picked(2); }
-                            move-option(index) => {
-                                root.accent-picked(index);
-                                if (index == 0) { accent-neutral.focus-option(); }
-                                else if (index == 1) { accent-blue.focus-option(); }
-                                else { accent-green.focus-option(); }
-                            }
+                    SettingsCard {
+                        SectionLabel { text: "BACKUPS"; }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: 8px;
+                            PillButton { text: "Export JSON"; clicked => { root.backup-export-json-requested(); } }
+                            PillButton { text: "Export with pictures"; clicked => { root.backup-export-bundle-requested(); } }
+                            PillButton { text: "Import"; label: "Import backup from settings"; clicked => { root.backup-import-requested(); } }
                         }
                     }
 
-                    HorizontalLayout {
-                        spacing: 10px;
-                        alignment: start;
-                        CheckBox {
-                            y: (parent.height - self.height) / 2;
-                            checked: root.theme-amoled;
-                            label: "AMOLED black";
-                            toggled => { root.amoled-toggled(); }
+                    SettingsCard {
+                        SectionLabel { text: "CLOUD & ACCOUNT"; }
+                        if root.account-mode == 0: Text {
+                            text: "Sync is not configured in this build. Notes stay on this device.";
+                            font-size: Type.body-small;
+                            color: Theme.on-surface-secondary;
+                            wrap: word-wrap;
                         }
-                        VerticalLayout {
-                            spacing: 2px;
+                        if root.account-mode == 1: VerticalLayout {
+                            spacing: 8px;
                             Text {
-                                text: "AMOLED black";
+                                text: "Guest mode. Notes stay on this device.";
+                                font-size: Type.body-small;
+                                color: Theme.on-surface-secondary;
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                PillButton { text: "Sign in to sync"; strong: true; clicked => { root.signin-opened(); } }
+                            }
+                        }
+                        if root.account-mode == 2: VerticalLayout {
+                            spacing: 8px;
+                            Text {
+                                text: root.account-email;
                                 font-size: Type.body;
+                                font-weight: 600;
                                 color: Theme.on-surface;
                             }
                             Text {
-                                text: "Pure black surfaces in dark mode.";
-                                font-size: Type.meta;
-                                color: Theme.muted;
+                                text: root.account-status;
+                                font-size: Type.body-small;
+                                color: root.account-problem ? Theme.danger : Theme.on-surface-secondary;
+                                wrap: word-wrap;
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                spacing: 8px;
+                                PillButton { text: root.syncing ? "Syncing…" : "Sync now"; enabled: !root.syncing; clicked => { root.sync-requested(); } }
+                                PillButton { text: "Sign out"; clicked => { root.sign-out-requested(); } }
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                spacing: 8px;
+                                PillButton {
+                                    text: "Delete cloud notes";
+                                    danger: true;
+                                    enabled: !root.syncing && !root.deleting-account;
+                                    clicked => { root.delete-cloud-data-requested(); }
+                                }
+                                PillButton {
+                                    text: "Delete account";
+                                    danger: true;
+                                    enabled: root.can-delete-account && !root.deleting-account;
+                                    clicked => { root.delete-account-opened(); }
+                                }
                             }
                         }
-                    }
-
-                    Rectangle { height: 1px; background: Theme.outline; }
-                    SectionLabel { text: "BACKUPS"; }
-                    HorizontalLayout {
-                        alignment: start;
-                        spacing: 8px;
-                        PillButton { text: "Export JSON"; clicked => { root.backup-export-json-requested(); } }
-                        PillButton { text: "Export with pictures"; clicked => { root.backup-export-bundle-requested(); } }
-                        PillButton { text: "Import"; label: "Import backup from settings"; clicked => { root.backup-import-requested(); } }
-                    }
-
-                    Rectangle { height: 1px; background: Theme.outline; }
-                    SectionLabel { text: "CLOUD & ACCOUNT"; }
-                    if root.account-mode == 0: Text {
-                        text: "Sync is not configured in this build. Notes stay on this device.";
-                        font-size: Type.body-small;
-                        color: Theme.on-surface-secondary;
-                        wrap: word-wrap;
-                    }
-                    if root.account-mode == 1: VerticalLayout {
-                        spacing: 8px;
-                        Text {
-                            text: "Guest mode. Notes stay on this device.";
-                            font-size: Type.body-small;
-                            color: Theme.on-surface-secondary;
-                        }
-                        HorizontalLayout {
-                            alignment: start;
-                            PillButton { text: "Sign in to sync"; strong: true; clicked => { root.signin-opened(); } }
-                        }
-                    }
-                    if root.account-mode == 2: VerticalLayout {
-                        spacing: 8px;
-                        Text {
-                            text: root.account-email;
-                            font-size: Type.body;
-                            font-weight: 600;
-                            color: Theme.on-surface;
-                        }
-                        Text {
-                            text: root.account-status;
-                            font-size: Type.body-small;
-                            color: root.account-problem ? Theme.danger : Theme.on-surface-secondary;
+                        if root.account-mode == 2: Text {
+                            text: "Account deletion permanently removes the online account, its notes, and pictures.";
+                            font-size: Type.meta;
+                            color: Theme.muted;
                             wrap: word-wrap;
                         }
-                        HorizontalLayout {
-                            alignment: start;
-                            spacing: 8px;
-                            PillButton { text: root.syncing ? "Syncing…" : "Sync now"; enabled: !root.syncing; clicked => { root.sync-requested(); } }
-                            PillButton { text: "Sign out"; clicked => { root.sign-out-requested(); } }
-                        }
-                        HorizontalLayout {
-                            alignment: start;
-                            spacing: 8px;
-                            PillButton {
-                                text: "Delete cloud notes";
-                                danger: true;
-                                enabled: !root.syncing && !root.deleting-account;
-                                clicked => { root.delete-cloud-data-requested(); }
-                            }
-                            PillButton {
-                                text: "Delete account";
-                                danger: true;
-                                enabled: root.can-delete-account && !root.deleting-account;
-                                clicked => { root.delete-account-opened(); }
-                            }
-                        }
-                    }
-                    if root.account-mode == 2: Text {
-                        text: "Account deletion permanently removes the online account, its notes, and pictures.";
-                        font-size: Type.meta;
-                        color: Theme.muted;
-                        wrap: word-wrap;
                     }
 
-                    Rectangle { height: 1px; background: Theme.outline; }
-                    SectionLabel { text: "DIAGNOSTICS"; }
-                    HorizontalLayout {
-                        alignment: start;
-                        spacing: 8px;
-                        PillButton { text: "View diagnostics"; clicked => { root.diagnostics-requested(); } }
-                        PillButton { text: "About"; label: "Open about dialog"; clicked => { root.about-open = true; } }
+                    SettingsCard {
+                        SectionLabel { text: "DIAGNOSTICS"; }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: 8px;
+                            PillButton { text: "View diagnostics"; clicked => { root.diagnostics-requested(); } }
+                            PillButton { text: "About"; label: "Open about dialog"; clicked => { root.about-open = true; } }
+                        }
                     }
                 }
             }
